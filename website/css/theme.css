@@ -1,0 +1,61 @@
+/*==================================================
+    THREADLINE
+    MASTER THEME
+==================================================*/
+
+:root{
+
+    /*=========================================
+        COLORS
+    =========================================*/
+
+    --background:#0B1016;
+    --background-secondary:#101820;
+
+    --panel:#141D26;
+    --panel-light:#1B2632;
+
+    --border:#243445;
+
+    --accent:#3FD8FF;
+    --accent-hover:#6FE8FF;
+
+    --success:#42D392;
+    --warning:#F7C94B;
+    --danger:#FF5E73;
+
+    --text:#F2F7FB;
+    --text-light:#B4C1CF;
+    --text-muted:#748191;
+
+    /*=========================================
+        TYPOGRAPHY
+    =========================================*/
+
+    --font-main:'Inter',sans-serif;
+    --font-mono:'JetBrains Mono',monospace;
+
+    /*=========================================
+        LAYOUT
+    =========================================*/
+
+    --sidebar-width:300px;
+    --header-height:72px;
+
+    --content-width:1600px;
+
+    /*=========================================
+        EFFECTS
+    =========================================*/
+
+    --transition:.18s ease;
+
+    --shadow:
+
+        0 12px 30px rgba(0,0,0,.45);
+
+    --glow:
+
+        0 0 18px rgba(63,216,255,.08);
+
+}

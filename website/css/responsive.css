@@ -1,0 +1,19 @@
+@media(max-width:1200px){
+
+    :root{
+
+        --sidebar-width:260px;
+
+    }
+
+}
+
+@media(max-width:900px){
+
+    :root{
+
+        --sidebar-width:0px;
+
+    }
+
+}
