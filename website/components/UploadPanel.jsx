@@ -20,7 +20,11 @@ import {
                     UPLOAD PANEL
 ======================================================*/
 
-function UploadPanel(){
+function UploadPanel({
+
+    setImportResult
+
+}){
 
     return(
 
@@ -34,7 +38,17 @@ function UploadPanel(){
 
                 hidden
 
-                onChange={handleBrowse}
+                onChange={(event)=>
+
+					handleBrowse(
+
+						event,
+
+						setImportResult
+
+					)
+
+				}
 
             />
 
@@ -50,7 +64,17 @@ function UploadPanel(){
 
                 onDragLeave={handleDragLeave}
 
-                onDrop={handleDrop}
+                onDrop={(event)=>
+
+					handleDrop(
+
+						event,
+
+						setImportResult
+
+					)
+
+				}
 
             >
 

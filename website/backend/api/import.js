@@ -18,7 +18,7 @@ const { parseSMSBackup } = require("../parsers/smsbackup");
 const { buildConversations } = require("../engines/conversationBuilder");
 
 // Utilities
-const logger = require("../utils/logger");
+//const logger = require("../utils/logger");
 
 /*======================================================
                         VARIABLES

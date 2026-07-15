@@ -38,7 +38,13 @@ export function handleDragLeave(event){
                     DROP
 ======================================================*/
 
-export async function handleDrop(event){
+export async function handleDrop(
+
+    event,
+
+    setImportResult
+
+){
 
     event.preventDefault();
 
@@ -54,7 +60,7 @@ export async function handleDrop(event){
 
         const response = await uploadArchive(file);
 
-        console.table(response);
+        setImportResult(response);
 
     }
 
@@ -70,7 +76,13 @@ export async function handleDrop(event){
                     FILE BROWSER
 ======================================================*/
 
-export async function handleBrowse(event){
+export async function handleBrowse(
+
+    event,
+
+    setImportResult
+
+){
 
     const file = event.target.files[0];
 
@@ -84,7 +96,7 @@ export async function handleBrowse(event){
 
         const response = await uploadArchive(file);
 
-        console.table(response);
+        setImportResult(response);
 
     }
 
