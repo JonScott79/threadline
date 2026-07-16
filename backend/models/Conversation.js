@@ -2,9 +2,9 @@
                     CONVERSATION
 ======================================================*/
 
-class Conversation{
+class Conversation {
 
-    constructor(data={}){
+    constructor(data = {}) {
 
         this.id = data.id || null;
 
@@ -16,9 +16,15 @@ class Conversation{
 
         this.messages = data.messages || [];
 
+        this.messageCount = data.messageCount || 0;
+
         this.firstMessage = data.firstMessage || null;
 
         this.lastMessage = data.lastMessage || null;
+
+        this.created = data.created || Date.now();
+
+        this.updated = data.updated || Date.now();
 
     }
 

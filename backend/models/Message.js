@@ -2,15 +2,17 @@
                         MESSAGE
 ======================================================*/
 
-class Message{
+class Message {
 
-    constructor(data={}){
+    constructor(data = {}) {
 
         this.id = data.id || null;
 
         this.conversationId = data.conversationId || null;
 
         this.platform = data.platform || "";
+
+        this.type = data.type || "text";
 
         this.direction = data.direction || "";
 
@@ -23,6 +25,10 @@ class Message{
         this.body = data.body || "";
 
         this.attachments = data.attachments || [];
+
+        this.deleted = data.deleted || false;
+
+        this.edited = data.edited || false;
 
         this.metadata = data.metadata || {};
 

@@ -1,24 +1,17 @@
 /*======================================================
                         IMPORTS
 ======================================================*/
+
 // Core
 const express = require("express");
 const multer = require("multer");
 const path = require("path");
 
-// Models
-const Message = require("../models/Message");
-const Conversation = require("../models/Conversation");
+// Engine
+const { processImport } = require("../engines/importEngine");
 
-// Parsers
-const { detectFile } = require("../parsers/detector");
-const { parseSMSBackup } = require("../parsers/smsbackup");
-
-// Engines
-const { buildConversations } = require("../engines/conversationBuilder");
-
-// Utilities
-//const logger = require("../utils/logger");
+// Services
+const { createThreadline } = require("../services/threadlines");
 
 /*======================================================
                         VARIABLES
@@ -80,50 +73,95 @@ router.post(
 
     upload.single("archive"),
 
-    (request,response)=>{
+    async (request,response)=>{
 
-        const detection = detectFile(
+        try{
 
-            request.file.path
+	if(!request.file){
 
-        );
+		return response.status(400).json({
 
-        let messages = [];
+			status:"error",
 
-		let conversations = [];
+			message:"No file uploaded."
 
-        if(
+		});
 
-            detection.type === "SMS Backup & Restore"
+	}
 
-        ){
+	console.log("==========================================");
+	console.log("IMPORT REQUEST");
+	console.log("File:", request.file.originalname);
+	console.log("UID:", request.body.uid);
 
-            messages = parseSMSBackup(
+	if(!request.body.uid){
 
-                request.file.path
+		return response.status(400).json({
 
-            );
-			conversations = buildConversations(messages);
+			status:"error",
+
+			message:"Missing user id."
+
+		});
+
+	}
+
+	console.log("Running Import Engine...");
+
+	const archive = processImport(
+
+		request.file.path
+
+	);
+
+	console.log("Archive created.");
+	console.log("Messages:", archive.messageCount);
+	console.log("Conversations:", archive.conversationCount);
+
+	console.log("Saving Threadline...");
+
+	const threadlineId = await createThreadline(
+
+		request.body.uid,
+
+		archive
+
+	);
+
+	console.log("Threadline ID:", threadlineId);
+	console.log("==========================================");
+
+	response.json({
+
+		status:"success",
+
+		threadlineId,
+
+		archive
+
+	});
 
         }
+        catch (error) {
 
-        response.json({
+			console.error("");
+			console.error("==========================================");
+			console.error("IMPORT FAILED");
+			console.error("==========================================");
+			console.error(error);
+			console.error(error.stack);
+			console.error("==========================================");
+			console.error("");
 
-            status:"success",
+			response.status(500).json({
 
-            originalName:request.file.originalname,
+				status: "error",
 
-            detected:detection.type,
+				message: error.message
 
-            confidence:detection.confidence,
+			});
 
-			conversationCount: conversations.length,
-
-			messageCount: messages.length,
-
-			preview: conversations.slice(0,3)
-
-        });
+		}
 
     }
 

@@ -14,19 +14,11 @@ export function handleDragOver(event){
 
 }
 
-/*======================================================
-                    DRAG ENTER
-======================================================*/
-
 export function handleDragEnter(event){
 
     event.preventDefault();
 
 }
-
-/*======================================================
-                    DRAG LEAVE
-======================================================*/
 
 export function handleDragLeave(event){
 
@@ -41,6 +33,8 @@ export function handleDragLeave(event){
 export async function handleDrop(
 
     event,
+
+    user,
 
     setImportResult
 
@@ -58,7 +52,13 @@ export async function handleDrop(
 
     try{
 
-        const response = await uploadArchive(file);
+        const response = await uploadArchive(
+
+            file,
+
+            user
+
+        );
 
         setImportResult(response);
 
@@ -80,6 +80,8 @@ export async function handleBrowse(
 
     event,
 
+    user,
+
     setImportResult
 
 ){
@@ -94,7 +96,13 @@ export async function handleBrowse(
 
     try{
 
-        const response = await uploadArchive(file);
+        const response = await uploadArchive(
+
+            file,
+
+            user
+
+        );
 
         setImportResult(response);
 

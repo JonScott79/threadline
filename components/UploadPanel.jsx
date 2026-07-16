@@ -12,6 +12,8 @@ import {
 
 } from "../js/imports/dragdrop";
 
+import { useAuth } from "../auth/AuthProvider";
+
 /*======================================================
                     UPLOAD PANEL
 ======================================================*/
@@ -21,6 +23,12 @@ function UploadPanel({
     setImportResult
 
 }){
+
+    const {
+
+        user
+
+    } = useAuth();
 
     return(
 
@@ -36,15 +44,17 @@ function UploadPanel({
 
                 onChange={(event)=>
 
-					handleBrowse(
+                    handleBrowse(
 
-						event,
+                        event,
 
-						setImportResult
+                        user,
 
-					)
+                        setImportResult
 
-				}
+                    )
+
+                }
 
             />
 
@@ -62,15 +72,17 @@ function UploadPanel({
 
                 onDrop={(event)=>
 
-					handleDrop(
+                    handleDrop(
 
-						event,
+                        event,
 
-						setImportResult
+                        user,
 
-					)
+                        setImportResult
 
-				}
+                    )
+
+                }
 
             >
 

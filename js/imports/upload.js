@@ -8,7 +8,7 @@ import axios from "axios";
                     UPLOAD ARCHIVE
 ======================================================*/
 
-export async function uploadArchive(file){
+export async function uploadArchive(file, user){
 
     const formData = new FormData();
 
@@ -17,6 +17,14 @@ export async function uploadArchive(file){
         "archive",
 
         file
+
+    );
+
+    formData.append(
+
+        "uid",
+
+        user.uid
 
     );
 
