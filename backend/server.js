@@ -7,6 +7,9 @@ const express = require("express");
 const cors = require("cors");
 
 const importRoutes = require("./api/import");
+const threadlineRoutes = require("./api/threadlines");
+const timelineRoutes = require("./api/timeline");
+const searchRoutes = require("./api/search");
 
 /*======================================================
                         VARIABLES
@@ -43,6 +46,9 @@ app.get("/", (request, response) => {
 });
 
 app.use("/api/import", importRoutes);
+app.use("/api/threadlines", threadlineRoutes);
+app.use("/api/threadlines/:id/timeline", timelineRoutes);
+app.use("/api/threadlines/:id/search", searchRoutes);
 
 /*======================================================
                         SERVER

@@ -64,3 +64,12 @@ backend/uploads/*
 
 Thumbs.db
 Desktop.ini
+
+#======================================================
+# SQLITE DATABASES & SCRATCH TESTS
+#======================================================
+
+backend/database/*.db
+backend/database/*.db-shm
+backend/database/*.db-wal
+backend/database/test*.js

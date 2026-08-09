@@ -14,7 +14,8 @@ import StatusBar from "../components/StatusBar";
 import Login from "../components/Login";
 
 import { useAuth } from "../auth/AuthProvider";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { loadThreadlines, deleteThreadline } from "../services/threadlines";
 
 /*======================================================
                         COMPONENT
@@ -27,6 +28,9 @@ function App(){
 	const [currentThreadline, setCurrentThreadline] = useState(null);
 
 	const [creatingThreadline, setCreatingThreadline] = useState(false);
+
+	const [showingHelp, setShowingHelp] = useState(false);
+
     /*==============================================
                         AUTH
     ==============================================*/
@@ -38,6 +42,40 @@ function App(){
         loading
 
     } = useAuth();
+
+    /*==============================================
+                        LOAD DATA
+    ==============================================*/
+
+    useEffect(() => {
+
+        if (user) {
+
+            loadThreadlines(user.uid)
+
+                .then(data => {
+
+                    setThreadlines(data);
+
+                })
+
+                .catch(error => {
+
+                    console.error("Failed to load threadlines:", error);
+
+                });
+
+        } else {
+
+            setThreadlines([]);
+
+            setCurrentThreadline(null);
+
+            setShowingHelp(false);
+
+        }
+
+    }, [user]);
 
     /*==============================================
                         LOADING
@@ -85,9 +123,48 @@ function App(){
 
 				currentThreadline={currentThreadline}
 
-				onSelect={setCurrentThreadline}
+				onSelect={(tl) => {
+					setCurrentThreadline(tl);
+					setShowingHelp(false);
+					setCreatingThreadline(false);
+				}}
 
-				onNew={() => setCreatingThreadline(true)}
+				onNew={() => {
+					setCreatingThreadline(true);
+					setShowingHelp(false);
+					setCurrentThreadline(null);
+				}}
+
+				onDelete={async (threadline) => {
+					try {
+						await deleteThreadline(user.uid, threadline.firestoreId);
+						setThreadlines(prev => prev.filter(t => t.firestoreId !== threadline.firestoreId));
+						if (currentThreadline?.firestoreId === threadline.firestoreId) {
+							setCurrentThreadline(null);
+						}
+					} catch (error) {
+						console.error("Failed to delete threadline:", error);
+					}
+				}}
+
+				onRename={async (threadline, newName) => {
+					try {
+						const updated = { ...threadline, title: newName };
+						await updateThreadline(user.uid, updated);
+						setThreadlines(prev => prev.map(t => t.firestoreId === threadline.firestoreId ? updated : t));
+						if (currentThreadline?.firestoreId === threadline.firestoreId) {
+							setCurrentThreadline(updated);
+						}
+					} catch (error) {
+						console.error("Failed to rename threadline:", error);
+					}
+				}}
+
+				onShowHelp={() => {
+					setShowingHelp(true);
+					setCurrentThreadline(null);
+					setCreatingThreadline(false);
+				}}
 
 			/>
 
@@ -104,6 +181,10 @@ function App(){
 				creatingThreadline={creatingThreadline}
 
 				setCreatingThreadline={setCreatingThreadline}
+
+				showingHelp={showingHelp}
+
+				setShowingHelp={setShowingHelp}
 
 			/>
 

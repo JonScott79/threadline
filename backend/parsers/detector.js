@@ -9,14 +9,18 @@ const fs = require("fs");
 ======================================================*/
 
 function detectFile(filePath){
-
-    const file = fs.readFileSync(
-
-        filePath,
-
-        "utf8"
-
-    );
+    let fileSample = "";
+    try {
+        // Read only the first 50KB of the file to perform detection safely
+        const fd = fs.openSync(filePath, "r");
+        const buffer = Buffer.alloc(50 * 1024); // 50KB buffer
+        const bytesRead = fs.readSync(fd, buffer, 0, 50 * 1024, 0);
+        fs.closeSync(fd);
+        fileSample = buffer.toString("utf8", 0, bytesRead);
+    } catch (err) {
+        console.error("Failed to read file sample for detection:", err);
+        return { type: "Unknown", confidence: 0 };
+    }
 
     /*------------------------------------------
         SMS Backup & Restore
@@ -24,9 +28,11 @@ function detectFile(filePath){
 
     if(
 
-        file.includes("<smses") ||
+        fileSample.includes("<smses") ||
 
-        file.includes("<sms ")
+        fileSample.includes("<sms ") ||
+        
+        fileSample.includes("<mms ")
 
     ){
 
@@ -41,14 +47,28 @@ function detectFile(filePath){
     }
 
     /*------------------------------------------
+        HTML Conversation Export
+    ------------------------------------------*/
+
+    if (
+        fileSample.includes("<h2>Conversation with:") ||
+        (fileSample.includes("<th>Type</th>") && fileSample.includes("<th>Date</th>"))
+    ) {
+        return {
+            type: "HTML Conversation Export",
+            confidence: 100
+        };
+    }
+
+    /*------------------------------------------
         Facebook Messenger
     ------------------------------------------*/
 
     if(
 
-        file.includes("\"participants\"") &&
+        fileSample.includes("\"participants\"") &&
 
-        file.includes("\"messages\"")
+        fileSample.includes("\"messages\"")
 
     ){
 

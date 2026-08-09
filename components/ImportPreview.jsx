@@ -12,21 +12,21 @@ function ImportPreview({ result }){
 
     return(
 
-        <section className="panel import-preview">
+        <section className="panel import-preview" style={{ marginTop: "24px" }}>
 
-            <h3>IMPORT SUMMARY</h3>
+            <h3 style={{ textTransform: "uppercase", letterSpacing: "2px", fontSize: "0.9rem", color: "var(--accent)" }}>IMPORT SUMMARY</h3>
 
             <div className="import-grid">
 
-                <div>
+                <div className="preview-card">
 
                     <strong>Platform</strong>
 
-                    <p>{result.detected}</p>
+                    <p>{result.detected || result.platform || "Unknown"}</p>
 
                 </div>
 
-                <div>
+                <div className="preview-card">
 
                     <strong>Confidence</strong>
 
@@ -34,27 +34,27 @@ function ImportPreview({ result }){
 
                 </div>
 
-                <div>
+                <div className="preview-card">
 
                     <strong>Messages</strong>
 
-                    <p>{result.messageCount}</p>
+                    <p>{result.messageCount.toLocaleString()}</p>
 
                 </div>
 
-                <div>
+                <div className="preview-card">
 
                     <strong>Conversations</strong>
 
-                    <p>{result.conversationCount}</p>
+                    <p>{result.conversationCount.toLocaleString()}</p>
 
                 </div>
 
-                <div>
+                <div className="preview-card" style={{ gridColumn: "span 2" }}>
 
                     <strong>Original File</strong>
 
-                    <p>{result.originalName}</p>
+                    <p style={{ wordBreak: "break-all", fontSize: "1rem" }}>{result.originalName}</p>
 
                 </div>
 

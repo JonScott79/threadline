@@ -44,6 +44,18 @@ export function AuthProvider({ children }){
 
     useEffect(()=>{
 
+        // Check if user has opted for local guest mode previously
+        const isLocalMode = localStorage.getItem("threadline_local_mode") === "true";
+        if (isLocalMode) {
+            setUser({
+                uid: "local",
+                displayName: "Local Guest",
+                email: "local@threadline.internal"
+            });
+            setLoading(false);
+            return;
+        }
+
         const unsubscribe = onAuthStateChanged(
 
             auth,
@@ -62,6 +74,20 @@ export function AuthProvider({ children }){
 
     },[]);
 
+    function loginAsLocalGuest() {
+        localStorage.setItem("threadline_local_mode", "true");
+        setUser({
+            uid: "local",
+            displayName: "Local Guest",
+            email: "local@threadline.internal"
+        });
+    }
+
+    function logoutLocalGuest() {
+        localStorage.removeItem("threadline_local_mode");
+        setUser(null);
+    }
+
     return(
 
         <AuthContext.Provider
@@ -70,7 +96,11 @@ export function AuthProvider({ children }){
 
                 user,
 
-                loading
+                loading,
+
+                loginAsLocalGuest,
+
+                logoutLocalGuest
 
             }}
 

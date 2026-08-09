@@ -23,8 +23,6 @@ function NewThreadline({
 
     const [title,setTitle] = useState("");
 
-    const [person,setPerson] = useState("");
-
     const [description,setDescription] = useState("");
 
     /*==============================================
@@ -38,8 +36,6 @@ function NewThreadline({
 			createThreadline({
 
 				title,
-
-				person,
 
 				description
 
@@ -80,22 +76,6 @@ function NewThreadline({
                 onChange={(event)=>
 
                     setTitle(event.target.value)
-
-                }
-
-            />
-
-            <input
-
-                className="input"
-
-                placeholder="Primary Person"
-
-                value={person}
-
-                onChange={(event)=>
-
-                    setPerson(event.target.value)
 
                 }
 

@@ -3,6 +3,7 @@
 ======================================================*/
 
 import { auth } from "../auth/firebase";
+import { useAuth } from "../auth/AuthProvider";
 
 import {
 
@@ -17,6 +18,8 @@ import {
 ======================================================*/
 
 function Login(){
+
+    const { loginAsLocalGuest } = useAuth();
 
     /*==============================================
                         EVENTS
@@ -80,11 +83,23 @@ function Login(){
 
 						className="button primary"
 
+						onClick={loginAsLocalGuest}
+
+					>
+
+						Use Local Mode (Offline)
+
+					</button>
+
+					<button
+
+						className="button secondary"
+
 						onClick={handleGoogleLogin}
 
 					>
 
-						Continue with Google
+						Sign in with Google
 
 					</button>
 

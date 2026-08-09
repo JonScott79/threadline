@@ -1,152 +1,108 @@
-/*======================================================
-                        IMPORTS
-======================================================*/
+/*
+    threadlines.js
 
-import {
+    Frontend service for managing threadlines.
+    Communicates with the local backend Express server over HTTP.
 
-    collection,
-    addDoc,
-    getDocs,
-    deleteDoc,
-    doc,
-    updateDoc
+    Responsibilities:
+    - Load the list of available threadlines.
+    - Save/Create a manually configured threadline.
+    - Delete a threadline.
+*/
 
-} from "firebase/firestore";
+// =====================================
+// Imports
+// =====================================
 
-import { db } from "../auth/firebase";
+import axios from "axios";
 
-/*======================================================
-                SAVE THREADLINE
-======================================================*/
+// =====================================
+// Constants
+// =====================================
 
-export async function saveThreadline(
+const API_BASE = "http://localhost:3001/api/threadlines";
 
-    uid,
+// =====================================
+// Public Methods
+// =====================================
 
-    threadline
-
-){
-
-    const reference = collection(
-
-        db,
-
-        "users",
-
-        uid,
-
-        "threadlines"
-
-    );
-
-    const document = await addDoc(
-
-        reference,
-
-        threadline
-
-    );
-
-    return{
-
-        ...threadline,
-
-        firestoreId: document.id
-
-    };
-
+/**
+ * Saves/Creates a manual threadline.
+ * 
+ * @param {string} uid - User identifier
+ * @param {object} threadline - Threadline metadata
+ * @returns {Promise<object>} The saved threadline returned by backend
+ */
+export async function saveThreadline(uid, threadline) {
+    try {
+        const response = await axios.post(API_BASE, threadline);
+        if (response.data && response.data.status === "success") {
+            return response.data.threadline;
+        }
+        throw new Error(response.data?.message || "Failed to save threadline");
+    } catch (error) {
+        console.error("Failed to save threadline on backend:", error);
+        throw error;
+    }
 }
 
-/*======================================================
-                LOAD THREADLINES
-======================================================*/
-
-export async function loadThreadlines(
-
-    uid
-
-){
-
-    const reference = collection(
-
-        db,
-
-        "users",
-
-        uid,
-
-        "threadlines"
-
-    );
-
-    const snapshot = await getDocs(reference);
-
-    return snapshot.docs.map(document=>({
-
-        firestoreId: document.id,
-
-        ...document.data()
-
-    }));
-
+/**
+ * Loads all threadlines for the user.
+ * 
+ * @param {string} uid - User identifier
+ * @returns {Promise<Array>} List of threadlines
+ */
+export async function loadThreadlines(uid) {
+    try {
+        const response = await axios.get(API_BASE);
+        if (response.data && response.data.status === "success") {
+            return response.data.threadlines;
+        }
+        return [];
+    } catch (error) {
+        console.error("Failed to load threadlines from backend:", error);
+        throw error;
+    }
 }
 
-/*======================================================
-                UPDATE THREADLINE
-======================================================*/
-
-export async function updateThreadline(
-
-    uid,
-
-    threadline
-
-){
-
-    const reference = doc(
-
-        db,
-
-        "users",
-
-        uid,
-
-        "threadlines",
-
-        threadline.firestoreId
-
-    );
-
-    await updateDoc(reference,threadline);
-
+/**
+ * Updates a threadline (Renames the threadline).
+ * 
+ * @param {string} uid - User identifier
+ * @param {object} threadline - Threadline metadata to update
+ */
+export async function updateThreadline(uid, threadline) {
+    try {
+        const response = await axios.put(`${API_BASE}/${threadline.firestoreId}`, {
+            title: threadline.title
+        });
+        if (response.data && response.data.status === "success") {
+            console.log(`Renamed threadline ${threadline.firestoreId} on backend.`);
+            return;
+        }
+        throw new Error(response.data?.message || "Failed to rename threadline");
+    } catch (error) {
+        console.error(`Failed to rename threadline ${threadline.firestoreId}:`, error);
+        throw error;
+    }
 }
 
-/*======================================================
-                DELETE THREADLINE
-======================================================*/
-
-export async function deleteThreadline(
-
-    uid,
-
-    firestoreId
-
-){
-
-    const reference = doc(
-
-        db,
-
-        "users",
-
-        uid,
-
-        "threadlines",
-
-        firestoreId
-
-    );
-
-    await deleteDoc(reference);
-
+/**
+ * Deletes a threadline by its ID.
+ * 
+ * @param {string} uid - User identifier
+ * @param {string} firestoreId - The database ID of the threadline
+ */
+export async function deleteThreadline(uid, firestoreId) {
+    try {
+        const response = await axios.delete(`${API_BASE}/${firestoreId}`);
+        if (response.data && response.data.status === "success") {
+            console.log(`Deleted threadline ${firestoreId} on backend.`);
+            return;
+        }
+        throw new Error(response.data?.message || "Failed to delete threadline");
+    } catch (error) {
+        console.error(`Failed to delete threadline ${firestoreId}:`, error);
+        throw error;
+    }
 }

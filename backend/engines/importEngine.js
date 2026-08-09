@@ -1,10 +1,7 @@
-/*======================================================
-                        IMPORTS
-======================================================*/
-
 const { detectFile } = require("../parsers/detector");
 
 const { parseSMSBackup } = require("../parsers/smsbackup");
+const { parseHTMLBackup } = require("../parsers/htmlbackup");
 
 const { buildConversations } = require("./conversationBuilder");
 
@@ -12,11 +9,13 @@ const Archive = require("../models/Archive");
 
 /*======================================================
                     PARSER REGISTRY
-======================================================*/
+/*======================================================*/
 
 const parsers = {
 
-    "SMS Backup & Restore": parseSMSBackup
+    "SMS Backup & Restore": parseSMSBackup,
+    
+    "HTML Conversation Export": parseHTMLBackup
 
     // "WhatsApp": parseWhatsApp,
     // "Messenger": parseMessenger,
