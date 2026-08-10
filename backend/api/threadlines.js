@@ -175,6 +175,38 @@ router.delete("/:id", async (request, response) => {
     }
 });
 
+/**
+ * GET /api/threadlines/:id/participants
+ * Lists all participants involved in a workspace or archive.
+ */
+router.get("/:id/participants", (request, response) => {
+    try {
+        const { id } = request.params;
+        // Verify ownership
+        const row = db.queryOne("SELECT owner_id FROM threadlines WHERE id = ?", [id]);
+        if (!row || row.owner_id !== request.uid) {
+            return response.status(403).json({ status: "error", message: "Access denied." });
+        }
+        const rows = db.query(
+            `SELECT id, name, phone_number AS phoneNumber, email, platform_identifiers AS platformIdentifiers, aliases, metadata
+             FROM participants
+             WHERE threadline_id = ?
+             ORDER BY name ASC`,
+            [id]
+        );
+        // Parse JSON fields
+        const parsedRows = rows.map(r => ({
+            ...r,
+            platformIdentifiers: JSON.parse(r.platformIdentifiers || "[]"),
+            aliases: JSON.parse(r.aliases || "[]"),
+            metadata: JSON.parse(r.metadata || "{}")
+        }));
+        response.json({ status: "success", participants: parsedRows });
+    } catch (error) {
+        response.status(500).json({ status: "error", message: error.message });
+    }
+});
+
 // Helper to constrain queries by global archive or curated workspace segments
 function buildMessageConstraint(threadlineIds, paramsArray) {
     const clauses = [];

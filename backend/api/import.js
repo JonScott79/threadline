@@ -51,16 +51,26 @@ const upload = multer({
                         ROUTES
 ======================================================*/
 
-router.get("/", (request,response)=>{
-
-    response.json({
-
-        status:"success",
-
-        message:"Import endpoint is online."
-
-    });
-
+router.get("/", async (request, response) => {
+    try {
+        if (!request.uid) {
+            return response.status(401).json({ status: "error", message: "Unauthorized" });
+        }
+        const db = require("../database/database");
+        const sql = `
+            SELECT id, filename, source, platform, file_size AS fileSize, 
+                   message_count AS messageCount, participant_count AS participantCount, 
+                   thread_count AS threadCount, earliest_timestamp AS earliestTimestamp, 
+                   latest_timestamp AS latestTimestamp, imported_at AS importedAt, status, errors
+            FROM imports
+            WHERE owner_id = ?
+            ORDER BY imported_at DESC
+        `;
+        const rows = db.query(sql, [request.uid]);
+        response.json({ status: "success", imports: rows });
+    } catch (error) {
+        response.status(500).json({ status: "error", message: error.message });
+    }
 });
 
 /*======================================================

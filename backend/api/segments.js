@@ -198,4 +198,26 @@ router.delete("/threadlines/:id/segments/:segmentId", async (request, response) 
     }
 });
 
+// 5. Delete a saved segment completely
+router.delete("/saved-segments/:id", async (request, response) => {
+    try {
+        const { id } = request.params;
+        
+        // Verify segment ownership
+        const checkSeg = db.queryOne(
+            `SELECT id FROM saved_segments WHERE id = ? AND owner_id = ?`,
+            [id, request.uid]
+        );
+        if (!checkSeg) {
+            return response.status(403).json({ status: "error", message: "Saved segment not found or access denied." });
+        }
+
+        db.run(`DELETE FROM saved_segments WHERE id = ?`, [id]);
+
+        response.json({ status: "success", message: "Saved segment deleted successfully." });
+    } catch (error) {
+        response.status(500).json({ status: "error", message: error.message });
+    }
+});
+
 module.exports = router;

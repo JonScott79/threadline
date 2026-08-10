@@ -15,7 +15,7 @@ import Login from "../components/Login";
 
 import { useAuth } from "../auth/AuthProvider";
 import { useState, useEffect } from "react";
-import { loadThreadlines, deleteThreadline } from "../services/threadlines";
+import { loadThreadlines, deleteThreadline, updateThreadline } from "../services/threadlines";
 
 /*======================================================
                         COMPONENT

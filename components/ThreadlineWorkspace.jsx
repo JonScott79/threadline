@@ -82,13 +82,19 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
     const [segmentTitle, setSegmentTitle] = useState("");
     const [segmentDescription, setSegmentDescription] = useState("");
 
+    // Ingestion imports and participants states
+    const [imports, setImports] = useState([]);
+    const [importsLoading, setImportsLoading] = useState(false);
+    const [participants, setParticipants] = useState([]);
+    const [participantsLoading, setParticipantsLoading] = useState(false);
+
     // Navigation and Zooming States
     const [zoom, setZoom] = useState("year");
     const [selectedYearMonth, setSelectedYearMonth] = useState(null);
     const [selectedDay, setSelectedDay] = useState(null);
 
     // Explorer (Left Pane) States
-    const [activeTab, setActiveTab] = useState("threads"); // 'threads' | 'segments' | 'search'
+    const [activeTab, setActiveTab] = useState("threads"); // 'threads' | 'imports' | 'people' | 'segments' | 'search'
     const [conversations, setConversations] = useState([]);
     const [conversationsLoading, setConversationsLoading] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
@@ -150,15 +156,61 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
         setSelectedMessageIds([]);
     }, [activeConversation]);
 
-    // Fetch saved and linked segments for curated workspaces
+    // Fetch saved/linked segments, imports and participants
     useEffect(() => {
-        if (threadline.id && !threadline.id.startsWith("archive_")) {
-            fetchSegmentsData();
+        if (threadline.id) {
+            if (threadline.id.startsWith("archive_")) {
+                fetchImports();
+                fetchParticipants();
+                // Fetch saved segments for the global archive list
+                axios.get(`${API_BASE_URL}/saved-segments`, { headers: { "x-user-uid": uid } })
+                    .then(res => {
+                        if (res.data && res.data.status === "success") {
+                            setSavedSegments(res.data.segments || []);
+                        }
+                    }).catch(console.error);
+            } else {
+                fetchSegmentsData();
+            }
         } else {
             setSavedSegments([]);
             setLinkedSegments([]);
+            setImports([]);
+            setParticipants([]);
         }
     }, [threadline.id]);
+
+    async function fetchImports() {
+        setImportsLoading(true);
+        try {
+            const response = await axios.get(`${API_BASE_URL}/import`, {
+                headers: { "x-user-uid": uid }
+            });
+            if (response.data && response.data.status === "success") {
+                setImports(response.data.imports || []);
+            }
+        } catch (error) {
+            console.error("Failed to load imports:", error);
+        } finally {
+            setImportsLoading(false);
+        }
+    }
+
+    async function fetchParticipants() {
+        setParticipantsLoading(true);
+        try {
+            const response = await axios.get(`${API_BASE_URL}/threadlines/${threadline.id}/participants`, {
+                headers: { "x-user-uid": uid }
+            });
+            if (response.data && response.data.status === "success") {
+                setParticipants(response.data.participants || []);
+            }
+        } catch (error) {
+            console.error("Failed to load participants:", error);
+        } finally {
+            setParticipantsLoading(false);
+        }
+    }
 
     async function fetchSegmentsData() {
         try {
@@ -207,6 +259,30 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
         }
     }
 
+    async function handleDeleteSegment(segmentId) {
+        if (!confirm("Are you sure you want to permanently delete this saved segment? This will not affect the underlying messages.")) {
+            return;
+        }
+        try {
+            const response = await axios.delete(`${API_BASE_URL}/saved-segments/${segmentId}`, {
+                headers: { "x-user-uid": uid }
+            });
+            if (response.data && response.data.status === "success") {
+                if (threadline.id.startsWith("archive_")) {
+                    const res = await axios.get(`${API_BASE_URL}/saved-segments`, { headers: { "x-user-uid": uid } });
+                    if (res.data && res.data.status === "success") {
+                        setSavedSegments(res.data.segments || []);
+                    }
+                } else {
+                    await fetchSegmentsData();
+                }
+                alert("Segment deleted successfully!");
+            }
+        } catch (error) {
+            console.error("Failed to delete segment:", error);
+        }
+    }
+
     async function handleSaveSegmentSubmit(title, description) {
         try {
             const response = await axios.post(`${API_BASE_URL}/saved-segments`, {
@@ -222,7 +298,14 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                 setShowSaveSegmentModal(false);
                 setSegmentTitle("");
                 setSegmentDescription("");
-                await fetchSegmentsData();
+                if (threadline.id.startsWith("archive_")) {
+                    const res = await axios.get(`${API_BASE_URL}/saved-segments`, { headers: { "x-user-uid": uid } });
+                    if (res.data && res.data.status === "success") {
+                        setSavedSegments(res.data.segments || []);
+                    }
+                } else {
+                    await fetchSegmentsData();
+                }
                 alert("Segment saved successfully!");
             }
         } catch (error) {
@@ -462,6 +545,17 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                         if (setCurrentThreadline) {
                             setCurrentThreadline(newThreadline);
                         }
+
+                        // Refresh stats and extra tabs
+                        setStats({
+                            messageCount: newThreadline.messageCount,
+                            conversationCount: newThreadline.conversationCount
+                        });
+                        fetchConversations();
+                        if (newThreadline.id.startsWith("archive_")) {
+                            fetchImports();
+                            fetchParticipants();
+                        }
                     }
                 })
                 .catch(err => {
@@ -471,6 +565,10 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                         conversationCount: response.archive.conversationCount
                     });
                     fetchConversations();
+                    if (threadline.id.startsWith("archive_")) {
+                        fetchImports();
+                        fetchParticipants();
+                    }
                 });
         }
     }
@@ -673,21 +771,35 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
             <div className="dashboard-content-split">
                 {/* Left explorer pane */}
                 <div className="explorer-pane">
-                    <div className="pane-tabs">
+                    <div className="pane-tabs" style={{ display: "flex", flexWrap: "wrap" }}>
+                        {isArchive && (
+                            <button 
+                                className={`pane-tab-btn ${activeTab === "imports" ? "active" : ""}`}
+                                onClick={() => setActiveTab("imports")}
+                            >
+                                Imports
+                            </button>
+                        )}
                         <button 
                             className={`pane-tab-btn ${activeTab === "threads" ? "active" : ""}`}
                             onClick={() => setActiveTab("threads")}
                         >
                             Threads
                         </button>
-                        {!threadline.id.startsWith("archive_") && (
+                        {isArchive && (
                             <button 
-                                className={`pane-tab-btn ${activeTab === "segments" ? "active" : ""}`}
-                                onClick={() => setActiveTab("segments")}
+                                className={`pane-tab-btn ${activeTab === "people" ? "active" : ""}`}
+                                onClick={() => setActiveTab("people")}
                             >
-                                Segments
+                                People
                             </button>
                         )}
+                        <button 
+                            className={`pane-tab-btn ${activeTab === "segments" ? "active" : ""}`}
+                            onClick={() => setActiveTab("segments")}
+                        >
+                            Segments
+                        </button>
                         <button 
                             className={`pane-tab-btn ${activeTab === "search" ? "active" : ""}`}
                             onClick={() => setActiveTab("search")}
@@ -697,7 +809,58 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                     </div>
 
                     <div className="explorer-scroll-area">
-                        {activeTab === "threads" ? (
+                        {activeTab === "imports" && isArchive ? (
+                            importsLoading ? (
+                                <div className="pane-loading-indicator">LOADING IMPORTS...</div>
+                            ) : imports.length > 0 ? (
+                                <div style={{ display: "flex", flexDirection: "column", gap: "10px", padding: "10px 4px" }}>
+                                    {imports.map(imp => (
+                                        <div key={imp.id} className="preview-card" style={{ background: "rgba(255, 255, 255, 0.02)", border: "1px solid var(--border)", padding: "12px", borderRadius: "6px", textAlign: "left" }}>
+                                            <strong style={{ display: "block", fontSize: "0.9rem", color: "var(--accent)", textTransform: "none", letterSpacing: "normal", marginBottom: "4px" }}>
+                                                📄 {imp.filename}
+                                            </strong>
+                                            <div style={{ display: "flex", flexDirection: "column", gap: "2px", fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                                                <span>Source: <strong>{imp.source}</strong> ({imp.platform})</span>
+                                                <span>Imported: <strong>{new Date(imp.importedAt).toLocaleString()}</strong></span>
+                                                <span>File Size: <strong>{(imp.fileSize / 1024).toFixed(1)} KB</strong></span>
+                                                <span>Messages Loaded: <strong>{imp.messageCount}</strong></span>
+                                                <span>Discovered Threads: <strong>{imp.threadCount}</strong></span>
+                                                {imp.earliestTimestamp && (
+                                                    <span>Range: <strong>{new Date(imp.earliestTimestamp).toLocaleDateString()} — {new Date(imp.latestTimestamp).toLocaleDateString()}</strong></span>
+                                                )}
+                                                {imp.errors && JSON.parse(imp.errors).length > 0 && (
+                                                    <div style={{ color: "var(--danger)", fontSize: "0.75rem", borderTop: "1px solid rgba(255,255,255,0.05)", paddingTop: "4px", marginTop: "4px" }}>
+                                                        ⚠️ Errors: {JSON.parse(imp.errors).join(", ")}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="pane-loading-indicator" style={{ color: "var(--text-muted)" }}>NO IMPORTS LOGGED</div>
+                            )
+                        ) : activeTab === "people" && isArchive ? (
+                            participantsLoading ? (
+                                <div className="pane-loading-indicator">LOADING PEOPLE...</div>
+                            ) : participants.length > 0 ? (
+                                <div style={{ display: "flex", flexDirection: "column", gap: "8px", padding: "10px 4px" }}>
+                                    {participants.map(part => (
+                                        <div key={part.id} className="preview-card" style={{ background: "rgba(255, 255, 255, 0.02)", border: "1px solid var(--border)", padding: "10px", borderRadius: "6px", textAlign: "left", display: "flex", alignItems: "center", gap: "10px" }}>
+                                            <div style={{ fontSize: "1.3rem" }}>👤</div>
+                                            <div>
+                                                <strong style={{ display: "block", fontSize: "0.85rem", color: "var(--text-light)" }}>{part.name}</strong>
+                                                <span style={{ fontSize: "0.7rem", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+                                                    {part.phoneNumber || part.email || "No Identifier"}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="pane-loading-indicator" style={{ color: "var(--text-muted)" }}>NO PARTICIPANTS FOUND</div>
+                            )
+                        ) : activeTab === "threads" ? (
                             conversationsLoading ? (
                                 <div className="pane-loading-indicator">LOADING THREADS...</div>
                             ) : (
@@ -766,72 +929,105 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                                 })
                             )
                         ) : activeTab === "segments" ? (
-                            /* Saved segments management drawer inside workspace */
-                            <div style={{ display: "flex", flexDirection: "column", gap: "16px", padding: "10px 4px" }}>
-                                <div>
-                                    <h4 style={{ margin: "0 0 8px 0", fontSize: "0.85rem", color: "var(--success)", letterSpacing: "1px", textTransform: "uppercase" }}>Linked Segments ({linkedSegments.length})</h4>
-                                    {linkedSegments.length > 0 ? (
+                            isArchive ? (
+                                /* Saved segments list inside global archive */
+                                <div style={{ display: "flex", flexDirection: "column", gap: "8px", padding: "10px 4px" }}>
+                                    <h4 style={{ margin: "0 0 8px 0", fontSize: "0.85rem", color: "var(--accent)", letterSpacing: "1px", textTransform: "uppercase" }}>Saved Segments ({savedSegments.length})</h4>
+                                    {savedSegments.length > 0 ? (
                                         <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                                            {linkedSegments.map(seg => (
-                                                <div key={seg.id} className="preview-card" style={{ background: "rgba(48, 209, 88, 0.08)", border: "1px solid rgba(48, 209, 88, 0.2)", padding: "10px", borderRadius: "6px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                                                    <div>
-                                                        <strong style={{ display: "block", fontSize: "0.9rem" }}>{seg.title}</strong>
-                                                        <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
-                                                            {seg.conversationTitle} ({seg.messageCount} msgs)
-                                                        </span>
+                                            {savedSegments.map(seg => (
+                                                <div key={seg.id} className="preview-card" style={{ background: "rgba(255, 255, 255, 0.03)", padding: "12px", borderRadius: "6px", textAlign: "left" }}>
+                                                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                                                        <strong style={{ fontSize: "0.9rem", color: "var(--text-light)", textTransform: "none", letterSpacing: "normal", marginBottom: "4px" }}>{seg.title}</strong>
+                                                        <button 
+                                                            onClick={() => handleDeleteSegment(seg.id)}
+                                                            style={{ background: "none", border: "none", color: "var(--danger)", cursor: "pointer", fontSize: "1.1rem" }}
+                                                            title="Delete Segment"
+                                                        >
+                                                            &times;
+                                                        </button>
                                                     </div>
-                                                    <button 
-                                                        onClick={() => handleRemoveSegment(seg.id)}
-                                                        style={{ background: "none", border: "none", color: "var(--danger)", cursor: "pointer", fontSize: "1.2rem", padding: "0 4px" }}
-                                                        title="Remove segment from Timeline"
-                                                    >
-                                                        &times;
-                                                    </button>
+                                                    {seg.description && (
+                                                        <p style={{ margin: "4px 0", fontSize: "0.8rem", color: "var(--text-muted)" }}>{seg.description}</p>
+                                                    )}
+                                                    <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "6px" }}>
+                                                        Thread: <strong>{seg.conversationTitle}</strong> ({seg.messageCount} msgs)
+                                                    </div>
                                                 </div>
                                             ))}
                                         </div>
                                     ) : (
-                                        <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>No segments linked. Add or drag segments below.</div>
+                                        <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>No saved segments. Select messages in a thread and click Save Segment to create one.</div>
                                     )}
                                 </div>
-
-                                <div style={{ borderTop: "1px solid var(--border)", paddingTop: "12px" }}>
-                                    <h4 style={{ margin: "0 0 8px 0", fontSize: "0.85rem", color: "var(--accent)", letterSpacing: "1px", textTransform: "uppercase" }}>Available Segments ({savedSegments.filter(s => !linkedSegments.some(l => l.id === s.id)).length})</h4>
-                                    {savedSegments.filter(s => !linkedSegments.some(l => l.id === s.id)).length > 0 ? (
-                                        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                                            {savedSegments
-                                                .filter(s => !linkedSegments.some(l => l.id === s.id))
-                                                .map(seg => (
-                                                    <div 
-                                                        key={seg.id} 
-                                                        className="preview-card" 
-                                                        draggable="true"
-                                                        onDragStart={(e) => {
-                                                            e.dataTransfer.setData("application/json", JSON.stringify({ type: "segment", id: seg.id }));
-                                                        }}
-                                                        style={{ background: "rgba(255,255,255,0.03)", padding: "10px", borderRadius: "6px", cursor: "grab", display: "flex", justifyContent: "space-between", alignItems: "center" }}
-                                                    >
-                                                        <div>
+                            ) : (
+                                /* Saved segments management drawer inside workspace */
+                                <div style={{ display: "flex", flexDirection: "column", gap: "16px", padding: "10px 4px" }}>
+                                    <div>
+                                        <h4 style={{ margin: "0 0 8px 0", fontSize: "0.85rem", color: "var(--success)", letterSpacing: "1px", textTransform: "uppercase" }}>Linked Segments ({linkedSegments.length})</h4>
+                                        {linkedSegments.length > 0 ? (
+                                            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                                                {linkedSegments.map(seg => (
+                                                    <div key={seg.id} className="preview-card" style={{ background: "rgba(48, 209, 88, 0.08)", border: "1px solid rgba(48, 209, 88, 0.2)", padding: "10px", borderRadius: "6px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                                        <div style={{ textAlign: "left" }}>
                                                             <strong style={{ display: "block", fontSize: "0.9rem" }}>{seg.title}</strong>
                                                             <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
                                                                 {seg.conversationTitle} ({seg.messageCount} msgs)
                                                             </span>
                                                         </div>
                                                         <button 
-                                                            className="button-link"
-                                                            onClick={() => handleAddSegment(seg.id)}
-                                                            style={{ color: "var(--accent)", fontSize: "0.8rem", fontWeight: "700" }}
+                                                            onClick={() => handleRemoveSegment(seg.id)}
+                                                            style={{ background: "none", border: "none", color: "var(--danger)", cursor: "pointer", fontSize: "1.2rem", padding: "0 4px" }}
+                                                            title="Remove segment from Timeline"
                                                         >
-                                                            [ADD]
+                                                            &times;
                                                         </button>
                                                     </div>
                                                 ))}
-                                        </div>
-                                    ) : (
-                                        <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>No other segments available. Save segments in the Archive view first.</div>
-                                    )}
+                                            </div>
+                                        ) : (
+                                            <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>No segments linked. Add or drag segments below.</div>
+                                        )}
+                                    </div>
+
+                                    <div style={{ borderTop: "1px solid var(--border)", paddingTop: "12px" }}>
+                                        <h4 style={{ margin: "0 0 8px 0", fontSize: "0.85rem", color: "var(--accent)", letterSpacing: "1px", textTransform: "uppercase" }}>Available Segments ({savedSegments.filter(s => !linkedSegments.some(l => l.id === s.id)).length})</h4>
+                                        {savedSegments.filter(s => !linkedSegments.some(l => l.id === s.id)).length > 0 ? (
+                                            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                                                {savedSegments
+                                                    .filter(s => !linkedSegments.some(l => l.id === s.id))
+                                                    .map(seg => (
+                                                        <div 
+                                                            key={seg.id} 
+                                                            className="preview-card" 
+                                                            draggable="true"
+                                                            onDragStart={(e) => {
+                                                                e.dataTransfer.setData("application/json", JSON.stringify({ type: "segment", id: seg.id }));
+                                                            }}
+                                                            style={{ background: "rgba(255,255,255,0.03)", padding: "10px", borderRadius: "6px", cursor: "grab", display: "flex", justifyContent: "space-between", alignItems: "center" }}
+                                                        >
+                                                            <div style={{ textAlign: "left" }}>
+                                                                <strong style={{ display: "block", fontSize: "0.9rem" }}>{seg.title}</strong>
+                                                                <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                                                                    {seg.conversationTitle} ({seg.messageCount} msgs)
+                                                                </span>
+                                                            </div>
+                                                            <button 
+                                                                className="button-link"
+                                                                onClick={() => handleAddSegment(seg.id)}
+                                                                style={{ color: "var(--accent)", fontSize: "0.8rem", fontWeight: "700" }}
+                                                            >
+                                                                [ADD]
+                                                            </button>
+                                                        </div>
+                                                    ))}
+                                            </div>
+                                        ) : (
+                                            <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>No other segments available. Save segments in the Archive view first.</div>
+                                        )}
+                                    </div>
                                 </div>
-                            </div>
+                            )
                         ) : (
                             /* Search interface */
                             <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
@@ -951,7 +1147,7 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                             disabled={!activeConversation}
                             style={{ opacity: activeConversation ? 1 : 0.4 }}
                         >
-                            Conversation Thread
+                            Thread View
                         </button>
                     </div>
 
@@ -999,19 +1195,19 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                                                 {activeConversation.title}
                                                 <button
                                                     onClick={() => {
-                                                        const newName = prompt("Rename conversation thread:", activeConversation.title);
+                                                        const newName = prompt("Rename thread:", activeConversation.title);
                                                         if (newName && newName.trim() && newName.trim() !== activeConversation.title) {
                                                             handleRenameConversation(newName.trim());
                                                         }
                                                     }}
-                                                    title="Rename Conversation"
+                                                    title="Rename Thread"
                                                     style={{ background: "none", border: "none", cursor: "pointer", fontSize: "0.9rem" }}
                                                 >
                                                     ✏️
                                                 </button>
                                             </h3>
                                             <p>
-                                                SMS Conversation Thread ({messages.length} messages
+                                                SMS Thread ({messages.length} messages
                                                 {showFullConversation ? " - Complete History" : " - Filtered View"})
                                             </p>
                                         </div>
