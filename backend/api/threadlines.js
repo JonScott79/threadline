@@ -38,20 +38,7 @@ const router = express.Router();
  */
 router.get("/", async (request, response) => {
     try {
-        // Auto-delete empty threadline workspaces older than 5 minutes
-        const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-        db.run(`
-            DELETE FROM threadlines 
-            WHERE (message_count = 0 OR message_count IS NULL) AND created_at < ?
-        `, [fiveMinutesAgo]);
-
-        // Auto-delete empty conversation entries
-        db.run(`
-            DELETE FROM conversations 
-            WHERE id NOT IN (SELECT DISTINCT conversation_id FROM messages)
-        `);
-
-        const list = await threadlineService.getThreadlines(null);
+        const list = await threadlineService.getThreadlines(request.uid);
         response.json({
             status: "success",
             threadlines: list
@@ -71,9 +58,10 @@ router.post("/", async (request, response) => {
         let finalTitle = title ? title.trim() : "";
 
         if (!finalTitle) {
-            // Find next sequential default name in SQLite
+            // Find next sequential default name in SQLite (scoped to owner)
             const existing = db.query(
-                `SELECT name FROM threadlines WHERE name LIKE 'Threadline %' ORDER BY name ASC`
+                `SELECT name FROM threadlines WHERE name LIKE 'Threadline %' AND owner_id = ? ORDER BY name ASC`,
+                [request.uid]
             );
             
             let nextNum = 1;
@@ -94,9 +82,9 @@ router.post("/", async (request, response) => {
         const now = new Date().toISOString();
         
         db.run(
-            `INSERT INTO threadlines (id, name, source, platform, created_at, updated_at, message_count, conversation_count)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [threadlineId, finalTitle, "Manual Creation", "Custom", now, now, 0, 0]
+            `INSERT INTO threadlines (id, owner_id, name, source, platform, created_at, updated_at, message_count, conversation_count)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [threadlineId, request.uid, finalTitle, "Manual Creation", "Custom", now, now, 0, 0]
         );
         
         response.json({
@@ -125,9 +113,9 @@ router.post("/", async (request, response) => {
 router.get("/:id", async (request, response) => {
     try {
         const id = request.params.id;
-        const threadline = await threadlineService.getThreadline(null, id);
+        const threadline = await threadlineService.getThreadline(request.uid, id);
         if (!threadline) {
-            return response.status(404).json({ status: "error", message: "Threadline not found" });
+            return response.status(404).json({ status: "error", message: "Threadline not found or access denied." });
         }
         response.json({
             status: "success",
@@ -148,6 +136,12 @@ router.put("/:id", async (request, response) => {
         const { title } = request.body;
         if (!title || !title.trim()) {
             return response.status(400).json({ status: "error", message: "Name cannot be empty." });
+        }
+
+        // Verify ownership
+        const existing = db.queryOne("SELECT owner_id FROM threadlines WHERE id = ?", [id]);
+        if (!existing || existing.owner_id !== request.uid) {
+            return response.status(403).json({ status: "error", message: "Access denied." });
         }
         
         db.run(
@@ -171,7 +165,7 @@ router.put("/:id", async (request, response) => {
 router.delete("/:id", async (request, response) => {
     try {
         const id = request.params.id;
-        await threadlineService.deleteThreadline(null, id);
+        await threadlineService.deleteThreadline(request.uid, id);
         response.json({
             status: "success",
             message: "Threadline deleted successfully."
@@ -201,6 +195,14 @@ router.get("/:id/conversations", (request, response) => {
                 status: "error",
                 message: "No threadline IDs specified."
             });
+        }
+
+        // Verify ownership for all requested threadlines
+        for (const id of threadlineIds) {
+            const row = db.queryOne("SELECT owner_id FROM threadlines WHERE id = ?", [id]);
+            if (!row || row.owner_id !== request.uid) {
+                return response.status(403).json({ status: "error", message: "Access denied." });
+            }
         }
 
         const start = request.query.start ? Number(request.query.start) : null;
@@ -277,8 +279,20 @@ router.get("/:id/conversations", (request, response) => {
 router.get("/:id/conversations/:convId/messages", (request, response) => {
     try {
         const convId = request.params.convId;
+        const id = request.params.id;
         const start = request.query.start ? Number(request.query.start) : null;
         const end = request.query.end ? Number(request.query.end) : null;
+
+        // Verify that user owns the threadline and the conversation belongs to it
+        const checkOwner = db.queryOne(
+            `SELECT c.id FROM conversations c 
+             JOIN threadlines t ON c.threadline_id = t.id 
+             WHERE t.id = ? AND t.owner_id = ? AND c.id = ?`,
+            [id, request.uid, convId]
+        );
+        if (!checkOwner) {
+            return response.status(403).json({ status: "error", message: "Access denied." });
+        }
         
         let sql = `
             SELECT id, sender, recipient, timestamp, body, attachments, platform, direction, metadata
@@ -335,6 +349,14 @@ router.get("/:id/days/:dateString", (request, response) => {
                 status: "error",
                 message: "No threadline IDs specified."
             });
+        }
+
+        // Verify ownership for all requested threadline IDs
+        for (const id of threadlineIds) {
+            const row = db.queryOne("SELECT owner_id FROM threadlines WHERE id = ?", [id]);
+            if (!row || row.owner_id !== request.uid) {
+                return response.status(403).json({ status: "error", message: "Access denied." });
+            }
         }
 
         const dateString = request.params.dateString; // e.g. "2026-07-13"

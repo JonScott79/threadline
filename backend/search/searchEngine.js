@@ -1,44 +1,27 @@
 /*
     searchEngine.js
 
-    Natural Language & Contextual Search Processor for Threadline.
-    Combines exact phrase matching, full-text token overlap, entity extraction,
-    relative event timestamp boundaries, and thematic synonym scoring to rank 
-    and present matched conversation segments rather than flat message listings.
-
-    Responsibilities:
-    - Tokenize queries to extract entities (e.g., "Darcy"), locations (e.g., "Florida"),
-      and explicit months (e.g., "October").
-    - Dynamically query SQLite to locate relative anchors (e.g. "after the concert" or
-      "after the argument") and apply timeframe boundaries.
-    - Score and rank matching messages.
-    - Roll up messages into conversational candidate cards rated by relevance.
-    - Construct context windows (preceding and succeeding messages) surrounding the matched message.
+    Redesigned, layered search pipeline for Threadline messages.
+    Implements FTS5 candidate retrieval, structural temporal filtering, 
+    relative event timeframe resolvers, dynamic participant matching, 
+    and token-aware relevance scoring.
 */
-
-// =====================================
-// Imports
-// =====================================
 
 const db = require("../database/database");
 
-// =====================================
-// Search Engine Pipeline
-// =====================================
-
 class SearchEngine {
     constructor() {
-        // Concept and topic mapping synonyms for semantic expansion
+        // Concept and topic mapping synonyms for semantic expansion (purged of generic terms like 'no', 'time', 'date')
         this.conceptSynonyms = {
-            visitation: ["visit", "schedule", "pick up", "drop off", "custody", "child", "children", "overnight", "sleepover", "time", "date"],
-            refused: ["refuse", "cancel", "deny", "no", "can't", "not tonight", "sorry", "withheld", "denied"],
+            visitation: ["visit", "schedule", "pick up", "drop off", "custody", "child", "children", "overnight", "sleepover"],
+            refused: ["refuse", "cancel", "deny", "not tonight", "withheld", "denied"],
             shopping: ["shop", "store", "buy", "mall", "grocery", "groceries", "bought", "purchased", "market"],
             concert: ["concert", "show", "band", "music", "ticket", "tickets", "stage", "venue", "live"],
             argument: ["argue", "argument", "fight", "dispute", "screaming", "angry", "yelling", "shouted", "mad", "upset", "shouting"],
             camping: ["camp", "camping", "tent", "outside", "nature", "woods", "forest", "gear", "sleeping bag"]
         };
 
-        // Month indexing for mapping text terms
+        // Month indexing for mapping text terms in UTC operations
         this.months = {
             january: 1, jan: 1,
             february: 2, feb: 2,
@@ -57,64 +40,125 @@ class SearchEngine {
 
     /**
      * Parse queries to extract structural details and intents.
+     * Replaces hardcoded people/locations lists with dynamic participant scanning.
      */
-    parseQuery(queryText) {
+    parseQuery(queryText, threadlineIds) {
         const query = queryText.toLowerCase().trim();
         const info = {
             original: queryText,
             people: [],
             month: null,
             year: null,
-            relativeOrder: null, // 'after' | 'before' | 'around'
+            relativeOrder: null, // 'after' | 'before' | 'around' | 'following' | 'leading up to' | 'during' | 'that week' | 'that day' | 'the next day' | 'the previous day'
             relativeEvent: null, // event anchor keyword
             location: null,
-            concepts: []
+            concepts: [],
+            quotedPhrases: [],
+            keywords: []
         };
 
-        // 1. Extract location anchors
-        const locations = ["florida", "boston", "california", "new york", "texas", "maine", "chicago"];
-        for (const loc of locations) {
-            if (query.includes(loc)) {
-                info.location = loc;
+        // 1. Extract quoted phrases
+        const quoteRegex = /"([^"]+)"/g;
+        let quoteMatch;
+        let cleanedQuery = query;
+        while ((quoteMatch = quoteRegex.exec(query)) !== null) {
+            info.quotedPhrases.push(quoteMatch[1].trim());
+            cleanedQuery = cleanedQuery.replace(quoteMatch[0], "");
+        }
+
+        // 2. Extract dynamic participants from the database
+        if (threadlineIds && threadlineIds.length > 0) {
+            const placeholders = threadlineIds.map(() => "?").join(",");
+            const participants = db.query(
+                `SELECT DISTINCT name, phone_number, email, aliases FROM participants WHERE threadline_id IN (${placeholders})`,
+                threadlineIds
+            );
+            
+            participants.forEach(p => {
+                const namesToCheck = [];
+                if (p.name) namesToCheck.push(p.name.toLowerCase());
+                if (p.phone_number) namesToCheck.push(p.phone_number.toLowerCase());
+                if (p.aliases) {
+                    try {
+                        const parsed = JSON.parse(p.aliases);
+                        if (Array.isArray(parsed)) parsed.forEach(a => namesToCheck.push(a.toLowerCase()));
+                    } catch (e) {}
+                }
+
+                for (const name of namesToCheck) {
+                    if (name.length > 2 && new RegExp(`\\b${escapeRegExp(name)}\\b`, "i").test(cleanedQuery)) {
+                        info.people.push(p.name);
+                        cleanedQuery = cleanedQuery.replace(new RegExp(`\\b${escapeRegExp(name)}\\b`, "i"), "");
+                        break;
+                    }
+                }
+            });
+        }
+
+        // 3. Extract location anchors (e.g. "in Florida", "to Boston")
+        const locRegex = /\b(?:in|at|to|from)\s+([a-zA-Z]+)\b/gi;
+        let locMatch;
+        while ((locMatch = locRegex.exec(cleanedQuery)) !== null) {
+            const potentialLoc = locMatch[1].toLowerCase();
+            const fillers = ["the", "a", "an", "this", "that", "my", "our", "your"];
+            if (!fillers.includes(potentialLoc)) {
+                info.location = potentialLoc;
+                cleanedQuery = cleanedQuery.replace(locMatch[0], "");
             }
         }
 
-        // 2. Extract people entities
-        const peopleList = ["darcy", "finn", "leila", "jon", "scott"];
-        for (const person of peopleList) {
-            if (query.includes(person)) {
-                info.people.push(person);
-            }
-        }
-
-        // 3. Extract month markers
+        // 4. Extract month markers
         for (const [name, num] of Object.entries(this.months)) {
             const rx = new RegExp(`\\b${name}\\b`, "i");
-            if (rx.test(query)) {
+            if (rx.test(cleanedQuery)) {
                 info.month = num;
+                cleanedQuery = cleanedQuery.replace(rx, "");
                 break;
             }
         }
 
-        // 4. Extract year digits
-        const yearMatch = query.match(/\b(20\d{2})\b/);
+        // 5. Extract year digits
+        const yearMatch = cleanedQuery.match(/\b(20\d{2}|19\d{2})\b/);
         if (yearMatch) {
             info.year = parseInt(yearMatch[1], 10);
+            cleanedQuery = cleanedQuery.replace(yearMatch[0], "");
         }
 
-        // 5. Extract relative indicators ("after the concert", "after the argument")
-        const relativeMatch = query.match(/\b(after|before|around)\b\s+(?:we\s+went\s+to\s+the|the|we\s+had\s+the|our)?\s*(\w+)/);
+        // 6. Extract relative indicators ("after the concert", "before the argument", "the next day after the concert")
+        const relativeRegex = /\b(after|before|around|following|leading\s+up\s+to|during|that\s+week|that\s+day|the\s+next\s+day|the\s+previous\s+day)\b\s+(?:the\s+|we\s+had\s+the\s+|we\s+went\s+to\s+the\s+|our\s+)?([a-zA-Z0-9_-]+)/i;
+        const relativeMatch = cleanedQuery.match(relativeRegex);
         if (relativeMatch) {
-            info.relativeOrder = relativeMatch[1];
-            info.relativeEvent = relativeMatch[2];
+            info.relativeOrder = relativeMatch[1].toLowerCase();
+            info.relativeEvent = relativeMatch[2].toLowerCase();
+            cleanedQuery = cleanedQuery.replace(relativeMatch[0], "");
         }
 
-        // 6. Match theme concepts
+        // 7. Match theme concepts
         for (const [concept, keywords] of Object.entries(this.conceptSynonyms)) {
-            if (query.includes(concept) || keywords.some(kw => query.includes(kw))) {
+            const rxConcept = new RegExp(`\\b${concept}\\b`, "i");
+            if (rxConcept.test(cleanedQuery)) {
                 info.concepts.push(concept);
+            } else {
+                for (const kw of keywords) {
+                    if (new RegExp(`\\b${escapeRegExp(kw)}\\b`, "i").test(cleanedQuery)) {
+                        info.concepts.push(concept);
+                        break;
+                    }
+                }
             }
         }
+
+        // 8. Extract remaining keywords (ignoring fillers)
+        const fillers = new Set(["that", "time", "we", "went", "in", "when", "me", "the", "conversation", "about", "going", "where", "i", "told", "him", "couldn't", "make", "it", "what", "did", "talk", "to", "had", "our", "a", "for", "with", "around", "of", "and", "or", "on", "was", "were", "went"]);
+        cleanedQuery
+            .replace(/[^\w\s]/g, "")
+            .split(/\s+/)
+            .forEach(term => {
+                const cleanTerm = term.trim().toLowerCase();
+                if (cleanTerm.length > 2 && !fillers.has(cleanTerm)) {
+                    info.keywords.push(cleanTerm);
+                }
+            });
 
         return info;
     }
@@ -122,45 +166,38 @@ class SearchEngine {
     /**
      * Resolve the anchor timestamp for a relative time indicator.
      */
-    async resolveEventTimestamp(threadlineId, eventKeyword) {
-        let ids = [];
-        if (typeof threadlineId === "string") {
-            ids = threadlineId.split(",").map(s => s.trim()).filter(Boolean);
-        } else if (Array.isArray(threadlineId)) {
-            ids = threadlineId;
-        } else {
-            ids = [threadlineId];
-        }
+    async resolveEventTimestamp(threadlineIds, eventKeyword) {
+        if (!threadlineIds || threadlineIds.length === 0) return null;
 
-        if (ids.length === 0) return null;
+        const placeholders = threadlineIds.map(() => "?").join(",");
 
-        // Look up message timestamp
+        // Check messages table first
         const sqlMessage = `
             SELECT timestamp 
             FROM messages 
-            WHERE threadline_id IN (${ids.map(() => "?").join(",")}) AND body LIKE ? 
+            WHERE threadline_id IN (${placeholders}) AND body LIKE ? 
             ORDER BY timestamp ASC 
             LIMIT 1;
         `;
-        const resMessage = db.queryOne(sqlMessage, [...ids, `%${eventKeyword}%`]);
+        const resMessage = db.queryOne(sqlMessage, [...threadlineIds, `%${eventKeyword}%`]);
         if (resMessage) {
             return resMessage.timestamp;
         }
 
-        // Look up timeline events
+        // Check timeline events table
         const sqlEvent = `
             SELECT timestamp 
             FROM timeline_events 
-            WHERE threadline_id IN (${ids.map(() => "?").join(",")}) AND (title LIKE ? OR description LIKE ?) 
+            WHERE threadline_id IN (${placeholders}) AND (title LIKE ? OR description LIKE ?) 
             ORDER BY timestamp ASC 
             LIMIT 1;
         `;
-        const resEvent = db.queryOne(sqlEvent, [...ids, `%${eventKeyword}%`, `%${eventKeyword}%`]);
+        const resEvent = db.queryOne(sqlEvent, [...threadlineIds, `%${eventKeyword}%`, `%${eventKeyword}%`]);
         return resEvent ? resEvent.timestamp : null;
     }
 
     /**
-     * Execute the hybrid scoring and ranking search pipeline.
+     * Execute the layered search pipeline.
      */
     async search(threadlineId, queryText, filters = {}) {
         let ids = [];
@@ -172,33 +209,65 @@ class SearchEngine {
             ids = [threadlineId];
         }
 
+        // If comparison IDs are passed explicitly in filters, merge them
+        if (filters.ids) {
+            const extraIds = filters.ids.split(",").map(s => s.trim()).filter(Boolean);
+            extraIds.forEach(id => {
+                if (!ids.includes(id)) ids.push(id);
+            });
+        }
+
         if (ids.length === 0) {
             return [];
         }
 
-        const intent = this.parseQuery(queryText);
-        let timeFilterSql = "";
-        const queryParams = [...ids];
+        // --- LAYER 1: QUERY PARSING ---
+        const intent = this.parseQuery(queryText, ids);
 
-        // 1. Resolve relative event time bounds
+        // --- LAYER 2: STRUCTURAL FILTERS ---
+        let timeFilterSql = "";
+        const queryParams = [];
+        let resolvedAnchorTime = null;
+
         if (intent.relativeOrder && intent.relativeEvent) {
-            const eventTime = await this.resolveEventTimestamp(threadlineId, intent.relativeEvent);
-            if (eventTime) {
-                if (intent.relativeOrder === "after") {
-                    timeFilterSql += " AND m.timestamp >= ? ";
-                    queryParams.push(eventTime);
-                } else if (intent.relativeOrder === "before") {
-                    timeFilterSql += " AND m.timestamp <= ? ";
-                    queryParams.push(eventTime);
-                } else if (intent.relativeOrder === "around") {
-                    const margin = 15 * 24 * 60 * 60 * 1000; // 15 day margin
-                    timeFilterSql += " AND m.timestamp >= ? AND m.timestamp <= ? ";
-                    queryParams.push(eventTime - margin, eventTime + margin);
+            resolvedAnchorTime = await this.resolveEventTimestamp(ids, intent.relativeEvent);
+            if (resolvedAnchorTime) {
+                const dayMs = 24 * 60 * 60 * 1000;
+                switch (intent.relativeOrder) {
+                    case "after":
+                    case "following":
+                        timeFilterSql += " AND m.timestamp >= ? ";
+                        queryParams.push(resolvedAnchorTime);
+                        break;
+                    case "before":
+                    case "leading up to":
+                        timeFilterSql += " AND m.timestamp <= ? ";
+                        queryParams.push(resolvedAnchorTime);
+                        break;
+                    case "the next day":
+                        timeFilterSql += " AND m.timestamp >= ? AND m.timestamp <= ? ";
+                        queryParams.push(resolvedAnchorTime + dayMs, resolvedAnchorTime + 2 * dayMs);
+                        break;
+                    case "the previous day":
+                        timeFilterSql += " AND m.timestamp >= ? AND m.timestamp <= ? ";
+                        queryParams.push(resolvedAnchorTime - 2 * dayMs, resolvedAnchorTime - dayMs);
+                        break;
+                    case "around":
+                    case "during":
+                    case "that day":
+                        const dayMargin = intent.relativeOrder === "that day" ? 1 : 3;
+                        timeFilterSql += " AND m.timestamp >= ? AND m.timestamp <= ? ";
+                        queryParams.push(resolvedAnchorTime - dayMargin * dayMs, resolvedAnchorTime + dayMargin * dayMs);
+                        break;
+                    case "that week":
+                        timeFilterSql += " AND m.timestamp >= ? AND m.timestamp <= ? ";
+                        queryParams.push(resolvedAnchorTime - 7 * dayMs, resolvedAnchorTime + 7 * dayMs);
+                        break;
                 }
             }
         }
 
-        // 2. Resolve explicit date targets
+        // UTC Calendar Filters
         if (intent.month) {
             timeFilterSql += " AND strftime('%m', datetime(m.timestamp / 1000, 'unixepoch')) = ? ";
             queryParams.push(String(intent.month).padStart(2, "0"));
@@ -208,7 +277,7 @@ class SearchEngine {
             queryParams.push(String(intent.year));
         }
 
-        // 3. Resolve request context filters
+        // Additional Request Context Filters
         if (filters.day) {
             timeFilterSql += " AND strftime('%Y-%m-%d', datetime(m.timestamp / 1000, 'unixepoch')) = ? ";
             queryParams.push(filters.day);
@@ -221,60 +290,38 @@ class SearchEngine {
             }
         }
 
-        // 4. Tokenize search terms, ignoring English grammatical filler terms
-        const fillers = new Set(["that", "time", "we", "went", "in", "when", "me", "the", "conversation", "after", "before", "about", "going", "where", "i", "told", "him", "couldn't", "make", "it", "what", "did", "talk", "to", "had", "our", "a", "for", "with", "around", "of", "and", "or", "on"]);
-        const terms = queryText.toLowerCase()
-            .replace(/[^\w\s]/g, "")
-            .split(/\s+/)
-            .filter(t => t.length > 2 && !fillers.has(t));
+        // --- LAYER 3: CANDIDATE RETRIEVAL (SQLite FTS5) ---
+        let candidateSql = "";
+        const candidateParams = [];
 
-        if (terms.length === 0 && intent.concepts.length === 0 && !intent.month && !intent.year && !intent.location) {
-            terms.push(queryText.toLowerCase());
-        }
+        // Filter out general retrieval terms to allow broad structural queries (e.g., "everything with Sarah")
+        const retrieveAllWords = new Set(["everything", "all", "messages", "chats", "texts", "conversations", "records", "entries", "show", "find", "get", "list"]);
+        const searchKeywords = intent.keywords.filter(kw => !retrieveAllWords.has(kw));
 
-        // 5. Construct match scoring clauses for exact & concept synonym matching
-        const matchConditions = [];
-        const matchParams = [];
-
-        // Exact phrase mapping
-        matchConditions.push("m.body LIKE ?");
-        matchParams.push(`%${queryText}%`);
-
-        // Individual word tokens
-        terms.forEach(term => {
-            matchConditions.push("m.body LIKE ?");
-            matchParams.push(`%${term}%`);
+        // Construct FTS MATCH expression
+        const ftsTerms = [];
+        intent.quotedPhrases.forEach(qp => {
+            ftsTerms.push(`"${qp}"`);
+        });
+        searchKeywords.forEach(kw => {
+            ftsTerms.push(`${kw}*`);
         });
 
-        // Synonyms of parsed concepts
+        // Add matching synonyms if concepts are parsed
         intent.concepts.forEach(concept => {
             const synonyms = this.conceptSynonyms[concept] || [];
             synonyms.forEach(syn => {
-                matchConditions.push("m.body LIKE ?");
-                matchParams.push(`%${syn}%`);
+                ftsTerms.push(`${syn}*`);
             });
         });
 
-        // Explicit Locations
-        if (intent.location) {
-            matchConditions.push("m.body LIKE ?");
-            matchParams.push(`%${intent.location}%`);
+        if (ftsTerms.length > 0) {
+            const ftsExpression = ftsTerms.join(" OR ");
+            candidateSql = ` AND m.id IN (SELECT message_id FROM messages_fts WHERE body MATCH ?) `;
+            candidateParams.push(ftsExpression);
         }
 
-        // Mentioned People
-        intent.people.forEach(person => {
-            matchConditions.push("m.body LIKE ?");
-            matchParams.push(`%${person}%`);
-            matchConditions.push("c.title LIKE ?");
-            matchParams.push(`%${person}%`);
-        });
-
-        const matchSql = matchConditions.length > 0
-            ? `AND (${matchConditions.join(" OR ")})`
-            : "";
-
-        const finalParams = [...queryParams, ...matchParams];
-
+        const placeholders = ids.map(() => "?").join(",");
         const sql = `
             SELECT m.id, 
                    m.conversation_id AS conversationId, 
@@ -288,73 +335,101 @@ class SearchEngine {
                    m.metadata
             FROM messages m
             JOIN conversations c ON m.conversation_id = c.id
-            WHERE m.threadline_id IN (${ids.map(() => "?").join(",")}) ${timeFilterSql} ${matchSql}
+            WHERE m.threadline_id IN (${placeholders}) ${timeFilterSql} ${candidateSql}
             ORDER BY m.timestamp DESC
-            LIMIT 500;
+            LIMIT 300;
         `;
 
-        const messages = db.query(sql, finalParams);
+        const candidates = db.query(sql, [...ids, ...queryParams, ...candidateParams]);
 
-        // Grade relevance scores for matches
-        const scored = messages.map(m => {
+        // --- LAYER 4: RELEVANCE SCORING ---
+        const scored = candidates.map(m => {
             let score = 0;
-            const bodyLower = m.body.toLowerCase();
-            const titleLower = m.conversationTitle.toLowerCase();
+            const bodyLower = (m.body || "").toLowerCase();
+            const titleLower = (m.conversationTitle || "").toLowerCase();
 
-            if (bodyLower.includes(queryText.toLowerCase())) {
-                score += 150;
-            }
-
-            terms.forEach(term => {
-                if (bodyLower.includes(term)) {
-                    score += 30;
+            // 1. Quoted phrase exact matches
+            intent.quotedPhrases.forEach(qp => {
+                if (bodyLower.includes(qp.toLowerCase())) {
+                    score += 200;
                 }
             });
 
+            // 2. Token whole-word matching (distinguish substrings)
+            intent.keywords.forEach(kw => {
+                const rxWord = new RegExp(`\\b${escapeRegExp(kw)}\\b`, "i");
+                if (rxWord.test(bodyLower)) {
+                    score += 40; // Whole-word match
+                } else if (bodyLower.includes(kw)) {
+                    score += 5;  // Substring match
+                }
+            });
+
+            // 3. Synonym whole-word matches
             intent.concepts.forEach(concept => {
+                if (new RegExp(`\\b${escapeRegExp(concept)}\\b`, "i").test(bodyLower)) {
+                    score += 45;
+                }
                 const synonyms = this.conceptSynonyms[concept] || [];
                 synonyms.forEach(syn => {
-                    if (bodyLower.includes(syn)) {
-                        score += 15;
+                    const rxWord = new RegExp(`\\b${escapeRegExp(syn)}\\b`, "i");
+                    if (rxWord.test(bodyLower)) {
+                        score += 35;
                     }
                 });
-                if (bodyLower.includes(concept)) {
-                    score += 40;
-                }
             });
 
+            // 4. Participant matches
             intent.people.forEach(person => {
-                if (bodyLower.includes(person) || titleLower.includes(person) || (m.sender && m.sender.toLowerCase().includes(person))) {
-                    score += 50;
+                const personClean = person.toLowerCase();
+                const rxWord = new RegExp(`\\b${escapeRegExp(personClean)}\\b`, "i");
+                if (rxWord.test(bodyLower)) {
+                    score += 50; // Mentions person
+                }
+                if (titleLower.includes(personClean) || (m.sender && m.sender.toLowerCase().includes(personClean))) {
+                    score += 80; // Sourced from or conversation with person
                 }
             });
 
-            if (intent.location && bodyLower.includes(intent.location)) {
-                score += 80;
-            }
-
-            if (intent.month) {
-                const date = new Date(m.timestamp);
-                if (date.getMonth() + 1 === intent.month) {
-                    score += 50;
+            // 5. Location matches
+            if (intent.location) {
+                const rxWord = new RegExp(`\\b${escapeRegExp(intent.location)}\\b`, "i");
+                if (rxWord.test(bodyLower)) {
+                    score += 80;
                 }
             }
-            if (intent.year) {
-                const date = new Date(m.timestamp);
-                if (date.getFullYear() === intent.year) {
-                    score += 50;
+
+            // 6. Time Proximity Decay Curve (UTC)
+            if (resolvedAnchorTime) {
+                const diffMs = Math.abs(m.timestamp - resolvedAnchorTime);
+                const dayMs = 24 * 60 * 60 * 1000;
+                if (diffMs <= 14 * dayMs) {
+                    // Score bonus: +100 max decaying to 0 at 14 days
+                    score += Math.max(0, Math.round(100 * (1 - diffMs / (14 * dayMs))));
+                }
+            }
+
+            // 7. Month/Year Match (UTC)
+            if (intent.month || intent.year) {
+                // Ensure month and year comparison is mapped to UTC calendar fields
+                const mDate = new Date(m.timestamp);
+                if (intent.month && mDate.getUTCMonth() + 1 === intent.month) {
+                    score += 100;
+                }
+                if (intent.year && mDate.getUTCFullYear() === intent.year) {
+                    score += 100;
                 }
             }
 
             return { message: m, score };
         });
 
-        // Filter and sort
+        // Filter and sort candidates
         const sorted = scored
             .filter(sm => sm.score > 0)
             .sort((a, b) => b.score - a.score);
 
-        // Group into candidate result blocks by Conversation ID
+        // --- LAYER 5: RESULT GROUPING ---
         const groupMap = new Map();
         for (const item of sorted) {
             const m = item.message;
@@ -383,8 +458,8 @@ class SearchEngine {
             group.matchedMessages.push(m);
         }
 
-        // Assemble candidate summaries with context windows
-        const candidates = [];
+        // --- LAYER 6: CONTEXT EXPANSION ---
+        const results = [];
         for (const group of groupMap.values()) {
             group.timestamps.sort((a, b) => a - b);
 
@@ -407,7 +482,7 @@ class SearchEngine {
 
             const repMsg = group.representativeMessage;
 
-            // Query preceding context messages
+            // Fetch preceding messages context
             const preceding = db.query(
                 `SELECT id, sender, recipient, timestamp, body, direction, platform, metadata
                  FROM messages
@@ -417,7 +492,7 @@ class SearchEngine {
                 [group.conversationId, repMsg.timestamp]
             ).reverse();
 
-            // Query succeeding context messages
+            // Fetch succeeding messages context
             const succeeding = db.query(
                 `SELECT id, sender, recipient, timestamp, body, direction, platform, metadata
                  FROM messages
@@ -436,14 +511,19 @@ class SearchEngine {
                 metadata: typeof m.metadata === "string" ? JSON.parse(m.metadata || "{}") : m.metadata
             }));
 
-            candidates.push({
+            // Format displayed date using UTC representation
+            const repDate = new Date(repMsg.timestamp);
+            const dateOptions = { timeZone: "UTC", year: "numeric", month: "long", day: "numeric" };
+            const dateStr = repDate.toLocaleDateString("en-US", dateOptions);
+
+            results.push({
                 conversationId: group.conversationId,
                 conversationTitle: group.conversationTitle,
                 platform: group.platform,
                 relevance,
                 relevanceScore: group.maxScore,
                 reason,
-                dateString: new Date(repMsg.timestamp).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
+                dateString: dateStr,
                 timestamp: repMsg.timestamp,
                 messageCount: group.matchedMessages.length,
                 representativeMessageId: repMsg.id,
@@ -451,10 +531,13 @@ class SearchEngine {
             });
         }
 
-        candidates.sort((a, b) => b.relevanceScore - a.relevanceScore);
-
-        return candidates;
+        results.sort((a, b) => b.relevanceScore - a.relevanceScore);
+        return results;
     }
+}
+
+function escapeRegExp(string) {
+    return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 module.exports = new SearchEngine();

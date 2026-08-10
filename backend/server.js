@@ -27,6 +27,8 @@ app.use(cors());
 
 app.use(express.json());
 
+const authMiddleware = require("./middleware/auth");
+
 /*======================================================
                     ROUTES
 ======================================================*/
@@ -45,10 +47,10 @@ app.get("/", (request, response) => {
 
 });
 
-app.use("/api/import", importRoutes);
-app.use("/api/threadlines", threadlineRoutes);
-app.use("/api/threadlines/:id/timeline", timelineRoutes);
-app.use("/api/threadlines/:id/search", searchRoutes);
+app.use("/api/import", authMiddleware, importRoutes);
+app.use("/api/threadlines", authMiddleware, threadlineRoutes);
+app.use("/api/threadlines/:id/timeline", authMiddleware, timelineRoutes);
+app.use("/api/threadlines/:id/search", authMiddleware, searchRoutes);
 
 /*======================================================
                         SERVER

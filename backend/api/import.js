@@ -92,11 +92,11 @@ router.post(
 	console.log("==========================================");
 	console.log("IMPORT REQUEST");
 	console.log("File:", request.file.originalname);
-	console.log("UID:", request.body.uid);
+	console.log("UID:", request.uid);
 
-	if(!request.body.uid){
+	if(!request.uid){
 
-		return response.status(400).json({
+		return response.status(401).json({
 
 			status:"error",
 
@@ -122,7 +122,7 @@ router.post(
 
 	const threadlineId = await createThreadline(
 
-		request.body.uid,
+		request.uid,
 
 		archive
 

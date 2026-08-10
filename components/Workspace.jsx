@@ -60,6 +60,7 @@ function Workspace({
                         threadline={currentThreadline}
                         setThreadlines={setThreadlines}
                         setCurrentThreadline={setCurrentThreadline}
+                        uid={user.uid}
                     />
                 ) : creatingThreadline ? (
                     <NewThreadline

@@ -4,24 +4,10 @@
     Parser for HTML conversation exports.
     Extracts type, date, contact info, and message contents from HTML tables,
     and supports extracting inline base64 images as message attachments.
-
-    Responsibilities:
-    - Parse HTML table rows using a robust dotall regular expression.
-    - Resolve relative dates to Unix timestamps.
-    - Strip HTML wrapper elements while preserving linebreaks.
-    - Extract inline base64 images into structured attachments.
 */
-
-// =====================================
-// Imports
-// =====================================
 
 const fs = require("fs");
 const Message = require("../models/Message");
-
-// =====================================
-// Parser Function
-// =====================================
 
 function parseHTMLBackup(filePath) {
     const html = fs.readFileSync(filePath, "utf8");
@@ -34,47 +20,62 @@ function parseHTMLBackup(filePath) {
         throw new Error("Invalid HTML layout. Missing conversation table headers.");
     }
 
-    // Combined dotall regex matching rows:
-    // <tr><td>Type</td><td>Date</td><td>Name / Number</td><td class='dont-break-out'>Content</td></tr>
     const rowRegex = /<tr>\s*<td>(Received|Sent)<\/td>\s*<td>(.*?)<\/td>\s*<td>(.*?)<\/td>\s*<td(?: class='dont-break-out')?>(.*?)<\/td>\s*<\/tr>/gs;
 
     let match;
     const messages = [];
+    let discoveredCount = 0;
+    let skippedCount = 0;
+    let failedCount = 0;
+    const errors = [];
 
+    // Parse row matches
     while ((match = rowRegex.exec(html)) !== null) {
+        discoveredCount++;
         const [_, type, dateStr, contactStr, bodyHtml] = match;
 
-        // Parse date string
-        let timestamp = Date.parse(dateStr.trim());
-        if (isNaN(timestamp)) {
-            timestamp = Date.now(); // Fallback if parsing fails
+        // Verify sender contact is present
+        const cleanContact = contactStr.trim();
+        if (!cleanContact) {
+            skippedCount++;
+            errors.push(`Row ${discoveredCount}: Missing sender contact info. Record skipped.`);
+            continue;
         }
 
-        // Parse contact info (e.g. "Darcy Gilleo (+17818661187)" -> Name & Phone Number)
-        let name = contactStr.trim();
+        // Parse date string (strict check, no Date.now() fallback)
+        const cleanDate = dateStr.trim();
+        let timestamp = Date.parse(cleanDate);
+        if (isNaN(timestamp)) {
+            skippedCount++;
+            errors.push(`Row ${discoveredCount}: Invalid historical date format "${cleanDate}". Record skipped.`);
+            continue;
+        }
+
+        // Parse contact info (e.g. "Darcy Gilleo (+17818661187)")
+        let name = cleanContact;
         let phoneNumber = "";
 
-        const phoneMatch = contactStr.match(/\(([^)]+)\)/);
+        const phoneMatch = cleanContact.match(/\(([^)]+)\)/);
         if (phoneMatch) {
             phoneNumber = phoneMatch[1].trim();
-            name = contactStr.replace(phoneMatch[0], "").trim();
+            name = cleanContact.replace(phoneMatch[0], "").trim();
         }
 
-        // Extract base64 inline images if present
+        // Extract base64 inline images
         const attachments = [];
         const imgMatches = bodyHtml.matchAll(/src="data:([^;]+);base64,([^"]+)"/g);
         for (const imgMatch of imgMatches) {
             attachments.push({
                 mimeType: imgMatch[1],
-                data: imgMatch[2], // base64 string content
+                data: imgMatch[2],
                 fileName: `image_${timestamp}.${imgMatch[1].split("/")[1] || "jpg"}`
             });
         }
 
-        // Strip HTML tags from body text, replacing breaks with newlines
+        // Strip HTML tags from body text
         let body = bodyHtml
             .replace(/<br\s*\/?>/gi, "\n")
-            .replace(/<\/?[^>]+(>|$)/g, "") // strip remaining html elements
+            .replace(/<\/?[^>]+(>|$)/g, "")
             .replace(/&nbsp;/g, " ")
             .trim();
 
@@ -89,25 +90,23 @@ function parseHTMLBackup(filePath) {
                 attachments,
                 metadata: {
                     contact: name,
-                    readableDate: dateStr.trim()
+                    readableDate: cleanDate
                 }
             })
         );
     }
 
-    if (messages.length === 0) {
-        throw new Error("No messages could be parsed from the HTML archive.");
-    }
-
-    // Sort chronologically (HTML exports are often generated in reverse)
+    // Sort chronologically
     messages.sort((a, b) => a.timestamp - b.timestamp);
 
-    return messages;
+    return {
+        discoveredCount,
+        messages,
+        skippedCount,
+        failedCount,
+        errors
+    };
 }
-
-// =====================================
-// Exports
-// =====================================
 
 module.exports = {
     parseHTMLBackup

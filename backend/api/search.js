@@ -51,19 +51,37 @@ router.get("/", async (request, response) => {
             });
         }
 
-        // Validate threadline exists
-        const threadline = db.queryOne("SELECT id FROM threadlines WHERE id = ?", [threadlineId]);
-        if (!threadline) {
-            return response.status(404).json({
+        let threadlineIds = [];
+        if (threadlineId === "compare" || threadlineId === "multi") {
+            const idsStr = request.query.ids || "";
+            threadlineIds = idsStr.split(",").filter(Boolean);
+        } else {
+            threadlineIds = [threadlineId];
+        }
+
+        if (threadlineIds.length === 0) {
+            return response.status(400).json({
                 status: "error",
-                message: "Threadline not found."
+                message: "No threadline IDs specified."
             });
+        }
+
+        // Verify ownership of all threadline IDs
+        for (const id of threadlineIds) {
+            const row = db.queryOne("SELECT owner_id FROM threadlines WHERE id = ?", [id]);
+            if (!row || row.owner_id !== request.uid) {
+                return response.status(403).json({
+                    status: "error",
+                    message: "Access denied."
+                });
+            }
         }
 
         // Execute hybrid search engine
         const results = await searchEngine.search(threadlineId, queryText, {
             day,
-            conversations: conversationsParam
+            conversations: conversationsParam,
+            ids: request.query.ids || null
         });
 
         response.json({

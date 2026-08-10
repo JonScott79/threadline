@@ -1,30 +1,24 @@
-/*======================================================
-                        IMPORTS
-======================================================*/
+/*
+    smsbackup.js
+
+    Parser for XML SMS Backup & Restore conversation exports.
+    Extracts addresses, dates, body contents, and formats them into messages list.
+*/
 
 const fs = require("fs");
-
 const { XMLParser } = require("fast-xml-parser");
-
 const Message = require("../models/Message");
 
-/*======================================================
-                    PARSE SMS BACKUP
-======================================================*/
-
-function parseSMSBackup(filePath){
-    const xml = fs.readFileSync(
-        filePath,
-        "utf8"
-    );
+function parseSMSBackup(filePath) {
+    const xml = fs.readFileSync(filePath, "utf8");
 
     if (!xml || !xml.trim()) {
         throw new Error("The uploaded file is empty.");
     }
 
     const parser = new XMLParser({
-        ignoreAttributes:false,
-        attributeNamePrefix:""
+        ignoreAttributes: false,
+        attributeNamePrefix: ""
     });
 
     let data;
@@ -40,44 +34,62 @@ function parseSMSBackup(filePath){
 
     const smsList = data.smses.sms || [];
     const messages = [];
+    let discoveredCount = 0;
+    let skippedCount = 0;
+    let failedCount = 0;
+    const errors = [];
 
-    const smsArray = Array.isArray(smsList)
-        ? smsList
-        : [smsList];
+    const smsArray = Array.isArray(smsList) ? smsList : [smsList];
 
-    for(const sms of smsArray){
-        if (!sms || !sms.address) continue; // Skip malformed or empty nodes
+    smsArray.forEach((sms, idx) => {
+        discoveredCount++;
+
+        if (!sms) {
+            skippedCount++;
+            errors.push(`SMS Node ${idx + 1}: Node is empty. Record skipped.`);
+            return;
+        }
+
+        // Validate address
+        if (!sms.address) {
+            skippedCount++;
+            errors.push(`SMS Node ${idx + 1}: Missing address/phone number. Record skipped.`);
+            return;
+        }
+
+        // Validate date/timestamp
+        const timestamp = Number(sms.date);
+        if (isNaN(timestamp) || timestamp <= 0) {
+            skippedCount++;
+            errors.push(`SMS Node ${idx + 1}: Invalid or missing timestamp "${sms.date}". Record skipped.`);
+            return;
+        }
+
         messages.push(
             new Message({
-                platform:"SMS",
-                direction:sms.type === "1"
-                    ? "received"
-                    : "sent",
-                sender:sms.address,
-                recipient:"",
-                timestamp:Number(sms.date),
-                body:sms.body || "",
-                metadata:{
-                    contact:sms.contact_name,
-                    readableDate:sms.readable_date
+                platform: "SMS",
+                direction: sms.type === "1" ? "received" : "sent",
+                sender: sms.address,
+                recipient: "",
+                timestamp,
+                body: sms.body || "",
+                metadata: {
+                    contact: sms.contact_name,
+                    readableDate: sms.readable_date
                 }
             })
         );
-    }
+    });
 
-    if (messages.length === 0) {
-        throw new Error("No valid messages found inside the SMS backup archive.");
-    }
-
-    return messages;
+    return {
+        discoveredCount,
+        messages,
+        skippedCount,
+        failedCount,
+        errors
+    };
 }
 
-/*======================================================
-                        EXPORTS
-======================================================*/
-
-module.exports={
-
+module.exports = {
     parseSMSBackup
-
 };

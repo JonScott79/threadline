@@ -25,6 +25,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import axios from "axios";
+import { API_BASE_URL } from "../src/apiConfig";
 import SupportedImports from "./SupportedImports";
 import UploadPanel from "./UploadPanel";
 import ImportPreview from "./ImportPreview";
@@ -47,7 +48,7 @@ const PINNED_COLORS = [
 // Component
 // =====================================
 
-function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline }) {
+function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline, uid }) {
     /*==============================================
                         STATE
     ==============================================*/
@@ -63,8 +64,9 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline 
     const [endDateStr, setEndDateStr] = useState("");
     
     // Parse timestamps (ms)
-    const startTimestamp = startDateStr ? new Date(startDateStr + "T00:00:00").getTime() : null;
-    const endTimestamp = endDateStr ? new Date(endDateStr + "T23:59:59").getTime() : null;
+    // Parse timestamps (ms) explicitly in UTC to match SQLite groupings
+    const startTimestamp = startDateStr ? Date.parse(startDateStr + "T00:00:00.000Z") : null;
+    const endTimestamp = endDateStr ? Date.parse(endDateStr + "T23:59:59.999Z") : null;
 
     // Toggle to bypass timeframe filter in chat viewer
     const [showFullConversation, setShowFullConversation] = useState(false);
@@ -143,12 +145,15 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline 
         setConversationsLoading(true);
         try {
             const response = await axios.get(
-                `http://localhost:3001/api/threadlines/${threadline.id}/conversations`,
+                `${API_BASE_URL}/threadlines/${threadline.id}/conversations`,
                 {
                     params: {
                         start: startTimestamp,
                         end: endTimestamp,
                         ids: threadline.isCompare ? threadline.ids.join(",") : undefined
+                    },
+                    headers: {
+                        "x-user-uid": uid
                     }
                 }
             );
@@ -177,11 +182,14 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline 
             setMessagesLoading(true);
             try {
                 const response = await axios.get(
-                    `http://localhost:3001/api/threadlines/${threadline.id}/conversations/${activeConversation.id}/messages`,
+                    `${API_BASE_URL}/threadlines/${threadline.id}/conversations/${activeConversation.id}/messages`,
                     {
                         params: {
                             start: showFullConversation ? null : startTimestamp,
                             end: showFullConversation ? null : endTimestamp
+                        },
+                        headers: {
+                            "x-user-uid": uid
                         }
                     }
                 );
@@ -196,7 +204,7 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline 
         }
 
         fetchMessages();
-    }, [activeConversation, threadline.id, startTimestamp, endTimestamp, showFullConversation]);
+    }, [activeConversation, threadline.id, startTimestamp, endTimestamp, showFullConversation, uid]);
 
     // Scroll chat window to bottom when a conversation loads, UNLESS we are jumping to a search result
     useEffect(() => {
@@ -236,11 +244,14 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline 
             setDayEventsLoading(true);
             try {
                 const response = await axios.get(
-                    `http://localhost:3001/api/threadlines/${threadline.id}/days/${selectedDay}`,
+                    `${API_BASE_URL}/threadlines/${threadline.id}/days/${selectedDay}`,
                     {
                         params: {
                             conversations: pinnedConversationIds.join(","),
                             ids: threadline.isCompare ? threadline.ids.join(",") : undefined
+                        },
+                        headers: {
+                            "x-user-uid": uid
                         }
                     }
                 );
@@ -255,7 +266,7 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline 
         }
 
         fetchDayEvents();
-    }, [selectedDay, threadline.id, pinnedConversationIds]);
+    }, [selectedDay, threadline.id, pinnedConversationIds, uid]);
 
     // Execute keyword search (constrains search to selectedDay and pinned comparison threads if set)
     useEffect(() => {
@@ -268,14 +279,17 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline 
             setSearchLoading(true);
             try {
                 const response = await axios.get(
-                    `http://localhost:3001/api/threadlines/${threadline.id}/search`,
+                    `${API_BASE_URL}/threadlines/${threadline.id}/search`,
                     { 
                         params: { 
                             q: searchQuery,
                             day: selectedDay,
                             conversations: pinnedConversationIds.join(","),
                             ids: threadline.isCompare ? threadline.ids.join(",") : undefined
-                        } 
+                        },
+                        headers: {
+                            "x-user-uid": uid
+                        }
                     }
                 );
                 if (response.data && response.data.status === "success") {
@@ -289,7 +303,7 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline 
         }, 300); // 300ms debounce to prevent spamming backend
 
         return () => clearTimeout(delayDebounce);
-    }, [searchQuery, threadline.id, selectedDay, pinnedConversationIds]);
+    }, [searchQuery, threadline.id, selectedDay, pinnedConversationIds, uid]);
 
     /*==============================================
                     EVENT HANDLERS
@@ -320,7 +334,11 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline 
             setImportResult(response.archive);
             
             // Fetch metadata for the newly created SQLite threadline
-            axios.get(`http://localhost:3001/api/threadlines/${response.threadlineId}`)
+            axios.get(`${API_BASE_URL}/threadlines/${response.threadlineId}`, {
+                headers: {
+                    "x-user-uid": uid
+                }
+            })
                 .then(res => {
                     if (res.data && res.data.status === "success") {
                         const newThreadline = res.data.threadline;
@@ -357,11 +375,11 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline 
         setStartDateStr("");
         setEndDateStr("");
 
-        // Compute the date string from timestamp (YYYY-MM-DD)
+        // Compute the date string from timestamp (YYYY-MM-DD) in UTC
         const dateObj = new Date(Number(result.timestamp));
-        const yyyy = dateObj.getFullYear();
-        const mm = String(dateObj.getMonth() + 1).padStart(2, "0");
-        const dd = String(dateObj.getDate()).padStart(2, "0");
+        const yyyy = dateObj.getUTCFullYear();
+        const mm = String(dateObj.getUTCMonth() + 1).padStart(2, "0");
+        const dd = String(dateObj.getUTCDate()).padStart(2, "0");
         const dateStr = `${yyyy}-${mm}-${dd}`;
         const yearMonthStr = `${yyyy}-${mm}`;
 
@@ -462,6 +480,7 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline 
                     endDate={endTimestamp}
                     conversations={pinnedConversationIds.join(",")}
                     compareIds={threadline.isCompare ? threadline.ids : null}
+                    uid={uid}
                 />
             </div>
 
@@ -787,7 +806,7 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline 
                                                     const headers = ["Timestamp", "Readable Date", "Sender", "Recipient", "Platform", "Direction", "Body"];
                                                     const rows = messages.map(m => [
                                                         m.timestamp,
-                                                        new Date(m.timestamp).toLocaleString(),
+                                                        new Date(Number(m.timestamp)).toLocaleString("en-US", { timeZone: "UTC" }),
                                                         m.sender,
                                                         m.recipient,
                                                         m.platform,
@@ -902,12 +921,13 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline 
 
 function formatTime(timestamp) {
     const date = new Date(Number(timestamp));
-    return date.toLocaleTimeString("en-US", { hour12: false, hour: '2-digit', minute: '2-digit' });
+    return date.toLocaleTimeString("en-US", { timeZone: "UTC", hour12: false, hour: '2-digit', minute: '2-digit' });
 }
 
 function formatFullTimestamp(timestamp) {
     const date = new Date(Number(timestamp));
     return date.toLocaleString("en-US", { 
+        timeZone: "UTC",
         month: 'short', 
         day: 'numeric', 
         hour: '2-digit', 
@@ -918,8 +938,8 @@ function formatFullTimestamp(timestamp) {
 
 function formatLongDate(dateString) {
     const parts = dateString.split("-");
-    const date = new Date(parts[0], parseInt(parts[1], 10) - 1, parts[2]);
-    return date.toLocaleDateString("en-US", { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    const date = new Date(Date.UTC(parts[0], parseInt(parts[1], 10) - 1, parts[2]));
+    return date.toLocaleDateString("en-US", { timeZone: "UTC", weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 }
 
 // =====================================

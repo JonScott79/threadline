@@ -45,10 +45,11 @@ async function createThreadline(uid, archive) {
     db.transaction(() => {
         // 1. Insert Threadline Metadata
         db.run(
-            `INSERT INTO threadlines (id, name, source, platform, created_at, updated_at, message_count, conversation_count)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO threadlines (id, owner_id, name, source, platform, created_at, updated_at, message_count, conversation_count)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 threadlineId,
+                uid,
                 archive.source || "Imported Communication",
                 archive.source || "Unknown File",
                 archive.platform || "SMS",
@@ -154,56 +155,51 @@ async function createThreadline(uid, archive) {
 
         console.log(`✓ ${archive.conversations.length} conversations and participants written.`);
 
-        // 3. Insert Messages & Timeline Events
-        archive.messages.forEach(msg => {
-            const msgId = crypto.randomUUID();
-            
-            // Map message to its conversation (via the contact address)
-            const lookupKey = msg.sender;
-            const convId = conversationMap.get(lookupKey);
+        // 3. Insert Messages & Timeline Events (explicitly mapped via conversations)
+        archive.conversations.forEach(conv => {
+            const convId = conversationMap.get(conv.title || "Unknown Conversation");
+            if (!convId) return;
 
-            if (!convId) {
-                console.warn(`Warning: Message sender "${lookupKey}" has no matching conversation. Skipping message.`);
-                return;
-            }
+            conv.messages.forEach(msg => {
+                const msgId = crypto.randomUUID();
+                const senderName = msg.direction === "sent" ? "Me" : (msg.metadata?.contact || msg.sender);
 
-            const senderName = msg.direction === "sent" ? "Me" : (msg.metadata?.contact || msg.sender);
+                // Insert Message
+                db.run(
+                    `INSERT INTO messages (id, conversation_id, threadline_id, sender, recipient, timestamp, body, attachments, platform, direction, metadata)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                    [
+                        msgId,
+                        convId,
+                        threadlineId,
+                        msg.direction === "sent" ? "Me" : msg.sender,
+                        msg.direction === "sent" ? msg.sender : "Me",
+                        Number(msg.timestamp),
+                        msg.body || "",
+                        JSON.stringify(msg.attachments || []),
+                        msg.platform || conv.platform || "SMS",
+                        msg.direction || "received",
+                        JSON.stringify(msg.metadata || {})
+                    ]
+                );
 
-            // Insert Message
-            db.run(
-                `INSERT INTO messages (id, conversation_id, threadline_id, sender, recipient, timestamp, body, attachments, platform, direction, metadata)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                [
-                    msgId,
-                    convId,
-                    threadlineId,
-                    msg.direction === "sent" ? "Me" : msg.sender,
-                    msg.direction === "sent" ? msg.sender : "Me",
-                    Number(msg.timestamp),
-                    msg.body || "",
-                    JSON.stringify(msg.attachments || []),
-                    msg.platform || archive.platform || "SMS",
-                    msg.direction || "received",
-                    JSON.stringify(msg.metadata || {})
-                ]
-            );
-
-            // Insert Timeline Event
-            db.run(
-                `INSERT INTO timeline_events (id, threadline_id, timestamp, type, source_id, title, description, sender, metadata)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                [
-                    crypto.randomUUID(),
-                    threadlineId,
-                    Number(msg.timestamp),
-                    "message",
-                    msgId,
-                    `Message from ${senderName}`,
-                    msg.body ? (msg.body.length > 60 ? msg.body.substring(0, 60) + "..." : msg.body) : "",
-                    msg.direction === "sent" ? "Me" : msg.sender,
-                    JSON.stringify({ direction: msg.direction, contact: msg.metadata?.contact })
-                ]
-            );
+                // Insert Timeline Event
+                db.run(
+                    `INSERT INTO timeline_events (id, threadline_id, timestamp, type, source_id, title, description, sender, metadata)
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                    [
+                        crypto.randomUUID(),
+                        threadlineId,
+                        Number(msg.timestamp),
+                        "message",
+                        msgId,
+                        `Message from ${senderName}`,
+                        msg.body ? (msg.body.length > 60 ? msg.body.substring(0, 60) + "..." : msg.body) : "",
+                        msg.direction === "sent" ? "Me" : msg.sender,
+                        JSON.stringify({ direction: msg.direction, contact: msg.metadata?.contact })
+                    ]
+                );
+            });
         });
 
         console.log(`✓ ${archive.messages.length} messages and timeline events written.`);
@@ -227,7 +223,9 @@ async function getThreadlines(uid) {
         const rows = db.query(
             `SELECT id, name, source, platform, created_at, updated_at, message_count, conversation_count
              FROM threadlines
-             ORDER BY updated_at DESC`
+             WHERE owner_id = ?
+             ORDER BY updated_at DESC`,
+            [uid]
         );
         // Map to standard layout expected by frontend (e.g. using firestoreId for UI code compatibility)
         return rows.map(row => ({
@@ -259,8 +257,8 @@ async function getThreadline(uid, id) {
         const row = db.queryOne(
             `SELECT id, name, source, platform, created_at, updated_at, message_count, conversation_count
              FROM threadlines
-             WHERE id = ?`,
-            [id]
+             WHERE id = ? AND owner_id = ?`,
+            [id, uid]
         );
         if (!row) {
             return null;
@@ -292,7 +290,12 @@ async function getThreadline(uid, id) {
  */
 async function deleteThreadline(uid, id) {
     try {
-        db.run(`DELETE FROM threadlines WHERE id = ?`, [id]);
+        // Enforce ownership check before deleting
+        const existing = db.queryOne("SELECT id FROM threadlines WHERE id = ? AND owner_id = ?", [id, uid]);
+        if (!existing) {
+            throw new Error("Threadline not found or you are not the owner.");
+        }
+        db.run(`DELETE FROM threadlines WHERE id = ? AND owner_id = ?`, [id, uid]);
         console.log(`✓ Deleted threadline ${id} and all cascaded child records.`);
     } catch (error) {
         console.error(`Error deleting threadline ${id}:`, error);

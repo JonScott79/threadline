@@ -18,6 +18,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import axios from "axios";
+import { API_BASE_URL } from "../src/apiConfig";
 
 // =====================================
 // Component
@@ -34,7 +35,8 @@ function Timeline({
     startDate = null,
     endDate = null,
     conversations = "",
-    compareIds = null
+    compareIds = null,
+    uid = null
 }) {
     /*==============================================
                         STATE
@@ -61,7 +63,7 @@ function Timeline({
             try {
                 // Fetch timeline aggregation from Express backend
                 const response = await axios.get(
-                    `http://localhost:3001/api/threadlines/${threadlineId}/timeline`,
+                    `${API_BASE_URL}/threadlines/${threadlineId}/timeline`,
                     {
                         params: { 
                             zoom: activeZoom,
@@ -69,6 +71,9 @@ function Timeline({
                             end: endDate,
                             conversations: conversations,
                             ids: compareIds ? compareIds.join(",") : undefined
+                        },
+                        headers: {
+                            "x-user-uid": uid
                         }
                     }
                 );
@@ -98,7 +103,7 @@ function Timeline({
         }
 
         fetchTimelineData();
-    }, [threadlineId, activeZoom, selectedYearMonth, startDate, endDate, conversations, compareIds]);
+    }, [threadlineId, activeZoom, selectedYearMonth, startDate, endDate, conversations, compareIds, uid]);
 
     /*==============================================
                     NAVIGATION HANDLERS

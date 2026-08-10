@@ -51,6 +51,53 @@ function initializeDatabase() {
             const schemaSql = fs.readFileSync(schemaPath, "utf8");
             db.exec(schemaSql);
             console.log("✓ Database schema verified and updated successfully.");
+
+            // Migration: Add owner_id to threadlines if it doesn't exist
+            try {
+                db.exec("ALTER TABLE threadlines ADD COLUMN owner_id TEXT;");
+                db.exec("UPDATE threadlines SET owner_id = 'local' WHERE owner_id IS NULL;");
+                console.log("✓ Migration: Added owner_id column to threadlines table.");
+            } catch (e) {
+                // Column already exists, ignore
+            }
+
+            // Create FTS5 virtual table for message body full-text search
+            db.exec(`
+                CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
+                    message_id UNINDEXED,
+                    threadline_id UNINDEXED,
+                    body
+                );
+            `);
+
+            // Create FTS triggers to keep index in sync
+            db.exec(`
+                CREATE TRIGGER IF NOT EXISTS trg_messages_ai AFTER INSERT ON messages BEGIN
+                    INSERT INTO messages_fts (message_id, threadline_id, body)
+                    VALUES (new.id, new.threadline_id, new.body);
+                END;
+
+                CREATE TRIGGER IF NOT EXISTS trg_messages_ad AFTER DELETE ON messages BEGIN
+                    DELETE FROM messages_fts WHERE message_id = old.id;
+                END;
+
+                CREATE TRIGGER IF NOT EXISTS trg_messages_au AFTER UPDATE ON messages BEGIN
+                    UPDATE messages_fts SET body = new.body WHERE message_id = old.id;
+                END;
+            `);
+
+            // Backfill FTS5 index if empty
+            const ftsCount = db.prepare("SELECT COUNT(*) AS count FROM messages_fts;").get().count;
+            if (ftsCount === 0) {
+                const msgCount = db.prepare("SELECT COUNT(*) AS count FROM messages;").get().count;
+                if (msgCount > 0) {
+                    db.exec(`
+                        INSERT INTO messages_fts (message_id, threadline_id, body)
+                        SELECT id, threadline_id, body FROM messages;
+                    `);
+                    console.log(`✓ Backfilled FTS5 index with ${msgCount} existing messages.`);
+                }
+            }
         } else {
             console.warn("⚠️ Warning: schema.sql not found. Table creation skipped.");
         }

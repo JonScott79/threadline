@@ -5,8 +5,9 @@
     Communicates with the local backend Express server over HTTP.
 
     Responsibilities:
-    - Load the list of available threadlines.
+    - Load the list of available threadlines for the user.
     - Save/Create a manually configured threadline.
+    - Update/Rename a threadline.
     - Delete a threadline.
 */
 
@@ -15,12 +16,13 @@
 // =====================================
 
 import axios from "axios";
+import { API_BASE_URL } from "../src/apiConfig";
 
 // =====================================
 // Constants
 // =====================================
 
-const API_BASE = "http://localhost:3001/api/threadlines";
+const API_BASE = `${API_BASE_URL}/threadlines`;
 
 // =====================================
 // Public Methods
@@ -35,7 +37,9 @@ const API_BASE = "http://localhost:3001/api/threadlines";
  */
 export async function saveThreadline(uid, threadline) {
     try {
-        const response = await axios.post(API_BASE, threadline);
+        const response = await axios.post(API_BASE, threadline, {
+            headers: { "x-user-uid": uid }
+        });
         if (response.data && response.data.status === "success") {
             return response.data.threadline;
         }
@@ -54,7 +58,9 @@ export async function saveThreadline(uid, threadline) {
  */
 export async function loadThreadlines(uid) {
     try {
-        const response = await axios.get(API_BASE);
+        const response = await axios.get(API_BASE, {
+            headers: { "x-user-uid": uid }
+        });
         if (response.data && response.data.status === "success") {
             return response.data.threadlines;
         }
@@ -75,6 +81,8 @@ export async function updateThreadline(uid, threadline) {
     try {
         const response = await axios.put(`${API_BASE}/${threadline.firestoreId}`, {
             title: threadline.title
+        }, {
+            headers: { "x-user-uid": uid }
         });
         if (response.data && response.data.status === "success") {
             console.log(`Renamed threadline ${threadline.firestoreId} on backend.`);
@@ -95,7 +103,9 @@ export async function updateThreadline(uid, threadline) {
  */
 export async function deleteThreadline(uid, firestoreId) {
     try {
-        const response = await axios.delete(`${API_BASE}/${firestoreId}`);
+        const response = await axios.delete(`${API_BASE}/${firestoreId}`, {
+            headers: { "x-user-uid": uid }
+        });
         if (response.data && response.data.status === "success") {
             console.log(`Deleted threadline ${firestoreId} on backend.`);
             return;

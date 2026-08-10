@@ -6,6 +6,7 @@
 -- Threadline archives/workspaces
 CREATE TABLE IF NOT EXISTS threadlines (
     id TEXT PRIMARY KEY,
+    owner_id TEXT NOT NULL,
     name TEXT NOT NULL,
     source TEXT NOT NULL,
     platform TEXT NOT NULL,
