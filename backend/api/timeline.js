@@ -73,17 +73,12 @@ router.get("/", (request, response) => {
         const start = request.query.start ? Number(request.query.start) : null;
         const end = request.query.end ? Number(request.query.end) : null;
 
-        // Build constraint for events based on global archive or custom workspace segments
+        // Build constraint for events based on threadlines
         const clauses = [];
         const queryParams = [];
         threadlineIds.forEach(id => {
-            if (id.startsWith("archive_")) {
-                clauses.push(" t.threadline_id = ? ");
-                queryParams.push(id);
-            } else {
-                clauses.push(" t.source_id IN (SELECT message_id FROM saved_segment_messages ssm JOIN threadline_segments ts ON ssm.saved_segment_id = ts.saved_segment_id WHERE ts.threadline_id = ?) ");
-                queryParams.push(id);
-            }
+            clauses.push(" t.threadline_id = ? ");
+            queryParams.push(id);
         });
         const inClause = `WHERE ( ${clauses.join(" OR ")} )`;
 

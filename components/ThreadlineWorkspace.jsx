@@ -156,25 +156,12 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
         setSelectedMessageIds([]);
     }, [activeConversation]);
 
-    // Fetch saved/linked segments, imports and participants
+    // Fetch imports and participants
     useEffect(() => {
         if (threadline.id) {
-            if (threadline.id.startsWith("archive_")) {
-                fetchImports();
-                fetchParticipants();
-                // Fetch saved segments for the global archive list
-                axios.get(`${API_BASE_URL}/saved-segments`, { headers: { "x-user-uid": uid } })
-                    .then(res => {
-                        if (res.data && res.data.status === "success") {
-                            setSavedSegments(res.data.segments || []);
-                        }
-                    }).catch(console.error);
-            } else {
-                fetchSegmentsData();
-            }
+            fetchImports();
+            fetchParticipants();
         } else {
-            setSavedSegments([]);
-            setLinkedSegments([]);
             setImports([]);
             setParticipants([]);
         }
@@ -184,6 +171,7 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
         setImportsLoading(true);
         try {
             const response = await axios.get(`${API_BASE_URL}/import`, {
+                params: { threadlineId: threadline.id },
                 headers: { "x-user-uid": uid }
             });
             if (response.data && response.data.status === "success") {
@@ -619,16 +607,13 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
     ==============================================*/
 
     // 1. Render empty/importer view if no messages are present
-    const isArchive = threadline.id.startsWith("archive_");
-
-    // 1. Render empty/importer view if no messages are present (Only in Global Archive Mode)
-    if (stats.messageCount === 0 && isArchive) {
+    if (stats.messageCount === 0) {
         return (
             <div className="workspace-dashboard empty-state">
                 <section className="panel hero">
                     <h2>{threadline.title}</h2>
                     <p style={{ color: "var(--text-muted)", marginTop: "8px" }}>
-                        The Communications Archive is empty. Drag & drop a phone history (XML or HTML) below to ingest it.
+                        This Threadline is empty. Drag & drop a phone history (XML or HTML) below to ingest it.
                     </p>
                 </section>
 
@@ -636,6 +621,7 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
 
                 <UploadPanel
                     setImportResult={handleImportSuccess}
+                    threadlineId={threadline.id}
                 />
 
                 <ImportPreview
@@ -772,33 +758,23 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                 {/* Left explorer pane */}
                 <div className="explorer-pane">
                     <div className="pane-tabs" style={{ display: "flex", flexWrap: "wrap" }}>
-                        {isArchive && (
-                            <button 
-                                className={`pane-tab-btn ${activeTab === "imports" ? "active" : ""}`}
-                                onClick={() => setActiveTab("imports")}
-                            >
-                                Imports
-                            </button>
-                        )}
+                        <button 
+                            className={`pane-tab-btn ${activeTab === "imports" ? "active" : ""}`}
+                            onClick={() => setActiveTab("imports")}
+                        >
+                            Imports
+                        </button>
                         <button 
                             className={`pane-tab-btn ${activeTab === "threads" ? "active" : ""}`}
                             onClick={() => setActiveTab("threads")}
                         >
                             Threads
                         </button>
-                        {isArchive && (
-                            <button 
-                                className={`pane-tab-btn ${activeTab === "people" ? "active" : ""}`}
-                                onClick={() => setActiveTab("people")}
-                            >
-                                People
-                            </button>
-                        )}
                         <button 
-                            className={`pane-tab-btn ${activeTab === "segments" ? "active" : ""}`}
-                            onClick={() => setActiveTab("segments")}
+                            className={`pane-tab-btn ${activeTab === "people" ? "active" : ""}`}
+                            onClick={() => setActiveTab("people")}
                         >
-                            Segments
+                            People
                         </button>
                         <button 
                             className={`pane-tab-btn ${activeTab === "search" ? "active" : ""}`}
@@ -809,7 +785,7 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                     </div>
 
                     <div className="explorer-scroll-area">
-                        {activeTab === "imports" && isArchive ? (
+                        {activeTab === "imports" ? (
                             importsLoading ? (
                                 <div className="pane-loading-indicator">LOADING IMPORTS...</div>
                             ) : imports.length > 0 ? (
@@ -840,7 +816,7 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                             ) : (
                                 <div className="pane-loading-indicator" style={{ color: "var(--text-muted)" }}>NO IMPORTS LOGGED</div>
                             )
-                        ) : activeTab === "people" && isArchive ? (
+                        ) : activeTab === "people" ? (
                             participantsLoading ? (
                                 <div className="pane-loading-indicator">LOADING PEOPLE...</div>
                             ) : participants.length > 0 ? (
@@ -927,106 +903,6 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                                         </div>
                                     );
                                 })
-                            )
-                        ) : activeTab === "segments" ? (
-                            isArchive ? (
-                                /* Saved segments list inside global archive */
-                                <div style={{ display: "flex", flexDirection: "column", gap: "8px", padding: "10px 4px" }}>
-                                    <h4 style={{ margin: "0 0 8px 0", fontSize: "0.85rem", color: "var(--accent)", letterSpacing: "1px", textTransform: "uppercase" }}>Saved Segments ({savedSegments.length})</h4>
-                                    {savedSegments.length > 0 ? (
-                                        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                                            {savedSegments.map(seg => (
-                                                <div key={seg.id} className="preview-card" style={{ background: "rgba(255, 255, 255, 0.03)", padding: "12px", borderRadius: "6px", textAlign: "left" }}>
-                                                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                                                        <strong style={{ fontSize: "0.9rem", color: "var(--text-light)", textTransform: "none", letterSpacing: "normal", marginBottom: "4px" }}>{seg.title}</strong>
-                                                        <button 
-                                                            onClick={() => handleDeleteSegment(seg.id)}
-                                                            style={{ background: "none", border: "none", color: "var(--danger)", cursor: "pointer", fontSize: "1.1rem" }}
-                                                            title="Delete Segment"
-                                                        >
-                                                            &times;
-                                                        </button>
-                                                    </div>
-                                                    {seg.description && (
-                                                        <p style={{ margin: "4px 0", fontSize: "0.8rem", color: "var(--text-muted)" }}>{seg.description}</p>
-                                                    )}
-                                                    <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: "6px" }}>
-                                                        Thread: <strong>{seg.conversationTitle}</strong> ({seg.messageCount} msgs)
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    ) : (
-                                        <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>No saved segments. Select messages in a thread and click Save Segment to create one.</div>
-                                    )}
-                                </div>
-                            ) : (
-                                /* Saved segments management drawer inside workspace */
-                                <div style={{ display: "flex", flexDirection: "column", gap: "16px", padding: "10px 4px" }}>
-                                    <div>
-                                        <h4 style={{ margin: "0 0 8px 0", fontSize: "0.85rem", color: "var(--success)", letterSpacing: "1px", textTransform: "uppercase" }}>Linked Segments ({linkedSegments.length})</h4>
-                                        {linkedSegments.length > 0 ? (
-                                            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                                                {linkedSegments.map(seg => (
-                                                    <div key={seg.id} className="preview-card" style={{ background: "rgba(48, 209, 88, 0.08)", border: "1px solid rgba(48, 209, 88, 0.2)", padding: "10px", borderRadius: "6px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                                                        <div style={{ textAlign: "left" }}>
-                                                            <strong style={{ display: "block", fontSize: "0.9rem" }}>{seg.title}</strong>
-                                                            <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
-                                                                {seg.conversationTitle} ({seg.messageCount} msgs)
-                                                            </span>
-                                                        </div>
-                                                        <button 
-                                                            onClick={() => handleRemoveSegment(seg.id)}
-                                                            style={{ background: "none", border: "none", color: "var(--danger)", cursor: "pointer", fontSize: "1.2rem", padding: "0 4px" }}
-                                                            title="Remove segment from Timeline"
-                                                        >
-                                                            &times;
-                                                        </button>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        ) : (
-                                            <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>No segments linked. Add or drag segments below.</div>
-                                        )}
-                                    </div>
-
-                                    <div style={{ borderTop: "1px solid var(--border)", paddingTop: "12px" }}>
-                                        <h4 style={{ margin: "0 0 8px 0", fontSize: "0.85rem", color: "var(--accent)", letterSpacing: "1px", textTransform: "uppercase" }}>Available Segments ({savedSegments.filter(s => !linkedSegments.some(l => l.id === s.id)).length})</h4>
-                                        {savedSegments.filter(s => !linkedSegments.some(l => l.id === s.id)).length > 0 ? (
-                                            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                                                {savedSegments
-                                                    .filter(s => !linkedSegments.some(l => l.id === s.id))
-                                                    .map(seg => (
-                                                        <div 
-                                                            key={seg.id} 
-                                                            className="preview-card" 
-                                                            draggable="true"
-                                                            onDragStart={(e) => {
-                                                                e.dataTransfer.setData("application/json", JSON.stringify({ type: "segment", id: seg.id }));
-                                                            }}
-                                                            style={{ background: "rgba(255,255,255,0.03)", padding: "10px", borderRadius: "6px", cursor: "grab", display: "flex", justifyContent: "space-between", alignItems: "center" }}
-                                                        >
-                                                            <div style={{ textAlign: "left" }}>
-                                                                <strong style={{ display: "block", fontSize: "0.9rem" }}>{seg.title}</strong>
-                                                                <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
-                                                                    {seg.conversationTitle} ({seg.messageCount} msgs)
-                                                                </span>
-                                                            </div>
-                                                            <button 
-                                                                className="button-link"
-                                                                onClick={() => handleAddSegment(seg.id)}
-                                                                style={{ color: "var(--accent)", fontSize: "0.8rem", fontWeight: "700" }}
-                                                            >
-                                                                [ADD]
-                                                            </button>
-                                                        </div>
-                                                    ))}
-                                            </div>
-                                        ) : (
-                                            <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>No other segments available. Save segments in the Archive view first.</div>
-                                        )}
-                                    </div>
-                                </div>
                             )
                         ) : (
                             /* Search interface */
@@ -1409,30 +1285,19 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                             )
                         ) : (
                             /* Default empty workspace screen */
-                            isArchive ? (
-                                <div className="viewer-empty" style={{ display: "flex", flexDirection: "column", gap: "20px", alignItems: "center", padding: "20px" }}>
-                                    <div className="viewer-empty-icon" style={{ fontSize: "2rem" }}>📁</div>
-                                    <h3>COMMUNICATIONS ARCHIVE</h3>
-                                    <p style={{ color: "var(--text-muted)", fontSize: "0.9rem", textAlign: "center" }}>
-                                        Select a discovered Thread from the list to view messages,<br />
-                                        or search across the entire archive using the Search tab.
-                                    </p>
-                                    <div style={{ width: "100%", maxWidth: "500px", marginTop: "20px", borderTop: "1px solid var(--border)", paddingTop: "20px" }}>
-                                        <div style={{ fontSize: "0.85rem", color: "var(--accent)", fontWeight: "700", marginBottom: "12px", textTransform: "uppercase", letterSpacing: "1px", textAlign: "center" }}>Import Additional Communications:</div>
-                                        <UploadPanel setImportResult={handleImportSuccess} />
-                                        <ImportPreview result={importResult} />
-                                    </div>
+                            <div className="viewer-empty" style={{ display: "flex", flexDirection: "column", gap: "20px", alignItems: "center", padding: "20px" }}>
+                                <div className="viewer-empty-icon" style={{ fontSize: "2rem" }}>📊</div>
+                                <h3>{threadline.title.toUpperCase()}</h3>
+                                <p style={{ color: "var(--text-muted)", fontSize: "0.9rem", textAlign: "center" }}>
+                                    Select a Thread from the list to view messages,<br />
+                                    or select a data point on the heartbeat timeline wave above to explore.
+                                </p>
+                                <div style={{ width: "100%", maxWidth: "500px", marginTop: "20px", borderTop: "1px solid var(--border)", paddingTop: "20px" }}>
+                                    <div style={{ fontSize: "0.85rem", color: "var(--accent)", fontWeight: "700", marginBottom: "12px", textTransform: "uppercase", letterSpacing: "1px", textAlign: "center" }}>Import Additional Communications:</div>
+                                    <UploadPanel setImportResult={handleImportSuccess} threadlineId={threadline.id} />
+                                    <ImportPreview result={importResult} />
                                 </div>
-                            ) : (
-                                <div className="viewer-empty">
-                                    <div className="viewer-empty-icon">──────•──────</div>
-                                    <h3>THREADLINE ANALYSIS CENTRE</h3>
-                                    <p>
-                                        Select a data point on the heartbeat timeline wave above<br />
-                                        or select a conversation thread from the left pane to explore.
-                                    </p>
-                                </div>
-                            )
+                            </div>
                         )}
                     </div>
                 </div>

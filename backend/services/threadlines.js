@@ -22,19 +22,16 @@ const db = require("../database/database");
 // Public Methods
 // =====================================
 
-/**
- * Ingests a parsed archive into the user's global pool with de-duplication and source tracking.
- */
-async function ingestArchive(uid, archive, filename, file_size) {
+async function ingestArchive(uid, archive, filename, file_size, targetThreadlineId = null) {
     console.log("");
     console.log("==========================================");
-    console.log("SQLITE: INGEST ARCHIVE TO GLOBAL POOL");
+    console.log("SQLITE: INGEST ARCHIVE");
     console.log("==========================================");
     console.log("User UID:", uid);
     console.log("File:", filename);
 
     const now = new Date().toISOString();
-    const archiveId = `archive_${uid}`;
+    const threadlineId = targetThreadlineId || `archive_${uid}`;
     const importId = crypto.randomUUID();
 
     let newMessagesCount = 0;
@@ -43,17 +40,17 @@ async function ingestArchive(uid, archive, filename, file_size) {
 
     // Use a database transaction to insert all data atomically and with maximum speed
     db.transaction(() => {
-        // 1. Ensure the global user archive workspace exists
+        // 1. Ensure the threadline workspace exists
         db.run(
             `INSERT INTO threadlines (id, owner_id, name, source, platform, created_at, updated_at, message_count, conversation_count)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(id) DO UPDATE SET updated_at = ?`,
             [
-                archiveId,
+                threadlineId,
                 uid,
-                "Communications Archive",
-                "Global Ingestion Pool",
-                "Multi",
+                filename || "Imported Threadline",
+                archive.source || "SMS Backup & Restore",
+                archive.platform || "SMS",
                 now,
                 now,
                 0,
@@ -82,7 +79,7 @@ async function ingestArchive(uid, archive, filename, file_size) {
 
         // Create or get participant record for the user ("Me")
         let meId;
-        const existingMe = db.queryOne("SELECT id FROM participants WHERE threadline_id = ? AND phone_number = 'Me'", [archiveId]);
+        const existingMe = db.queryOne("SELECT id FROM participants WHERE threadline_id = ? AND phone_number = 'Me'", [threadlineId]);
         if (existingMe) {
             meId = existingMe.id;
             participantMap.set("Me", meId);
@@ -93,7 +90,7 @@ async function ingestArchive(uid, archive, filename, file_size) {
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
                     meId,
-                    archiveId,
+                    threadlineId,
                     "Me",
                     "Me",
                     null,
@@ -116,7 +113,7 @@ async function ingestArchive(uid, archive, filename, file_size) {
             let convId;
             const existingConv = db.queryOne(
                 `SELECT id FROM conversations WHERE threadline_id = ? AND title = ?`,
-                [archiveId, convTitle]
+                [threadlineId, convTitle]
             );
 
             if (existingConv) {
@@ -129,7 +126,7 @@ async function ingestArchive(uid, archive, filename, file_size) {
                      VALUES (?, ?, ?, ?, ?, ?, 0, ?)`,
                     [
                         convId,
-                        archiveId,
+                        threadlineId,
                         conv.platform || archive.platform || "SMS",
                         convTitle,
                         null,
@@ -144,7 +141,7 @@ async function ingestArchive(uid, archive, filename, file_size) {
             let partId;
             const existingPart = db.queryOne(
                 `SELECT id FROM participants WHERE threadline_id = ? AND phone_number = ?`,
-                [archiveId, convTitle]
+                [threadlineId, convTitle]
             );
 
             if (existingPart) {
@@ -157,7 +154,7 @@ async function ingestArchive(uid, archive, filename, file_size) {
                      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
                     [
                         partId,
-                        archiveId,
+                        threadlineId,
                         conv.metadata?.contact || convTitle,
                         convTitle,
                         null,
@@ -203,7 +200,7 @@ async function ingestArchive(uid, archive, filename, file_size) {
                         [
                             msgId,
                             convId,
-                            archiveId,
+                            threadlineId,
                             msg.direction === "sent" ? "Me" : msg.sender,
                             msg.direction === "sent" ? msg.sender : "Me",
                             msgTimestamp,
@@ -220,7 +217,7 @@ async function ingestArchive(uid, archive, filename, file_size) {
                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                         [
                             crypto.randomUUID(),
-                            archiveId,
+                            threadlineId,
                             msgTimestamp,
                             "message",
                             msgId,
@@ -273,7 +270,7 @@ async function ingestArchive(uid, archive, filename, file_size) {
         // Update each conversation's start date, end date, and message count
         const conversationsToUpdate = db.query(
             `SELECT DISTINCT conversation_id FROM messages WHERE threadline_id = ?`,
-            [archiveId]
+            [threadlineId]
         );
 
         conversationsToUpdate.forEach(row => {
@@ -293,15 +290,15 @@ async function ingestArchive(uid, archive, filename, file_size) {
             );
         });
 
-        // Recalculate total unique messages and conversations count in the global user archive workspace
+        // Recalculate total unique messages and conversations count in the threadline
         const totalUniqueMessages = db.queryOne(
             `SELECT COUNT(id) AS count FROM messages WHERE threadline_id = ?`,
-            [archiveId]
+            [threadlineId]
         ).count || 0;
 
         const totalUniqueConversations = db.queryOne(
             `SELECT COUNT(id) AS count FROM conversations WHERE threadline_id = ?`,
-            [archiveId]
+            [threadlineId]
         ).count || 0;
 
         db.run(
@@ -309,7 +306,7 @@ async function ingestArchive(uid, archive, filename, file_size) {
                 message_count = ?, 
                 conversation_count = ? 
              WHERE id = ?`,
-            [totalUniqueMessages, totalUniqueConversations, archiveId]
+            [totalUniqueMessages, totalUniqueConversations, threadlineId]
         );
 
         console.log(`✓ Ingestion Completed: ${newMessagesCount} new messages, ${duplicateMessagesCount} duplicates de-duplicated.`);
@@ -321,7 +318,7 @@ async function ingestArchive(uid, archive, filename, file_size) {
 
     return {
         importId,
-        archiveId,
+        threadlineId,
         stats: {
             discovered: newMessagesCount + duplicateMessagesCount,
             imported: newMessagesCount,
@@ -341,7 +338,7 @@ async function ingestArchive(uid, archive, filename, file_size) {
 async function createThreadline(uid, archive) {
     // Wrapper around ingestArchive to preserve backward compatibility for old test scenarios
     const result = await ingestArchive(uid, archive, archive.source, 0);
-    return result.archiveId;
+    return result.threadlineId;
 }
 
 /**

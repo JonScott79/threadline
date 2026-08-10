@@ -9,7 +9,7 @@ import { API_BASE_URL } from "../../src/apiConfig";
                     UPLOAD ARCHIVE
 ======================================================*/
 
-export async function uploadArchive(file, user){
+export async function uploadArchive(file, user, threadlineId = null){
 
     const formData = new FormData();
 
@@ -22,6 +22,10 @@ export async function uploadArchive(file, user){
         "uid",
         user.uid
     );
+
+    if (threadlineId) {
+        formData.append("threadlineId", threadlineId);
+    }
 
     try{
         const response = await axios.post(

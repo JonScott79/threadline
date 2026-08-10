@@ -172,13 +172,8 @@ class SearchEngine {
         const clauses = [];
         const params = [];
         threadlineIds.forEach(id => {
-            if (id.startsWith("archive_")) {
-                clauses.push(" threadline_id = ? ");
-                params.push(id);
-            } else {
-                clauses.push(" id IN (SELECT message_id FROM saved_segment_messages ssm JOIN threadline_segments ts ON ssm.saved_segment_id = ts.saved_segment_id WHERE ts.threadline_id = ?) ");
-                params.push(id);
-            }
+            clauses.push(" threadline_id = ? ");
+            params.push(id);
         });
         const constraint = ` ( ${clauses.join(" OR ")} ) `;
 
@@ -199,13 +194,8 @@ class SearchEngine {
         const eventClauses = [];
         const eventParams = [];
         threadlineIds.forEach(id => {
-            if (id.startsWith("archive_")) {
-                eventClauses.push(" threadline_id = ? ");
-                eventParams.push(id);
-            } else {
-                eventClauses.push(" source_id IN (SELECT message_id FROM saved_segment_messages ssm JOIN threadline_segments ts ON ssm.saved_segment_id = ts.saved_segment_id WHERE ts.threadline_id = ?) ");
-                eventParams.push(id);
-            }
+            eventClauses.push(" threadline_id = ? ");
+            eventParams.push(id);
         });
         const eventConstraint = ` ( ${eventClauses.join(" OR ")} ) `;
 
@@ -349,13 +339,8 @@ class SearchEngine {
         const clauses = [];
         const scopeParams = [];
         ids.forEach(id => {
-            if (id.startsWith("archive_")) {
-                clauses.push(" m.threadline_id = ? ");
-                scopeParams.push(id);
-            } else {
-                clauses.push(" m.id IN (SELECT message_id FROM saved_segment_messages ssm JOIN threadline_segments ts ON ssm.saved_segment_id = ts.saved_segment_id WHERE ts.threadline_id = ?) ");
-                scopeParams.push(id);
-            }
+            clauses.push(" m.threadline_id = ? ");
+            scopeParams.push(id);
         });
         const scopeClause = `WHERE ( ${clauses.join(" OR ")} )`;
 

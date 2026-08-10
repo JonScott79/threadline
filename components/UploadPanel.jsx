@@ -24,7 +24,7 @@ import { uploadArchive } from "../js/imports/upload";
 // Component
 // =====================================
 
-function UploadPanel({ setImportResult }) {
+function UploadPanel({ setImportResult, threadlineId }) {
     /*==============================================
                         STATE
     ==============================================*/
@@ -67,7 +67,7 @@ function UploadPanel({ setImportResult }) {
         setErrorMessage("");
         try {
             validateFile(file);
-            const response = await uploadArchive(file, user);
+            const response = await uploadArchive(file, user, threadlineId);
             setStatus("idle");
             if (setImportResult) {
                 setImportResult(response);

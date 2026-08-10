@@ -57,16 +57,36 @@ router.get("/", async (request, response) => {
             return response.status(401).json({ status: "error", message: "Unauthorized" });
         }
         const db = require("../database/database");
-        const sql = `
-            SELECT id, filename, source, platform, file_size AS fileSize, 
-                   message_count AS messageCount, participant_count AS participantCount, 
-                   thread_count AS threadCount, earliest_timestamp AS earliestTimestamp, 
-                   latest_timestamp AS latestTimestamp, imported_at AS importedAt, status, errors
-            FROM imports
-            WHERE owner_id = ?
-            ORDER BY imported_at DESC
-        `;
-        const rows = db.query(sql, [request.uid]);
+        const threadlineId = request.query.threadlineId;
+        let sql = "";
+        let params = [];
+        
+        if (threadlineId) {
+            sql = `
+                SELECT DISTINCT i.id, i.filename, i.source, i.platform, i.file_size AS fileSize, 
+                       i.message_count AS messageCount, i.participant_count AS participantCount, 
+                       i.thread_count AS threadCount, i.earliest_timestamp AS earliestTimestamp, 
+                       i.latest_timestamp AS latestTimestamp, i.imported_at AS importedAt, i.status, i.errors
+                FROM imports i
+                JOIN message_imports mi ON i.id = mi.import_id
+                JOIN messages m ON mi.message_id = m.id
+                WHERE i.owner_id = ? AND m.threadline_id = ?
+                ORDER BY i.imported_at DESC
+            `;
+            params = [request.uid, threadlineId];
+        } else {
+            sql = `
+                SELECT id, filename, source, platform, file_size AS fileSize, 
+                       message_count AS messageCount, participant_count AS participantCount, 
+                       thread_count AS threadCount, earliest_timestamp AS earliestTimestamp, 
+                       latest_timestamp AS latestTimestamp, imported_at AS importedAt, status, errors
+                FROM imports
+                WHERE owner_id = ?
+                ORDER BY imported_at DESC
+            `;
+            params = [request.uid];
+        }
+        const rows = db.query(sql, params);
         response.json({ status: "success", imports: rows });
     } catch (error) {
         response.status(500).json({ status: "error", message: error.message });
@@ -128,7 +148,9 @@ router.post(
 	console.log("Messages:", archive.messageCount);
 	console.log("Conversations:", archive.conversationCount);
 
-	console.log("Ingesting into Archive Pool...");
+	console.log("Ingesting into Workspace...");
+
+	const targetThreadlineId = request.body.threadlineId || null;
 
 	const result = await ingestArchive(
 
@@ -138,7 +160,9 @@ router.post(
 
 		request.file.originalname,
 
-		request.file.size
+		request.file.size,
+
+		targetThreadlineId
 
 	);
 
@@ -152,7 +176,7 @@ router.post(
 
 		status:"success",
 
-		threadlineId: result.archiveId,
+		threadlineId: result.threadlineId,
 
 		archive
 

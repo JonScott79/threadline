@@ -207,17 +207,12 @@ router.get("/:id/participants", (request, response) => {
     }
 });
 
-// Helper to constrain queries by global archive or curated workspace segments
+// Helper to constrain queries by threadline
 function buildMessageConstraint(threadlineIds, paramsArray) {
     const clauses = [];
     threadlineIds.forEach(id => {
-        if (id.startsWith("archive_")) {
-            clauses.push(" m.threadline_id = ? ");
-            paramsArray.push(id);
-        } else {
-            clauses.push(" m.id IN (SELECT message_id FROM saved_segment_messages ssm JOIN threadline_segments ts ON ssm.saved_segment_id = ts.saved_segment_id WHERE ts.threadline_id = ?) ");
-            paramsArray.push(id);
-        }
+        clauses.push(" m.threadline_id = ? ");
+        paramsArray.push(id);
     });
     return ` ( ${clauses.join(" OR ")} ) `;
 }
@@ -355,36 +350,23 @@ router.get("/:id/conversations/:convId/messages", (request, response) => {
         const start = request.query.start ? Number(request.query.start) : null;
         const end = request.query.end ? Number(request.query.end) : null;
 
-        // Verify conversation ownership. If it's a custom workspace, check if it exists in user's archive
-        const archiveId = id.startsWith("archive_") ? id : `archive_${request.uid}`;
+        // Verify conversation ownership.
         const checkOwner = db.queryOne(
             `SELECT c.id FROM conversations c 
              JOIN threadlines t ON c.threadline_id = t.id 
              WHERE t.id = ? AND t.owner_id = ? AND c.id = ?`,
-            [archiveId, request.uid, convId]
+            [id, request.uid, convId]
         );
         if (!checkOwner) {
             return response.status(403).json({ status: "error", message: "Access denied." });
         }
         
-        let sql = "";
+        let sql = `
+            SELECT id, sender, recipient, timestamp, body, attachments, platform, direction, metadata
+            FROM messages
+            WHERE conversation_id = ?
+        `;
         const params = [convId];
-        
-        if (id.startsWith("archive_")) {
-            sql = `
-                SELECT id, sender, recipient, timestamp, body, attachments, platform, direction, metadata
-                FROM messages
-                WHERE conversation_id = ?
-            `;
-        } else {
-            sql = `
-                SELECT id, sender, recipient, timestamp, body, attachments, platform, direction, metadata
-                FROM messages
-                WHERE conversation_id = ? 
-                  AND id IN (SELECT message_id FROM saved_segment_messages ssm JOIN threadline_segments ts ON ssm.saved_segment_id = ts.saved_segment_id WHERE ts.threadline_id = ?)
-            `;
-            params.push(id);
-        }
         
         if (start) {
             sql += " AND timestamp >= ? ";
@@ -458,13 +440,8 @@ router.get("/:id/days/:dateString", (request, response) => {
         // Build constraint for events
         const clauses = [];
         threadlineIds.forEach(id => {
-            if (id.startsWith("archive_")) {
-                clauses.push(" t.threadline_id = ? ");
-                params.push(id);
-            } else {
-                clauses.push(" t.source_id IN (SELECT message_id FROM saved_segment_messages ssm JOIN threadline_segments ts ON ssm.saved_segment_id = ts.saved_segment_id WHERE ts.threadline_id = ?) ");
-                params.push(id);
-            }
+            clauses.push(" t.threadline_id = ? ");
+            params.push(id);
         });
         const constraint = ` ( ${clauses.join(" OR ")} ) `;
         
