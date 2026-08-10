@@ -73,18 +73,31 @@ router.get("/", (request, response) => {
         const start = request.query.start ? Number(request.query.start) : null;
         const end = request.query.end ? Number(request.query.end) : null;
 
+        // Build constraint for events based on global archive or custom workspace segments
+        const clauses = [];
+        const queryParams = [];
+        threadlineIds.forEach(id => {
+            if (id.startsWith("archive_")) {
+                clauses.push(" t.threadline_id = ? ");
+                queryParams.push(id);
+            } else {
+                clauses.push(" t.source_id IN (SELECT message_id FROM saved_segment_messages ssm JOIN threadline_segments ts ON ssm.saved_segment_id = ts.saved_segment_id WHERE ts.threadline_id = ?) ");
+                queryParams.push(id);
+            }
+        });
+        const inClause = `WHERE ( ${clauses.join(" OR ")} )`;
+
         // Build dynamic filter clauses
         let filterSql = "";
-        const params = [...threadlineIds];
         let hasJoin = false;
         
         if (start) {
             filterSql += " AND t.timestamp >= ? ";
-            params.push(start);
+            queryParams.push(start);
         }
         if (end) {
             filterSql += " AND t.timestamp <= ? ";
-            params.push(end);
+            queryParams.push(end);
         }
 
         const conversationsParam = request.query.conversations;
@@ -92,7 +105,7 @@ router.get("/", (request, response) => {
             const convIds = conversationsParam.split(",").filter(Boolean);
             if (convIds.length > 0) {
                 filterSql += ` AND m.conversation_id IN (${convIds.map(() => '?').join(',')}) `;
-                params.push(...convIds);
+                queryParams.push(...convIds);
                 hasJoin = true;
             }
         }
@@ -103,7 +116,6 @@ router.get("/", (request, response) => {
             : "FROM timeline_events t";
 
         let sql = "";
-        const inClause = `WHERE t.threadline_id IN (${placeholders})`
         
         // Define groupings depending on zoom level
         switch (zoom) {
@@ -161,7 +173,7 @@ router.get("/", (request, response) => {
                 break;
         }
 
-        const data = db.query(sql, params);
+        const data = db.query(sql, queryParams);
         
         response.json({
             status: "success",

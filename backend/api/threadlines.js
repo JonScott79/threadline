@@ -175,6 +175,21 @@ router.delete("/:id", async (request, response) => {
     }
 });
 
+// Helper to constrain queries by global archive or curated workspace segments
+function buildMessageConstraint(threadlineIds, paramsArray) {
+    const clauses = [];
+    threadlineIds.forEach(id => {
+        if (id.startsWith("archive_")) {
+            clauses.push(" m.threadline_id = ? ");
+            paramsArray.push(id);
+        } else {
+            clauses.push(" m.id IN (SELECT message_id FROM saved_segment_messages ssm JOIN threadline_segments ts ON ssm.saved_segment_id = ts.saved_segment_id WHERE ts.threadline_id = ?) ");
+            paramsArray.push(id);
+        }
+    });
+    return ` ( ${clauses.join(" OR ")} ) `;
+}
+
 /**
  * GET /api/threadlines/:id/conversations
  * Lists all conversations inside a threadline, sorted by message count or date.
@@ -207,21 +222,23 @@ router.get("/:id/conversations", (request, response) => {
 
         const start = request.query.start ? Number(request.query.start) : null;
         const end = request.query.end ? Number(request.query.end) : null;
+        const isCustom = threadlineIds.some(id => !id.startsWith("archive_"));
         
         let sql = "";
-        const placeholders = threadlineIds.map(() => "?").join(",");
-        const params = [...threadlineIds];
+        const params = [];
         
-        if (start || end) {
+        if (start || end || isCustom) {
             let filterSql = "";
             if (start) {
                 filterSql += " AND m.timestamp >= ? ";
-                params.push(start);
             }
             if (end) {
                 filterSql += " AND m.timestamp <= ? ";
-                params.push(end);
             }
+            
+            const constraint = buildMessageConstraint(threadlineIds, params);
+            if (start) params.push(start);
+            if (end) params.push(end);
             
             sql = `
                 SELECT c.id, c.platform, c.title, 
@@ -231,11 +248,13 @@ router.get("/:id/conversations", (request, response) => {
                        c.metadata
                 FROM conversations c
                 JOIN messages m ON c.id = m.conversation_id
-                WHERE c.threadline_id IN (${placeholders}) ${filterSql}
+                WHERE ${constraint} ${filterSql}
                 GROUP BY c.id
                 ORDER BY messageCount DESC;
             `;
         } else {
+            const placeholders = threadlineIds.map(() => "?").join(",");
+            params.push(...threadlineIds);
             sql = `
                 SELECT c.id, c.platform, c.title, c.start_date AS startDate, c.end_date AS endDate, c.message_count AS messageCount, c.metadata
                 FROM conversations c
@@ -246,7 +265,7 @@ router.get("/:id/conversations", (request, response) => {
         
         const conversations = db.query(sql, params);
 
-        // For each conversation, fetch its participants
+        // For each conversation, fetch its participants and import sources
         const conversationsWithParticipants = conversations.map(c => {
             const participantsSql = `
                 SELECT p.id, p.name, p.phone_number AS phoneNumber, p.email
@@ -255,11 +274,32 @@ router.get("/:id/conversations", (request, response) => {
                 WHERE cp.conversation_id = ?;
             `;
             const participants = db.query(participantsSql, [c.id]);
+
+            // Query unique import sources for this conversation
+            const sourcesSql = `
+                SELECT DISTINCT i.filename, i.imported_at AS importedAt, i.source
+                FROM imports i
+                JOIN message_imports mi ON i.id = mi.import_id
+                JOIN messages m ON mi.message_id = m.id
+                WHERE m.conversation_id = ?;
+            `;
+            const sources = db.query(sourcesSql, [c.id]);
+
+            // Find last imported date
+            let lastImported = null;
+            if (sources.length > 0) {
+                const dates = sources.map(s => s.importedAt).filter(Boolean);
+                if (dates.length > 0) {
+                    lastImported = dates.sort().pop();
+                }
+            }
             
             return {
                 ...c,
                 metadata: JSON.parse(c.metadata || "{}"),
-                participants
+                participants,
+                sources,
+                lastImported
             };
         });
 
@@ -283,23 +323,36 @@ router.get("/:id/conversations/:convId/messages", (request, response) => {
         const start = request.query.start ? Number(request.query.start) : null;
         const end = request.query.end ? Number(request.query.end) : null;
 
-        // Verify that user owns the threadline and the conversation belongs to it
+        // Verify conversation ownership. If it's a custom workspace, check if it exists in user's archive
+        const archiveId = id.startsWith("archive_") ? id : `archive_${request.uid}`;
         const checkOwner = db.queryOne(
             `SELECT c.id FROM conversations c 
              JOIN threadlines t ON c.threadline_id = t.id 
              WHERE t.id = ? AND t.owner_id = ? AND c.id = ?`,
-            [id, request.uid, convId]
+            [archiveId, request.uid, convId]
         );
         if (!checkOwner) {
             return response.status(403).json({ status: "error", message: "Access denied." });
         }
         
-        let sql = `
-            SELECT id, sender, recipient, timestamp, body, attachments, platform, direction, metadata
-            FROM messages
-            WHERE conversation_id = ?
-        `;
+        let sql = "";
         const params = [convId];
+        
+        if (id.startsWith("archive_")) {
+            sql = `
+                SELECT id, sender, recipient, timestamp, body, attachments, platform, direction, metadata
+                FROM messages
+                WHERE conversation_id = ?
+            `;
+        } else {
+            sql = `
+                SELECT id, sender, recipient, timestamp, body, attachments, platform, direction, metadata
+                FROM messages
+                WHERE conversation_id = ? 
+                  AND id IN (SELECT message_id FROM saved_segment_messages ssm JOIN threadline_segments ts ON ssm.saved_segment_id = ts.saved_segment_id WHERE ts.threadline_id = ?)
+            `;
+            params.push(id);
+        }
         
         if (start) {
             sql += " AND timestamp >= ? ";
@@ -368,25 +421,34 @@ router.get("/:id/days/:dateString", (request, response) => {
         }
 
         let filterSql = "";
-        const placeholders = threadlineIds.map(() => "?").join(",");
-        const params = [...threadlineIds, dateString];
-        let hasJoin = false;
+        const params = [];
+        
+        // Build constraint for events
+        const clauses = [];
+        threadlineIds.forEach(id => {
+            if (id.startsWith("archive_")) {
+                clauses.push(" t.threadline_id = ? ");
+                params.push(id);
+            } else {
+                clauses.push(" t.source_id IN (SELECT message_id FROM saved_segment_messages ssm JOIN threadline_segments ts ON ssm.saved_segment_id = ts.saved_segment_id WHERE ts.threadline_id = ?) ");
+                params.push(id);
+            }
+        });
+        const constraint = ` ( ${clauses.join(" OR ")} ) `;
+        
+        params.push(dateString);
         
         if (convIds.length > 0) {
             filterSql += ` AND m.conversation_id IN (${convIds.map(() => '?').join(',')}) `;
             params.push(...convIds);
-            hasJoin = true;
         }
 
         // Query timeline events matching the UTC day
-        const fromClause = hasJoin
-            ? "FROM timeline_events t LEFT JOIN messages m ON t.source_id = m.id"
-            : "FROM timeline_events t";
-
         const sql = `
             SELECT t.id, t.timestamp, t.type, t.source_id AS sourceId, t.title, t.description, t.sender, t.metadata
-            ${fromClause}
-            WHERE t.threadline_id IN (${placeholders}) AND strftime('%Y-%m-%d', datetime(t.timestamp / 1000, 'unixepoch')) = ? ${filterSql}
+            FROM timeline_events t
+            LEFT JOIN messages m ON t.source_id = m.id
+            WHERE ${constraint} AND strftime('%Y-%m-%d', datetime(t.timestamp / 1000, 'unixepoch')) = ? ${filterSql}
             ORDER BY t.timestamp ASC;
         `;
         

@@ -11,7 +11,7 @@ const path = require("path");
 const { processImport } = require("../engines/importEngine");
 
 // Services
-const { createThreadline } = require("../services/threadlines");
+const { ingestArchive } = require("../services/threadlines");
 
 /*======================================================
                         VARIABLES
@@ -118,24 +118,31 @@ router.post(
 	console.log("Messages:", archive.messageCount);
 	console.log("Conversations:", archive.conversationCount);
 
-	console.log("Saving Threadline...");
+	console.log("Ingesting into Archive Pool...");
 
-	const threadlineId = await createThreadline(
+	const result = await ingestArchive(
 
 		request.uid,
 
-		archive
+		archive,
+
+		request.file.originalname,
+
+		request.file.size
 
 	);
 
-	console.log("Threadline ID:", threadlineId);
+	console.log("Archive Ingested successfully.");
 	console.log("==========================================");
+
+	// Include detailed stats in returned archive response
+	archive.stats = result.stats;
 
 	response.json({
 
 		status:"success",
 
-		threadlineId,
+		threadlineId: result.archiveId,
 
 		archive
 

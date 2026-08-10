@@ -74,13 +74,21 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
     // Compared conversations (pinned ids)
     const [pinnedConversationIds, setPinnedConversationIds] = useState([]);
 
+    // Curated saved segments states
+    const [savedSegments, setSavedSegments] = useState([]);
+    const [linkedSegments, setLinkedSegments] = useState([]);
+    const [selectedMessageIds, setSelectedMessageIds] = useState([]);
+    const [showSaveSegmentModal, setShowSaveSegmentModal] = useState(false);
+    const [segmentTitle, setSegmentTitle] = useState("");
+    const [segmentDescription, setSegmentDescription] = useState("");
+
     // Navigation and Zooming States
     const [zoom, setZoom] = useState("year");
     const [selectedYearMonth, setSelectedYearMonth] = useState(null);
     const [selectedDay, setSelectedDay] = useState(null);
 
     // Explorer (Left Pane) States
-    const [activeTab, setActiveTab] = useState("threads"); // 'threads' | 'search'
+    const [activeTab, setActiveTab] = useState("threads"); // 'threads' | 'segments' | 'search'
     const [conversations, setConversations] = useState([]);
     const [conversationsLoading, setConversationsLoading] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
@@ -129,8 +137,9 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
         setActiveSearchMessageId(null);
         setShowFullConversation(false);
         setPinnedConversationIds([]);
+        setSelectedMessageIds([]);
 
-        if (threadline.id && threadline.messageCount > 0) {
+        if (threadline.id) {
             fetchConversations();
         }
     }, [threadline]);
@@ -138,7 +147,104 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
     // Reset full conversation toggle when active thread changes
     useEffect(() => {
         setShowFullConversation(false);
+        setSelectedMessageIds([]);
     }, [activeConversation]);
+
+    // Fetch saved and linked segments for curated workspaces
+    useEffect(() => {
+        if (threadline.id && !threadline.id.startsWith("archive_")) {
+            fetchSegmentsData();
+        } else {
+            setSavedSegments([]);
+            setLinkedSegments([]);
+        }
+    }, [threadline.id]);
+
+    async function fetchSegmentsData() {
+        try {
+            const [resSaved, resLinked] = await Promise.all([
+                axios.get(`${API_BASE_URL}/saved-segments`, { headers: { "x-user-uid": uid } }),
+                axios.get(`${API_BASE_URL}/threadlines/${threadline.id}/segments`, { headers: { "x-user-uid": uid } })
+            ]);
+            if (resSaved.data && resSaved.data.status === "success") {
+                setSavedSegments(resSaved.data.segments || []);
+            }
+            if (resLinked.data && resLinked.data.status === "success") {
+                setLinkedSegments(resLinked.data.segments || []);
+            }
+        } catch (error) {
+            console.error("Failed to fetch segments details:", error);
+        }
+    }
+
+    async function handleAddSegment(segmentId) {
+        try {
+            const response = await axios.post(`${API_BASE_URL}/threadlines/${threadline.id}/segments`, { segmentId }, {
+                headers: { "x-user-uid": uid }
+            });
+            if (response.data && response.data.status === "success") {
+                await fetchSegmentsData();
+                await fetchConversations();
+                setStats(prev => ({ ...prev }));
+            }
+        } catch (error) {
+            console.error("Failed to add segment:", error);
+        }
+    }
+
+    async function handleRemoveSegment(segmentId) {
+        try {
+            const response = await axios.delete(`${API_BASE_URL}/threadlines/${threadline.id}/segments/${segmentId}`, {
+                headers: { "x-user-uid": uid }
+            });
+            if (response.data && response.data.status === "success") {
+                await fetchSegmentsData();
+                await fetchConversations();
+                setStats(prev => ({ ...prev }));
+            }
+        } catch (error) {
+            console.error("Failed to remove segment:", error);
+        }
+    }
+
+    async function handleSaveSegmentSubmit(title, description) {
+        try {
+            const response = await axios.post(`${API_BASE_URL}/saved-segments`, {
+                conversationId: activeConversation.id,
+                title,
+                description,
+                messageIds: selectedMessageIds
+            }, {
+                headers: { "x-user-uid": uid }
+            });
+            if (response.data && response.data.status === "success") {
+                setSelectedMessageIds([]);
+                setShowSaveSegmentModal(false);
+                setSegmentTitle("");
+                setSegmentDescription("");
+                await fetchSegmentsData();
+                alert("Segment saved successfully!");
+            }
+        } catch (error) {
+            alert("Failed to save segment: " + error.message);
+        }
+    }
+
+    async function handleRenameConversation(newTitle) {
+        try {
+            const response = await axios.put(`${API_BASE_URL}/threadlines/${threadline.id}/conversations/${activeConversation.id}`, {
+                title: newTitle
+            }, {
+                headers: { "x-user-uid": uid }
+            });
+            if (response.data && response.data.status === "success") {
+                setActiveConversation(prev => ({ ...prev, title: newTitle }));
+                fetchConversations();
+            }
+        } catch (error) {
+            console.error("Failed to rename conversation:", error);
+        }
+    }
 
     // Fetch conversations list (dynamic filtering by start/end timestamps if set)
     async function fetchConversations() {
@@ -415,13 +521,16 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
     ==============================================*/
 
     // 1. Render empty/importer view if no messages are present
-    if (stats.messageCount === 0) {
+    const isArchive = threadline.id.startsWith("archive_");
+
+    // 1. Render empty/importer view if no messages are present (Only in Global Archive Mode)
+    if (stats.messageCount === 0 && isArchive) {
         return (
             <div className="workspace-dashboard empty-state">
                 <section className="panel hero">
                     <h2>{threadline.title}</h2>
                     <p style={{ color: "var(--text-muted)", marginTop: "8px" }}>
-                        This Threadline is empty. Drag & drop a communication archive file below to begin.
+                        The Communications Archive is empty. Drag & drop a phone history (XML or HTML) below to ingest it.
                     </p>
                 </section>
 
@@ -459,6 +568,16 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={(e) => {
                     e.preventDefault();
+                    const dataStr = e.dataTransfer.getData("application/json");
+                    if (dataStr) {
+                        try {
+                            const data = JSON.parse(dataStr);
+                            if (data.type === "segment") {
+                                handleAddSegment(data.id);
+                                return;
+                            }
+                        } catch (err) {}
+                    }
                     const convId = e.dataTransfer.getData("text/plain");
                     if (convId) {
                         handlePinConversation(convId);
@@ -561,6 +680,14 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                         >
                             Threads
                         </button>
+                        {!threadline.id.startsWith("archive_") && (
+                            <button 
+                                className={`pane-tab-btn ${activeTab === "segments" ? "active" : ""}`}
+                                onClick={() => setActiveTab("segments")}
+                            >
+                                Segments
+                            </button>
+                        )}
                         <button 
                             className={`pane-tab-btn ${activeTab === "search" ? "active" : ""}`}
                             onClick={() => setActiveTab("search")}
@@ -601,9 +728,9 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                                                         onClick={(e) => {
                                                             e.stopPropagation();
                                                             if (isPinned) {
-                                                                handleUnpinConversation(c.id);
+                                                                 handleUnpinConversation(c.id);
                                                             } else {
-                                                                handlePinConversation(c.id);
+                                                                 handlePinConversation(c.id);
                                                             }
                                                         }}
                                                         style={{ color: isPinned ? getPinColor(c.id) : "inherit" }}
@@ -615,13 +742,96 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                                                     </span>
                                                 </div>
                                             </div>
-                                            <div className="conversation-details-row">
-                                                Platform: {c.platform}
+                                            <div className="conversation-details-row" style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "4px" }}>
+                                                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                                                    <span>Platform: <strong>{c.platform}</strong></span>
+                                                    {c.lastImported && (
+                                                        <span>Imported: <strong>{new Date(c.lastImported).toLocaleDateString()}</strong></span>
+                                                    )}
+                                                </div>
+                                                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                                                    <span>Range: <strong>{c.startDate ? new Date(Number(c.startDate)).toLocaleDateString() : "?"} — {c.endDate ? new Date(Number(c.endDate)).toLocaleDateString() : "?"}</strong></span>
+                                                    {c.endDate && (
+                                                        <span>Newest: <strong>{new Date(Number(c.endDate)).toLocaleDateString()}</strong></span>
+                                                    )}
+                                                </div>
+                                                {c.sources && c.sources.length > 0 && (
+                                                    <div style={{ fontSize: "0.75rem", borderTop: "1px solid rgba(255,255,255,0.05)", paddingTop: "3px", marginTop: "3px", textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }}>
+                                                        Sources: <span style={{ color: "var(--accent)" }}>{c.sources.map(s => s.filename).join(", ")}</span>
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
                                     );
                                 })
                             )
+                        ) : activeTab === "segments" ? (
+                            /* Saved segments management drawer inside workspace */
+                            <div style={{ display: "flex", flexDirection: "column", gap: "16px", padding: "10px 4px" }}>
+                                <div>
+                                    <h4 style={{ margin: "0 0 8px 0", fontSize: "0.85rem", color: "var(--success)", letterSpacing: "1px", textTransform: "uppercase" }}>Linked Segments ({linkedSegments.length})</h4>
+                                    {linkedSegments.length > 0 ? (
+                                        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                                            {linkedSegments.map(seg => (
+                                                <div key={seg.id} className="preview-card" style={{ background: "rgba(48, 209, 88, 0.08)", border: "1px solid rgba(48, 209, 88, 0.2)", padding: "10px", borderRadius: "6px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                                    <div>
+                                                        <strong style={{ display: "block", fontSize: "0.9rem" }}>{seg.title}</strong>
+                                                        <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                                                            {seg.conversationTitle} ({seg.messageCount} msgs)
+                                                        </span>
+                                                    </div>
+                                                    <button 
+                                                        onClick={() => handleRemoveSegment(seg.id)}
+                                                        style={{ background: "none", border: "none", color: "var(--danger)", cursor: "pointer", fontSize: "1.2rem", padding: "0 4px" }}
+                                                        title="Remove segment from Timeline"
+                                                    >
+                                                        &times;
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>No segments linked. Add or drag segments below.</div>
+                                    )}
+                                </div>
+
+                                <div style={{ borderTop: "1px solid var(--border)", paddingTop: "12px" }}>
+                                    <h4 style={{ margin: "0 0 8px 0", fontSize: "0.85rem", color: "var(--accent)", letterSpacing: "1px", textTransform: "uppercase" }}>Available Segments ({savedSegments.filter(s => !linkedSegments.some(l => l.id === s.id)).length})</h4>
+                                    {savedSegments.filter(s => !linkedSegments.some(l => l.id === s.id)).length > 0 ? (
+                                        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                                            {savedSegments
+                                                .filter(s => !linkedSegments.some(l => l.id === s.id))
+                                                .map(seg => (
+                                                    <div 
+                                                        key={seg.id} 
+                                                        className="preview-card" 
+                                                        draggable="true"
+                                                        onDragStart={(e) => {
+                                                            e.dataTransfer.setData("application/json", JSON.stringify({ type: "segment", id: seg.id }));
+                                                        }}
+                                                        style={{ background: "rgba(255,255,255,0.03)", padding: "10px", borderRadius: "6px", cursor: "grab", display: "flex", justifyContent: "space-between", alignItems: "center" }}
+                                                    >
+                                                        <div>
+                                                            <strong style={{ display: "block", fontSize: "0.9rem" }}>{seg.title}</strong>
+                                                            <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                                                                {seg.conversationTitle} ({seg.messageCount} msgs)
+                                                            </span>
+                                                        </div>
+                                                        <button 
+                                                            className="button-link"
+                                                            onClick={() => handleAddSegment(seg.id)}
+                                                            style={{ color: "var(--accent)", fontSize: "0.8rem", fontWeight: "700" }}
+                                                        >
+                                                            [ADD]
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                        </div>
+                                    ) : (
+                                        <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>No other segments available. Save segments in the Archive view first.</div>
+                                    )}
+                                </div>
+                            </div>
                         ) : (
                             /* Search interface */
                             <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
@@ -785,7 +995,21 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                                 <>
                                     <div className="viewer-title-info" style={{ marginBottom: "12px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                                         <div>
-                                            <h3>{activeConversation.title}</h3>
+                                            <h3 style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                                                {activeConversation.title}
+                                                <button
+                                                    onClick={() => {
+                                                        const newName = prompt("Rename conversation thread:", activeConversation.title);
+                                                        if (newName && newName.trim() && newName.trim() !== activeConversation.title) {
+                                                            handleRenameConversation(newName.trim());
+                                                        }
+                                                    }}
+                                                    title="Rename Conversation"
+                                                    style={{ background: "none", border: "none", cursor: "pointer", fontSize: "0.9rem" }}
+                                                >
+                                                    ✏️
+                                                </button>
+                                            </h3>
                                             <p>
                                                 SMS Conversation Thread ({messages.length} messages
                                                 {showFullConversation ? " - Complete History" : " - Filtered View"})
@@ -847,7 +1071,21 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                                             id={`msg-${m.id}`}
                                             className={`message-row ${activeSearchMessageId === m.id ? "highlighted" : ""}`}
                                         >
-                                            <div className="message-header">
+                                            <div className="message-header" style={{ display: "flex", alignItems: "center" }}>
+                                                {threadline.id.startsWith("archive_") && (
+                                                    <input 
+                                                        type="checkbox"
+                                                        checked={selectedMessageIds.includes(m.id)}
+                                                        onChange={() => {
+                                                            setSelectedMessageIds(prev => 
+                                                                prev.includes(m.id) 
+                                                                    ? prev.filter(id => id !== m.id) 
+                                                                    : [...prev, m.id]
+                                                            );
+                                                        }}
+                                                        style={{ marginRight: "10px", cursor: "pointer", width: "15px", height: "15px", accentColor: "var(--accent)" }}
+                                                    />
+                                                )}
                                                 <span className={`message-sender ${m.direction}`}>
                                                     {m.direction === "sent" ? "Me" : (m.metadata?.contact || m.sender)}
                                                 </span>
@@ -894,19 +1132,111 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                                             </div>
                                         </div>
                                     ))}
+                                    
+                                    {selectedMessageIds.length > 0 && (
+                                        <div className="save-segment-bar" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "rgba(63, 216, 255, 0.12)", border: "1px solid var(--accent)", padding: "12px 16px", borderRadius: "8px", position: "sticky", bottom: "16px", zIndex: 100, margin: "16px" }}>
+                                            <span style={{ fontWeight: "600", color: "var(--text-light)" }}>{selectedMessageIds.length} messages selected</span>
+                                            <div style={{ display: "flex", gap: "8px" }}>
+                                                <button 
+                                                    className="button"
+                                                    onClick={() => setShowSaveSegmentModal(true)}
+                                                    style={{ background: "var(--accent)", color: "#000", fontWeight: "700", border: "none", padding: "6px 12px", borderRadius: "4px", cursor: "pointer" }}
+                                                >
+                                                    💾 Save Segment
+                                                </button>
+                                                <button 
+                                                    className="button button-outline"
+                                                    onClick={() => setSelectedMessageIds([])}
+                                                    style={{ color: "var(--danger)", borderColor: "var(--danger)", padding: "6px 12px", borderRadius: "4px", cursor: "pointer", background: "transparent" }}
+                                                >
+                                                    Cancel
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {showSaveSegmentModal && (
+                                        <div className="modal-overlay" style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.85)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 1000 }}>
+                                            <div className="panel" style={{ width: "400px", padding: "20px", borderRadius: "8px", background: "#1c1c1e", border: "1px solid var(--border)" }}>
+                                                <h3 style={{ marginTop: 0, color: "var(--accent)" }}>SAVE SEGMENT</h3>
+                                                <p style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginBottom: "16px" }}>
+                                                    Save the {selectedMessageIds.length} selected messages as a named segment.
+                                                </p>
+                                                <div style={{ marginBottom: "12px" }}>
+                                                    <label style={{ display: "block", fontSize: "0.8rem", color: "var(--text-light)", marginBottom: "4px" }}>Segment Title</label>
+                                                    <input 
+                                                        type="text" 
+                                                        className="input" 
+                                                        placeholder="e.g. Florida Shopping trip"
+                                                        value={segmentTitle}
+                                                        onChange={(e) => setSegmentTitle(e.target.value)}
+                                                        style={{ width: "100%", padding: "8px" }}
+                                                    />
+                                                </div>
+                                                <div style={{ marginBottom: "20px" }}>
+                                                    <label style={{ display: "block", fontSize: "0.8rem", color: "var(--text-light)", marginBottom: "4px" }}>Description (Optional)</label>
+                                                    <textarea 
+                                                        className="input" 
+                                                        rows="3"
+                                                        placeholder="Enter context details..."
+                                                        value={segmentDescription}
+                                                        onChange={(e) => setSegmentDescription(e.target.value)}
+                                                        style={{ width: "100%", padding: "8px", resize: "none" }}
+                                                    />
+                                                </div>
+                                                <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
+                                                    <button 
+                                                        className="button button-outline"
+                                                        onClick={() => {
+                                                            setShowSaveSegmentModal(false);
+                                                            setSegmentTitle("");
+                                                            setSegmentDescription("");
+                                                        }}
+                                                        style={{ padding: "6px 12px", cursor: "pointer", background: "transparent" }}
+                                                    >
+                                                        Cancel
+                                                    </button>
+                                                    <button 
+                                                        className="button"
+                                                        disabled={!segmentTitle.trim()}
+                                                        onClick={() => handleSaveSegmentSubmit(segmentTitle, segmentDescription)}
+                                                        style={{ background: "var(--accent)", color: "#000", fontWeight: "700", padding: "6px 12px", borderRadius: "4px", cursor: "pointer" }}
+                                                    >
+                                                        Save
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
                                     <div ref={messagesEndRef} />
                                 </>
                             )
                         ) : (
                             /* Default empty workspace screen */
-                            <div className="viewer-empty">
-                                <div className="viewer-empty-icon">──────•──────</div>
-                                <h3>THREADLINE ANALYSIS CENTRE</h3>
-                                <p>
-                                    Select a data point on the heartbeat timeline wave above<br />
-                                    or select a conversation thread from the left pane to explore.
-                                </p>
-                            </div>
+                            isArchive ? (
+                                <div className="viewer-empty" style={{ display: "flex", flexDirection: "column", gap: "20px", alignItems: "center", padding: "20px" }}>
+                                    <div className="viewer-empty-icon" style={{ fontSize: "2rem" }}>📁</div>
+                                    <h3>COMMUNICATIONS ARCHIVE</h3>
+                                    <p style={{ color: "var(--text-muted)", fontSize: "0.9rem", textAlign: "center" }}>
+                                        Select a discovered Thread from the list to view messages,<br />
+                                        or search across the entire archive using the Search tab.
+                                    </p>
+                                    <div style={{ width: "100%", maxWidth: "500px", marginTop: "20px", borderTop: "1px solid var(--border)", paddingTop: "20px" }}>
+                                        <div style={{ fontSize: "0.85rem", color: "var(--accent)", fontWeight: "700", marginBottom: "12px", textTransform: "uppercase", letterSpacing: "1px", textAlign: "center" }}>Import Additional Communications:</div>
+                                        <UploadPanel setImportResult={handleImportSuccess} />
+                                        <ImportPreview result={importResult} />
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="viewer-empty">
+                                    <div className="viewer-empty-icon">──────•──────</div>
+                                    <h3>THREADLINE ANALYSIS CENTRE</h3>
+                                    <p>
+                                        Select a data point on the heartbeat timeline wave above<br />
+                                        or select a conversation thread from the left pane to explore.
+                                    </p>
+                                </div>
+                            )
                         )}
                     </div>
                 </div>

@@ -169,30 +169,54 @@ class SearchEngine {
     async resolveEventTimestamp(threadlineIds, eventKeyword) {
         if (!threadlineIds || threadlineIds.length === 0) return null;
 
-        const placeholders = threadlineIds.map(() => "?").join(",");
+        const clauses = [];
+        const params = [];
+        threadlineIds.forEach(id => {
+            if (id.startsWith("archive_")) {
+                clauses.push(" threadline_id = ? ");
+                params.push(id);
+            } else {
+                clauses.push(" id IN (SELECT message_id FROM saved_segment_messages ssm JOIN threadline_segments ts ON ssm.saved_segment_id = ts.saved_segment_id WHERE ts.threadline_id = ?) ");
+                params.push(id);
+            }
+        });
+        const constraint = ` ( ${clauses.join(" OR ")} ) `;
 
         // Check messages table first
         const sqlMessage = `
             SELECT timestamp 
             FROM messages 
-            WHERE threadline_id IN (${placeholders}) AND body LIKE ? 
+            WHERE ${constraint} AND body LIKE ? 
             ORDER BY timestamp ASC 
             LIMIT 1;
         `;
-        const resMessage = db.queryOne(sqlMessage, [...threadlineIds, `%${eventKeyword}%`]);
+        const resMessage = db.queryOne(sqlMessage, [...params, `%${eventKeyword}%`]);
         if (resMessage) {
             return resMessage.timestamp;
         }
 
         // Check timeline events table
+        const eventClauses = [];
+        const eventParams = [];
+        threadlineIds.forEach(id => {
+            if (id.startsWith("archive_")) {
+                eventClauses.push(" threadline_id = ? ");
+                eventParams.push(id);
+            } else {
+                eventClauses.push(" source_id IN (SELECT message_id FROM saved_segment_messages ssm JOIN threadline_segments ts ON ssm.saved_segment_id = ts.saved_segment_id WHERE ts.threadline_id = ?) ");
+                eventParams.push(id);
+            }
+        });
+        const eventConstraint = ` ( ${eventClauses.join(" OR ")} ) `;
+
         const sqlEvent = `
             SELECT timestamp 
             FROM timeline_events 
-            WHERE threadline_id IN (${placeholders}) AND (title LIKE ? OR description LIKE ?) 
+            WHERE ${eventConstraint} AND (title LIKE ? OR description LIKE ?) 
             ORDER BY timestamp ASC 
             LIMIT 1;
         `;
-        const resEvent = db.queryOne(sqlEvent, [...threadlineIds, `%${eventKeyword}%`, `%${eventKeyword}%`]);
+        const resEvent = db.queryOne(sqlEvent, [...eventParams, `%${eventKeyword}%`, `%${eventKeyword}%`]);
         return resEvent ? resEvent.timestamp : null;
     }
 
@@ -321,7 +345,20 @@ class SearchEngine {
             candidateParams.push(ftsExpression);
         }
 
-        const placeholders = ids.map(() => "?").join(",");
+        // Build constraint for messages based on global archive or custom workspace segments
+        const clauses = [];
+        const scopeParams = [];
+        ids.forEach(id => {
+            if (id.startsWith("archive_")) {
+                clauses.push(" m.threadline_id = ? ");
+                scopeParams.push(id);
+            } else {
+                clauses.push(" m.id IN (SELECT message_id FROM saved_segment_messages ssm JOIN threadline_segments ts ON ssm.saved_segment_id = ts.saved_segment_id WHERE ts.threadline_id = ?) ");
+                scopeParams.push(id);
+            }
+        });
+        const scopeClause = `WHERE ( ${clauses.join(" OR ")} )`;
+
         const sql = `
             SELECT m.id, 
                    m.conversation_id AS conversationId, 
@@ -335,12 +372,12 @@ class SearchEngine {
                    m.metadata
             FROM messages m
             JOIN conversations c ON m.conversation_id = c.id
-            WHERE m.threadline_id IN (${placeholders}) ${timeFilterSql} ${candidateSql}
+            ${scopeClause} ${timeFilterSql} ${candidateSql}
             ORDER BY m.timestamp DESC
             LIMIT 300;
         `;
 
-        const candidates = db.query(sql, [...ids, ...queryParams, ...candidateParams]);
+        const candidates = db.query(sql, [...scopeParams, ...queryParams, ...candidateParams]);
 
         // --- LAYER 4: RELEVANCE SCORING ---
         const scored = candidates.map(m => {

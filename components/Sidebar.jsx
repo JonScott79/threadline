@@ -101,6 +101,26 @@ function Sidebar({
                     📖 Help & Guide
                 </div>
 
+                <div
+                    className={
+                        currentThreadline?.id === `archive_${user?.uid || "local"}`
+                            ? "nav-item active"
+                            : "nav-item"
+                    }
+                    onClick={() => onSelect({
+                        id: `archive_${user?.uid || "local"}`,
+                        firestoreId: `archive_${user?.uid || "local"}`,
+                        title: "Communications Archive",
+                        source: "Ingested History",
+                        platform: "Multi",
+                        messageCount: 0,
+                        conversationCount: 0
+                    })}
+                    style={{ fontWeight: "600", color: "var(--text-light)" }}
+                >
+                    📁 Communications Archive
+                </div>
+
                 <div className="sidebar-divider"></div>
 
                 {/*==============================
@@ -112,7 +132,9 @@ function Sidebar({
                 </div>
 
                 {
-                    threadlines.map(threadline=>(
+                    threadlines
+                        .filter(t => !t.firestoreId.startsWith("archive_"))
+                        .map(threadline=>(
                         <div
                             key={threadline.firestoreId}
                             className={

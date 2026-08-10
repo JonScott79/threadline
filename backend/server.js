@@ -10,6 +10,7 @@ const importRoutes = require("./api/import");
 const threadlineRoutes = require("./api/threadlines");
 const timelineRoutes = require("./api/timeline");
 const searchRoutes = require("./api/search");
+const segmentRoutes = require("./api/segments");
 
 /*======================================================
                         VARIABLES
@@ -51,6 +52,7 @@ app.use("/api/import", authMiddleware, importRoutes);
 app.use("/api/threadlines", authMiddleware, threadlineRoutes);
 app.use("/api/threadlines/:id/timeline", authMiddleware, timelineRoutes);
 app.use("/api/threadlines/:id/search", authMiddleware, searchRoutes);
+app.use("/api", authMiddleware, segmentRoutes);
 
 /*======================================================
                         SERVER
