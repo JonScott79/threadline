@@ -7,8 +7,7 @@
 */
 
 module.exports = (req, res, next) => {
-    // Read the user ID from the custom x-user-uid header (with fallbacks for flex compatibility)
-    const uid = req.headers["x-user-uid"] || req.query.uid || req.body.uid;
+    const uid = req.headers["x-user-uid"] || (req.query && req.query.uid) || (req.body && req.body.uid);
 
     if (!uid) {
         return res.status(401).json({

@@ -115,9 +115,9 @@ function Sidebar({
                     threadlines
                         .map(threadline=>(
                         <div
-                            key={threadline.firestoreId}
+                            key={threadline.firestoreId || threadline.id}
                             className={
-                                threadline.firestoreId === currentThreadline?.firestoreId
+                                (threadline.firestoreId || threadline.id) === (currentThreadline?.firestoreId || currentThreadline?.id)
                                     ? "nav-item active nav-item-threadline"
                                     : "nav-item nav-item-threadline"
                             }
@@ -126,13 +126,14 @@ function Sidebar({
                         >
                             <input 
                                 type="checkbox"
-                                checked={compareIds.includes(threadline.firestoreId)}
+                                checked={compareIds.includes(threadline.firestoreId || threadline.id)}
                                 onClick={(e) => e.stopPropagation()} // Prevent selecting single row
                                 onChange={(e) => {
+                                    const tid = threadline.firestoreId || threadline.id;
                                     if (e.target.checked) {
-                                        setCompareIds(prev => [...prev, threadline.firestoreId]);
+                                        setCompareIds(prev => [...prev, tid]);
                                     } else {
-                                        setCompareIds(prev => prev.filter(id => id !== threadline.firestoreId));
+                                        setCompareIds(prev => prev.filter(id => id !== tid));
                                     }
                                 }}
                                 style={{ 
@@ -187,7 +188,7 @@ function Sidebar({
                             }
                             onClick={() => {
                                 const selectedNames = threadlines
-                                    .filter(t => compareIds.includes(t.firestoreId))
+                                    .filter(t => compareIds.includes(t.firestoreId || t.id))
                                     .map(t => t.title)
                                     .join(" + ");
                                 
