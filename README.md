@@ -50,6 +50,24 @@ npm run dev
 
 The Vite dev server will typically run on `localhost:5174`.
 
+## Deployment (Netlify & Railway)
+
+Threadline can be deployed using a split architecture while maintaining its local-first behavior:
+
+- **Frontend**: Hosted on Netlify (`https://threadline.lanzar.me`)
+- **Backend**: Hosted on Railway (`https://threadline-production.up.railway.app`)
+
+### Railway Persistence Warning
+If deploying to Railway, be aware that Railway's default filesystem is **ephemeral**. 
+The SQLite database (`backend/database/threadline.db`) and uploaded files are stored locally on the container's disk. 
+**You MUST provision a Railway Volume** and mount it to the database directory, otherwise all data will be destroyed every time the backend service restarts or redeploys.
+
+### Frontend Configuration
+When deploying the frontend to Netlify, you must set the following environment variable so the browser communicates with the public Railway domain:
+`VITE_API_URL=https://threadline-production.up.railway.app/api`
+
+**Do NOT** configure the frontend to use the private `threadline.railway.internal` domain, as this is only accessible within Railway's private network.
+
 ## Current Limitations & Known Issues
 
 - **Local-First Only**: Despite having frontend login, there is currently no backend cryptographic token verification or cloud persistence. The application is strictly local.
