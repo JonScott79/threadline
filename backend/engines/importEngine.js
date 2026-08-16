@@ -16,11 +16,6 @@ const parsers = {
     "SMS Backup & Restore": parseSMSBackup,
     
     "HTML Conversation Export": parseHTMLBackup
-
-    // "WhatsApp": parseWhatsApp,
-    // "Messenger": parseMessenger,
-    // "Signal": parseSignal
-
 };
 
 /*======================================================
