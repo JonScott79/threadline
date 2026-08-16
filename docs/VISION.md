@@ -1,3 +1,7 @@
+> [!NOTE]
+> **Historical / Planning Document**
+> This document reflects initial project planning and may not represent the current verified architecture.
+
 # Threadline Vision
 
 Threadline organizes years of communication into searchable timelines.
@@ -31,3 +35,4 @@ Every feature should support one or more of these goals:
 
 If a feature doesn't improve one of these areas,
 it probably doesn't belong in Threadline.
+

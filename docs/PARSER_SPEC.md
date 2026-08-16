@@ -1,3 +1,7 @@
+> [!NOTE]
+> **Historical / Planning Document**
+> This document reflects initial project planning and may not represent the current verified architecture.
+
 # Parser Specification
 
 Every parser must return the same normalized objects.
@@ -26,3 +30,4 @@ Message
 Parsers should never write to the database.
 
 Their only job is converting external formats into Threadline models.
+

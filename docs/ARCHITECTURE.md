@@ -1,3 +1,7 @@
+> [!NOTE]
+> **Historical / Planning Document**
+> This document reflects initial project planning and may not represent the current verified architecture.
+
 # Architecture
 
 ## Design Principles
@@ -68,3 +72,4 @@ Persistence layer.
 
 utilities/
 Reusable helper functions.
+

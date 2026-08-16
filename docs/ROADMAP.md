@@ -1,3 +1,7 @@
+> [!NOTE]
+> **Historical / Planning Document**
+> This document reflects initial project planning and may not represent the current verified architecture.
+
 # Threadline Roadmap
 
 ## Phase 1 - Foundation
@@ -61,3 +65,4 @@
 - [ ] Teams
 - [ ] Analytics
 - [ ] Admin Dashboard
+

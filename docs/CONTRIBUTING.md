@@ -1,3 +1,7 @@
+> [!NOTE]
+> **Historical / Planning Document**
+> This document reflects initial project planning and may not represent the current verified architecture.
+
 # Contributing
 
 ## Coding Standards
@@ -18,3 +22,4 @@ Commit often.
 Keep commits focused.
 
 Write meaningful commit messages.
+

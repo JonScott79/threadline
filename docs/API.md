@@ -1,3 +1,7 @@
+> [!NOTE]
+> **Historical / Planning Document**
+> This document reflects initial project planning and may not represent the current verified architecture.
+
 # API
 
 ## Current
@@ -23,3 +27,4 @@ POST /api/search
 POST /api/report
 
 DELETE /api/import
+
