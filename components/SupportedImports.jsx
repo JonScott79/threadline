@@ -16,21 +16,21 @@ function SupportedImports(){
 
             <div className="import-grid">
 
-                <div className="import-item"><span className="check">✓</span>SMS Backup & Restore</div>
+                <div className="import-item"><span className="check">✓</span>SMS Backup & Restore (.xml)</div>
 
-                <div className="import-item"><span className="check">✓</span>Google Messages</div>
+                <div className="import-item"><span className="check">✓</span>HTML Conversation Exports</div>
 
-                <div className="import-item"><span className="check">✓</span>Facebook Messenger</div>
+                <div className="import-item"><span className="planned">⌛</span>Facebook Messenger (Planned)</div>
 
-                <div className="import-item"><span className="check">✓</span>WhatsApp</div>
+                <div className="import-item"><span className="planned">⌛</span>WhatsApp (Planned)</div>
 
-                <div className="import-item"><span className="check">✓</span>Signal</div>
+                <div className="import-item"><span className="planned">⌛</span>Signal (Planned)</div>
 
-                <div className="import-item"><span className="check">✓</span>Email</div>
+                <div className="import-item"><span className="planned">⌛</span>Email (Planned)</div>
 
-                <div className="import-item"><span className="check">✓</span>PDF Documents</div>
+                <div className="import-item"><span className="planned">⌛</span>PDF Documents (Planned)</div>
 
-                <div className="import-item"><span className="check">✓</span>Screenshots (OCR)</div>
+                <div className="import-item"><span className="planned">⌛</span>Screenshots / OCR (Planned)</div>
 
             </div>
 
