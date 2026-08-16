@@ -46,7 +46,7 @@ function HelpSection({ onBack }) {
                     🚀 What is Threadline?
                 </h3>
                 <p style={{ color: "var(--text-light)", fontSize: "0.95rem", lineHeight: "1.6", textAlign: "left" }}>
-                    Think of Threadline as a <strong>time machine for your text messages</strong>. If you have years of chat logs from different people, it can be really hard to find when things happened. Threadline helps you import those logs, visualizes them on a glowing "heartbeat" timeline, and lets you search them using everyday human questions!
+                    Think of Threadline as a <strong>time machine for your text messages</strong>. If you have years of chat logs from different files and backups, finding when key conversations occurred is difficult. Threadline helps you import those logs into a unified <strong>Communications Archive</strong>, normalizes them into clean chat <strong>Threads</strong>, and lets you search them using everyday human queries. You can then save key snippets as <strong>Saved Segments</strong> and assemble them onto custom <strong>Threadline</strong> workspaces for deep visual timelines!
                 </p>
             </section>
 
@@ -54,64 +54,73 @@ function HelpSection({ onBack }) {
             <div className="import-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "20px" }}>
                 {/* Step 1 */}
                 <div className="preview-card" style={{ textAlign: "left", padding: "20px" }}>
-                    <div style={{ fontSize: "2rem", marginBottom: "12px" }}>📁</div>
-                    <h4 style={{ color: "var(--accent)", fontSize: "1rem", marginBottom: "8px", fontWeight: "700" }}>1. Create a Threadline</h4>
+                    <div style={{ fontSize: "2rem", marginBottom: "12px" }}>📥</div>
+                    <h4 style={{ color: "var(--accent)", fontSize: "1rem", marginBottom: "8px", fontWeight: "700" }}>1. Import History</h4>
                     <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", lineHeight: "1.4" }}>
-                        Click on <strong>+ New Threadline</strong> in the left sidebar. Type a name for your workspace (like "My Family Log" or "Work Chats") and hit Create. If you leave the name blank, we'll automatically name it for you!
+                        Click on <strong>📁 Communications Archive</strong> in the left sidebar. Drag and drop your SMS backup XML file or HTML conversation logs directly into the ingestion panel to load them into your private local database.
                     </p>
                 </div>
 
                 {/* Step 2 */}
                 <div className="preview-card" style={{ textAlign: "left", padding: "20px" }}>
-                    <div style={{ fontSize: "2rem", marginBottom: "12px" }}>📥</div>
-                    <h4 style={{ color: "var(--accent)", fontSize: "1rem", marginBottom: "8px", fontWeight: "700" }}>2. Drop Your Messages</h4>
+                    <div style={{ fontSize: "2rem", marginBottom: "12px" }}>💬</div>
+                    <h4 style={{ color: "var(--accent)", fontSize: "1rem", marginBottom: "8px", fontWeight: "700" }}>2. Explore Your Threads</h4>
                     <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", lineHeight: "1.4" }}>
-                        Open your new empty Threadline. Drag and drop your XML backup file or HTML conversation export (like <code>darcy.html</code>) directly into the dashed box. We'll automatically inspect and load the messages in seconds!
+                        Open the <strong>Threads</strong> tab in the Archive. Threadline automatically parses participants, maps timelines, and groups thousands of messages into clean, unified conversation threads ready to view.
                     </p>
                 </div>
 
                 {/* Step 3 */}
                 <div className="preview-card" style={{ textAlign: "left", padding: "20px" }}>
-                    <div style={{ fontSize: "2rem", marginBottom: "12px" }}>📈</div>
-                    <h4 style={{ color: "var(--accent)", fontSize: "1rem", marginBottom: "8px", fontWeight: "700" }}>3. Zoom the Heartbeat Wave</h4>
+                    <div style={{ fontSize: "2rem", marginBottom: "12px" }}>🔍</div>
+                    <h4 style={{ color: "var(--accent)", fontSize: "1rem", marginBottom: "8px", fontWeight: "700" }}>3. Search in Plain English</h4>
                     <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", lineHeight: "1.4" }}>
-                        The timeline graph at the top looks like a heartbeat. The higher the wave, the more you were talking! Click on the spikes to zoom in: <strong>Years &rarr; Months &rarr; Days</strong>. Clicking a day loads the chronological transcript of that day!
+                        Go to the <strong>Search</strong> tab. Type everyday natural language queries like <em>"visitation in October"</em> or <em>"shopping in Florida"</em>. The concept system matches synonyms, ranks matches, and retrieves surrounding message contexts.
                     </p>
                 </div>
 
                 {/* Step 4 */}
                 <div className="preview-card" style={{ textAlign: "left", padding: "20px" }}>
-                    <div style={{ fontSize: "2rem", marginBottom: "12px" }}>🔍</div>
-                    <h4 style={{ color: "var(--accent)", fontSize: "1rem", marginBottom: "8px", fontWeight: "700" }}>4. Search in Plain English</h4>
+                    <div style={{ fontSize: "2rem", marginBottom: "12px" }}>💾</div>
+                    <h4 style={{ color: "var(--accent)", fontSize: "1rem", marginBottom: "8px", fontWeight: "700" }}>4. Save What Matters</h4>
                     <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", lineHeight: "1.4" }}>
-                        Go to the Search tab on the left. Type normal questions like <em>"visitation in October"</em> or <em>"shopping in Florida"</em>. We will search for concepts, dates, and people, ranking them as High/Medium/Low relevance, and show you the messages before and after!
+                        In the thread viewer, check the boxes next to relevant messages, then click <strong>💾 Save Segment</strong> at the bottom. Give your segment a title (e.g., "Visitation Dispute") to preserve that specific context snippet.
                     </p>
                 </div>
 
                 {/* Step 5 */}
                 <div className="preview-card" style={{ textAlign: "left", padding: "20px" }}>
-                    <div style={{ fontSize: "2rem", marginBottom: "12px" }}>📌</div>
-                    <h4 style={{ color: "var(--accent)", fontSize: "1rem", marginBottom: "8px", fontWeight: "700" }}>5. Drag & Compare Swimlanes</h4>
+                    <div style={{ fontSize: "2rem", marginBottom: "12px" }}>🛠️</div>
+                    <h4 style={{ color: "var(--accent)", fontSize: "1rem", marginBottom: "8px", fontWeight: "700" }}>5. Build a Threadline</h4>
                     <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", lineHeight: "1.4" }}>
-                        Want to look at two conversations side-by-side? Click the pin (📌) next to a thread or drag a search card directly onto the timeline! We will map them in separate swimlanes so you can spot overlaps in dates and times.
+                        Click <strong>+ New Threadline</strong> to create a custom research timeline workspace. Give it a subject name. You can then add entire threads from the <strong>Threads</strong> tab or drag Saved Segments directly onto it!
                     </p>
                 </div>
 
                 {/* Step 6 */}
                 <div className="preview-card" style={{ textAlign: "left", padding: "20px" }}>
-                    <div style={{ fontSize: "2rem", marginBottom: "12px" }}>⏳</div>
-                    <h4 style={{ color: "var(--accent)", fontSize: "1rem", marginBottom: "8px", fontWeight: "700" }}>6. Filter Time Ranges</h4>
+                    <div style={{ fontSize: "2rem", marginBottom: "12px" }}>📈</div>
+                    <h4 style={{ color: "var(--accent)", fontSize: "1rem", marginBottom: "8px", fontWeight: "700" }}>6. Explore the Timeline</h4>
                     <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", lineHeight: "1.4" }}>
-                        Use the <strong>FROM</strong> and <strong>TO</strong> date pickers at the top to narrow down your timeline. To see the full chat context of any single thread, check the <strong>Show Full Conversation</strong> box in the chat header.
+                        Click on timeline spikes to zoom down: <strong>Years &rarr; Months &rarr; Days</strong>. Clicking on a day displays a chronological report of all message events that occurred across your linked conversations.
                     </p>
                 </div>
 
                 {/* Step 7 */}
                 <div className="preview-card" style={{ textAlign: "left", padding: "20px" }}>
-                    <div style={{ fontSize: "2rem", marginBottom: "12px" }}>🔀</div>
-                    <h4 style={{ color: "var(--accent)", fontSize: "1rem", marginBottom: "8px", fontWeight: "700" }}>7. Overlap Workspaces</h4>
+                    <div style={{ fontSize: "2rem", marginBottom: "12px" }}>📌</div>
+                    <h4 style={{ color: "var(--accent)", fontSize: "1rem", marginBottom: "8px", fontWeight: "700" }}>7. Compare Threads</h4>
                     <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", lineHeight: "1.4" }}>
-                        Want to compare two different backup files side-by-side? Check the checkboxes next to their names in the left sidebar. Click the green <strong>Compare Selected</strong> button to merge their active messages, visual timelines, and searches!
+                        Pin multiple threads using the pin (📌) button to compare them on the shared timeline workspace. Each pinned conversation gets its own lane so you can analyze overlapping dates and times side-by-side.
+                    </p>
+                </div>
+
+                {/* Step 8 */}
+                <div className="preview-card" style={{ textAlign: "left", padding: "20px" }}>
+                    <div style={{ fontSize: "2rem", marginBottom: "12px" }}>⏳</div>
+                    <h4 style={{ color: "var(--accent)", fontSize: "1rem", marginBottom: "8px", fontWeight: "700" }}>8. Filter Time</h4>
+                    <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", lineHeight: "1.4" }}>
+                        Use the <strong>FROM</strong> and <strong>TO</strong> inputs at the top to focus your research. Click <strong>RESET RANGE</strong> to expand the temporal bounds and display the entire timeline history.
                     </p>
                 </div>
             </div>

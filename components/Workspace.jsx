@@ -36,7 +36,9 @@ function Workspace({
     creatingThreadline,
     setCreatingThreadline,
     showingHelp,
-    setShowingHelp
+    setShowingHelp,
+    archiveEmpty,
+    refreshArchiveStatus
 }){
     /*==============================================
                         STATE
@@ -48,12 +50,29 @@ function Workspace({
                         RENDER
     ==============================================*/
 
+    const isDashboardActive = (!!currentThreadline || archiveEmpty) && !showingHelp;
+
     return(
-        <section className="workspace">
+        <section className={`workspace ${isDashboardActive ? "dashboard-active" : ""}`}>
             {
                 showingHelp ? (
                     <HelpSection 
                         onBack={() => setShowingHelp(false)} 
+                    />
+                ) : archiveEmpty ? (
+                    <ThreadlineWorkspace
+                        threadline={{
+                            id: `archive_${user.uid}`,
+                            title: "Communications Archive",
+                            source: "Ingested History",
+                            platform: "Multi",
+                            messageCount: 0,
+                            conversationCount: 0
+                        }}
+                        setThreadlines={setThreadlines}
+                        setCurrentThreadline={setCurrentThreadline}
+                        uid={user.uid}
+                        onImportSuccess={refreshArchiveStatus}
                     />
                 ) : currentThreadline ? (
                     <ThreadlineWorkspace
@@ -61,6 +80,7 @@ function Workspace({
                         setThreadlines={setThreadlines}
                         setCurrentThreadline={setCurrentThreadline}
                         uid={user.uid}
+                        onImportSuccess={refreshArchiveStatus}
                     />
                 ) : creatingThreadline ? (
                     <NewThreadline

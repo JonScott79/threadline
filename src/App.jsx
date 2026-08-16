@@ -16,6 +16,8 @@ import Login from "../components/Login";
 import { useAuth } from "../auth/AuthProvider";
 import { useState, useEffect } from "react";
 import { loadThreadlines, deleteThreadline, updateThreadline } from "../services/threadlines";
+import axios from "axios";
+import { API_BASE_URL } from "./apiConfig";
 
 /*======================================================
                         COMPONENT
@@ -31,6 +33,8 @@ function App(){
 
 	const [showingHelp, setShowingHelp] = useState(false);
 
+	const [archiveEmpty, setArchiveEmpty] = useState(true);
+
     /*==============================================
                         AUTH
     ==============================================*/
@@ -42,6 +46,25 @@ function App(){
         loading
 
     } = useAuth();
+
+	const refreshArchiveStatus = async () => {
+		if (user) {
+			try {
+				const archiveId = `archive_${user.uid}`;
+				const res = await axios.get(`${API_BASE_URL}/threadlines/${archiveId}`, {
+					headers: { "x-user-uid": user.uid }
+				});
+				if (res.data && res.data.status === "success" && res.data.threadline) {
+					const count = res.data.threadline.messageCount || 0;
+					setArchiveEmpty(count === 0);
+				} else {
+					setArchiveEmpty(true);
+				}
+			} catch (error) {
+				setArchiveEmpty(true);
+			}
+		}
+	};
 
     /*==============================================
                         LOAD DATA
@@ -65,6 +88,8 @@ function App(){
 
                 });
 
+            refreshArchiveStatus();
+
         } else {
 
             setThreadlines([]);
@@ -72,6 +97,8 @@ function App(){
             setCurrentThreadline(null);
 
             setShowingHelp(false);
+
+            setArchiveEmpty(true);
 
         }
 
@@ -166,6 +193,8 @@ function App(){
 					setCreatingThreadline(false);
 				}}
 
+				archiveEmpty={archiveEmpty}
+
 			/>
 
 			<Workspace
@@ -185,6 +214,10 @@ function App(){
 				showingHelp={showingHelp}
 
 				setShowingHelp={setShowingHelp}
+
+				archiveEmpty={archiveEmpty}
+
+				refreshArchiveStatus={refreshArchiveStatus}
 
 			/>
 

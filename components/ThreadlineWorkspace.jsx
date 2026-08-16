@@ -49,6 +49,8 @@ const PINNED_COLORS = [
 // =====================================
 
 function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline, uid }) {
+    const isArchive = threadline?.id?.startsWith("archive_") || false;
+
     /*==============================================
                         STATE
     ==============================================*/
@@ -94,12 +96,14 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
     const [selectedDay, setSelectedDay] = useState(null);
 
     // Explorer (Left Pane) States
-    const [activeTab, setActiveTab] = useState("threads"); // 'threads' | 'imports' | 'people' | 'segments' | 'search'
+    const [activeTab, setActiveTab] = useState(() => threadline.id.startsWith("archive_") ? "threads" : "segments");
     const [conversations, setConversations] = useState([]);
     const [conversationsLoading, setConversationsLoading] = useState(false);
+    const [archiveConversations, setArchiveConversations] = useState([]);
     const [searchQuery, setSearchQuery] = useState("");
     const [searchResults, setSearchResults] = useState([]);
     const [searchLoading, setSearchLoading] = useState(false);
+    const [isDraggingOver, setIsDraggingOver] = useState(false);
 
     // Search matched message ID to jump/highlight
     const [activeSearchMessageId, setActiveSearchMessageId] = useState(null);
@@ -144,9 +148,24 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
         setShowFullConversation(false);
         setPinnedConversationIds([]);
         setSelectedMessageIds([]);
+        setActiveTab(threadline.id.startsWith("archive_") ? "threads" : "segments");
 
         if (threadline.id) {
             fetchConversations();
+            // Fetch real database counts dynamically to keep client state synchronized
+            axios.get(`${API_BASE_URL}/threadlines/${threadline.id}`, { headers: { "x-user-uid": uid } })
+                .then(res => {
+                    if (res.data && res.data.status === "success" && res.data.threadline) {
+                        const tl = res.data.threadline;
+                        setStats({
+                            messageCount: tl.messageCount || 0,
+                            conversationCount: tl.conversationCount || 0
+                        });
+                    }
+                })
+                .catch(err => {
+                    console.error("Failed to fetch workspace metadata:", err);
+                });
         }
     }, [threadline]);
 
@@ -156,14 +175,25 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
         setSelectedMessageIds([]);
     }, [activeConversation]);
 
-    // Fetch imports and participants
+    // Fetch imports, participants or segment maps depending on workspace type
     useEffect(() => {
         if (threadline.id) {
-            fetchImports();
-            fetchParticipants();
+            const isArchive = threadline.id.startsWith("archive_");
+            if (isArchive) {
+                fetchImports();
+                fetchParticipants();
+                setSavedSegments([]);
+                setLinkedSegments([]);
+            } else {
+                fetchSegmentsData();
+                setImports([]);
+                setParticipants([]);
+            }
         } else {
             setImports([]);
             setParticipants([]);
+            setSavedSegments([]);
+            setLinkedSegments([]);
         }
     }, [threadline.id]);
 
@@ -271,6 +301,60 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
         }
     }
 
+    async function handleLinkSearchResultAsSegment(searchResult) {
+        try {
+            const title = `Snippet: "${searchResult.body.substring(0, 25)}${searchResult.body.length > 25 ? '...' : ''}"`;
+            const description = `Saved from search match on ${searchResult.dateString}`;
+            const messageIds = searchResult.contextWindow.map(m => m.id);
+            
+            const resSeg = await axios.post(`${API_BASE_URL}/saved-segments`, {
+                conversationId: searchResult.conversationId,
+                title,
+                description,
+                messageIds
+            }, {
+                headers: { "x-user-uid": uid }
+            });
+            
+            if (resSeg.data && resSeg.data.status === "success") {
+                const segmentId = resSeg.data.segmentId;
+                await handleAddSegment(segmentId);
+            }
+        } catch (error) {
+            console.error("Failed to link search result as segment:", error);
+        }
+    }
+
+    async function handleLinkConversationAsSegment(convId, convTitle) {
+        try {
+            const archiveId = `archive_${uid || "local"}`;
+            const resMsgs = await axios.get(`${API_BASE_URL}/threadlines/${archiveId}/conversations/${convId}/messages?full=true`, {
+                headers: { "x-user-uid": uid }
+            });
+            
+            if (resMsgs.data && resMsgs.data.status === "success") {
+                const messageIds = resMsgs.data.messages.map(m => m.id);
+                if (messageIds.length === 0) return;
+                
+                const resSeg = await axios.post(`${API_BASE_URL}/saved-segments`, {
+                    conversationId: convId,
+                    title: `Full Thread: ${convTitle}`,
+                    description: `Entire conversation history (${messageIds.length} messages)`,
+                    messageIds
+                }, {
+                    headers: { "x-user-uid": uid }
+                });
+                
+                if (resSeg.data && resSeg.data.status === "success") {
+                    const segmentId = resSeg.data.segmentId;
+                    await handleAddSegment(segmentId);
+                }
+            }
+        } catch (error) {
+            console.error("Failed to link conversation as segment:", error);
+        }
+    }
+
     async function handleSaveSegmentSubmit(title, description) {
         try {
             const response = await axios.post(`${API_BASE_URL}/saved-segments`, {
@@ -321,6 +405,7 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
     async function fetchConversations() {
         setConversationsLoading(true);
         try {
+            const isCustom = !threadline.id.startsWith("archive_");
             const response = await axios.get(
                 `${API_BASE_URL}/threadlines/${threadline.id}/conversations`,
                 {
@@ -337,6 +422,24 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
             if (response.data && response.data.status === "success") {
                 setConversations(response.data.conversations || []);
             }
+
+            if (isCustom) {
+                // Fetch full conversations list from user's global archive workspace
+                const archiveId = `archive_${uid || "local"}`;
+                const resArchive = await axios.get(
+                    `${API_BASE_URL}/threadlines/${archiveId}/conversations`,
+                    {
+                        headers: {
+                            "x-user-uid": uid
+                        }
+                    }
+                );
+                if (resArchive.data && resArchive.data.status === "success") {
+                    setArchiveConversations(resArchive.data.conversations || []);
+                }
+            } else {
+                setArchiveConversations([]);
+            }
         } catch (error) {
             console.error("Failed to load conversations:", error);
         } finally {
@@ -346,7 +449,7 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
 
     // Reload conversations list when threadline or date filter changes
     useEffect(() => {
-        if (threadline.id && threadline.messageCount > 0) {
+        if (threadline.id) {
             fetchConversations();
         }
     }, [threadline.id, startTimestamp, endTimestamp]);
@@ -544,6 +647,9 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                             fetchImports();
                             fetchParticipants();
                         }
+                        if (onImportSuccess) {
+                            onImportSuccess();
+                        }
                     }
                 })
                 .catch(err => {
@@ -556,6 +662,9 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                     if (threadline.id.startsWith("archive_")) {
                         fetchImports();
                         fetchParticipants();
+                    }
+                    if (onImportSuccess) {
+                        onImportSuccess();
                     }
                 });
         }
@@ -606,27 +715,31 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                         RENDER
     ==============================================*/
 
-    // 1. Render empty/importer view if no messages are present
-    if (stats.messageCount === 0) {
+    // 1. Render empty/importer view if no messages are present in the global archive
+    if (isArchive && stats.messageCount === 0) {
         return (
-            <div className="workspace-dashboard empty-state">
-                <section className="panel hero">
-                    <h2>{threadline.title}</h2>
-                    <p style={{ color: "var(--text-muted)", marginTop: "8px" }}>
-                        This Threadline is empty. Drag & drop a phone history (XML or HTML) below to ingest it.
+            <div className="workspace-dashboard empty-state" style={{ display: "flex", flexDirection: "column", gap: "20px", padding: "40px" }}>
+                <section className="panel hero" style={{ padding: "30px", width: "100%", maxWidth: "600px", margin: "0 auto", textAlign: "center" }}>
+                    <h2 style={{ color: "var(--accent)", textTransform: "uppercase", letterSpacing: "1px" }}>{threadline.title}</h2>
+                    <p style={{ color: "var(--text-muted)", marginTop: "12px", fontSize: "0.95rem" }}>
+                        Import your phone backup history to build a searchable Communications Archive.
                     </p>
+                    
+                    <div style={{ marginTop: "24px", width: "100%" }}>
+                        <UploadPanel
+                            setImportResult={handleImportSuccess}
+                            threadlineId={threadline.id}
+                        />
+
+                        <ImportPreview
+                            result={importResult}
+                        />
+                    </div>
                 </section>
 
-                <SupportedImports />
-
-                <UploadPanel
-                    setImportResult={handleImportSuccess}
-                    threadlineId={threadline.id}
-                />
-
-                <ImportPreview
-                    result={importResult}
-                />
+                <div style={{ width: "100%", maxWidth: "600px", margin: "0 auto" }}>
+                    <SupportedImports />
+                </div>
             </div>
         );
     }
@@ -648,10 +761,13 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
 
             {/* Glowing Heartbeat Timeline component wrapped in drag drop listeners */}
             <div 
-                className="timeline-dropzone"
+                className={`timeline-dropzone ${isDraggingOver ? "drag-active" : ""}`}
                 onDragOver={(e) => e.preventDefault()}
-                onDrop={(e) => {
+                onDragEnter={() => setIsDraggingOver(true)}
+                onDragLeave={() => setIsDraggingOver(false)}
+                onDrop={async (e) => {
                     e.preventDefault();
+                    setIsDraggingOver(false);
                     const dataStr = e.dataTransfer.getData("application/json");
                     if (dataStr) {
                         try {
@@ -660,11 +776,21 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                                 handleAddSegment(data.id);
                                 return;
                             }
-                        } catch (err) {}
+                            if (data.type === "searchResult") {
+                                handleLinkSearchResultAsSegment(data.result);
+                                return;
+                            }
+                            if (data.type === "conversation") {
+                                handleLinkConversationAsSegment(data.id, data.title);
+                                return;
+                            }
+                        } catch (err) {
+                            console.error("Drop parsing error:", err);
+                        }
                     }
                     const convId = e.dataTransfer.getData("text/plain");
                     if (convId) {
-                        handlePinConversation(convId);
+                        handleLinkConversationAsSegment(convId, "Dragged Thread");
                     }
                 }}
             >
@@ -757,25 +883,37 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
             <div className="dashboard-content-split">
                 {/* Left explorer pane */}
                 <div className="explorer-pane">
-                    <div className="pane-tabs" style={{ display: "flex", flexWrap: "wrap" }}>
-                        <button 
-                            className={`pane-tab-btn ${activeTab === "imports" ? "active" : ""}`}
-                            onClick={() => setActiveTab("imports")}
-                        >
-                            Imports
-                        </button>
+                    <div className="pane-tabs">
+                        {isArchive && (
+                            <button 
+                                className={`pane-tab-btn ${activeTab === "imports" ? "active" : ""}`}
+                                onClick={() => setActiveTab("imports")}
+                            >
+                                Imports
+                            </button>
+                        )}
+                        {!isArchive && (
+                            <button 
+                                className={`pane-tab-btn ${activeTab === "segments" ? "active" : ""}`}
+                                onClick={() => setActiveTab("segments")}
+                            >
+                                Segments
+                            </button>
+                        )}
                         <button 
                             className={`pane-tab-btn ${activeTab === "threads" ? "active" : ""}`}
                             onClick={() => setActiveTab("threads")}
                         >
                             Threads
                         </button>
-                        <button 
-                            className={`pane-tab-btn ${activeTab === "people" ? "active" : ""}`}
-                            onClick={() => setActiveTab("people")}
-                        >
-                            People
-                        </button>
+                        {isArchive && (
+                            <button 
+                                className={`pane-tab-btn ${activeTab === "people" ? "active" : ""}`}
+                                onClick={() => setActiveTab("people")}
+                            >
+                                People
+                            </button>
+                        )}
                         <button 
                             className={`pane-tab-btn ${activeTab === "search" ? "active" : ""}`}
                             onClick={() => setActiveTab("search")}
@@ -784,8 +922,36 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                         </button>
                     </div>
 
+                    {activeTab === "search" && (
+                        <div className="explorer-search-box">
+                            <input 
+                                type="text" 
+                                className="input search-input" 
+                                placeholder={isArchive ? "Search archive..." : "Search global archive to link matches..."} 
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                style={{ width: "100%", padding: "8px" }}
+                            />
+                            <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginTop: "4px", textAlign: "left" }}>
+                                {isArchive ? "Ask your communication history a question." : "Find relevant conversations in the Archive to plot here."}
+                            </div>
+                            {selectedDay && (
+                                <div style={{ marginTop: "8px", padding: "6px 10px", background: "rgba(63,216,255,0.06)", border: "1px solid rgba(63,216,255,0.2)", borderRadius: "4px", display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "0.75rem" }}>
+                                    <span style={{ color: "var(--accent)" }}>Searching only in: <strong>{selectedDay}</strong></span>
+                                    <button 
+                                        className="button-link" 
+                                        onClick={() => setSelectedDay(null)} 
+                                        style={{ color: "var(--text-light)", fontSize: "0.75rem", textDecoration: "underline" }}
+                                    >
+                                        Search Globally
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     <div className="explorer-scroll-area">
-                        {activeTab === "imports" ? (
+                        {activeTab === "imports" && isArchive ? (
                             importsLoading ? (
                                 <div className="pane-loading-indicator">LOADING IMPORTS...</div>
                             ) : imports.length > 0 ? (
@@ -816,7 +982,7 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                             ) : (
                                 <div className="pane-loading-indicator" style={{ color: "var(--text-muted)" }}>NO IMPORTS LOGGED</div>
                             )
-                        ) : activeTab === "people" ? (
+                        ) : activeTab === "people" && isArchive ? (
                             participantsLoading ? (
                                 <div className="pane-loading-indicator">LOADING PEOPLE...</div>
                             ) : participants.length > 0 ? (
@@ -836,10 +1002,98 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                             ) : (
                                 <div className="pane-loading-indicator" style={{ color: "var(--text-muted)" }}>NO PARTICIPANTS FOUND</div>
                             )
+                        ) : activeTab === "segments" && !isArchive ? (
+                            <div style={{ display: "flex", flexDirection: "column", gap: "16px", padding: "10px 4px" }}>
+                                <div>
+                                    <h4 style={{ margin: "0 0 8px 0", fontSize: "0.85rem", color: "var(--success)", letterSpacing: "1px", textTransform: "uppercase" }}>Linked Segments ({linkedSegments.length})</h4>
+                                    {linkedSegments.length > 0 ? (
+                                        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                                            {linkedSegments.map(seg => (
+                                                <div key={seg.id} className="preview-card" style={{ background: "rgba(48, 209, 88, 0.08)", border: "1px solid rgba(48, 209, 88, 0.2)", padding: "10px", borderRadius: "6px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                                    <div style={{ textAlign: "left" }}>
+                                                        <strong style={{ display: "block", fontSize: "0.9rem" }}>{seg.title}</strong>
+                                                        <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                                                            {seg.conversationTitle} ({seg.messageCount} msgs)
+                                                        </span>
+                                                    </div>
+                                                    <div style={{ display: "flex", gap: "8px" }}>
+                                                        <button 
+                                                            className="button-link"
+                                                            onClick={() => {
+                                                                const foundC = conversations.find(c => c.id === seg.conversationId) || { id: seg.conversationId, title: seg.conversationTitle };
+                                                                setActiveConversation(foundC);
+                                                                setActiveRightTab("conversation");
+                                                            }}
+                                                            style={{ color: "var(--accent)", fontSize: "0.8rem", fontWeight: "700" }}
+                                                        >
+                                                            [VIEW]
+                                                        </button>
+                                                        <button 
+                                                            onClick={() => handleRemoveSegment(seg.id)}
+                                                            style={{ background: "none", border: "none", color: "var(--danger)", cursor: "pointer", fontSize: "1.2rem", padding: "0 4px" }}
+                                                            title="Remove segment from Timeline"
+                                                        >
+                                                            &times;
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>No segments linked. Add or drag segments below.</div>
+                                    )}
+                                </div>
+
+                                <div style={{ borderTop: "1px solid var(--border)", paddingTop: "12px" }}>
+                                    <h4 style={{ margin: "0 0 8px 0", fontSize: "0.85rem", color: "var(--accent)", letterSpacing: "1px", textTransform: "uppercase" }}>Available Segments ({savedSegments.filter(s => !linkedSegments.some(l => l.id === s.id)).length})</h4>
+                                    {savedSegments.filter(s => !linkedSegments.some(l => l.id === s.id)).length > 0 ? (
+                                        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                                            {savedSegments
+                                                .filter(s => !linkedSegments.some(l => l.id === s.id))
+                                                .map(seg => (
+                                                    <div 
+                                                        key={seg.id} 
+                                                        className="preview-card" 
+                                                        draggable="true"
+                                                        onDragStart={(e) => {
+                                                            e.dataTransfer.setData("application/json", JSON.stringify({ type: "segment", id: seg.id }));
+                                                        }}
+                                                        style={{ background: "rgba(255,255,255,0.03)", padding: "10px", borderRadius: "6px", cursor: "grab", display: "flex", justifyContent: "space-between", alignItems: "center" }}
+                                                    >
+                                                        <div style={{ textAlign: "left" }}>
+                                                            <strong style={{ display: "block", fontSize: "0.9rem" }}>{seg.title}</strong>
+                                                            <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                                                                {seg.conversationTitle} ({seg.messageCount} msgs)
+                                                            </span>
+                                                        </div>
+                                                        <div style={{ display: "flex", gap: "8px" }}>
+                                                            <button 
+                                                                className="button-link"
+                                                                onClick={() => handleAddSegment(seg.id)}
+                                                                style={{ color: "var(--accent)", fontSize: "0.8rem", fontWeight: "700" }}
+                                                            >
+                                                                [ADD]
+                                                            </button>
+                                                            <button 
+                                                                className="button-link"
+                                                                onClick={() => handleDeleteSegment(seg.id)}
+                                                                style={{ color: "var(--danger)", fontSize: "0.8rem", fontWeight: "700" }}
+                                                            >
+                                                                [DEL]
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                        </div>
+                                    ) : (
+                                        <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>No other segments available. Save segments in the Archive view first.</div>
+                                    )}
+                                </div>
+                            </div>
                         ) : activeTab === "threads" ? (
                             conversationsLoading ? (
                                 <div className="pane-loading-indicator">LOADING THREADS...</div>
-                            ) : (
+                            ) : isArchive ? (
                                 conversations.map(c => {
                                     const isActive = activeConversation?.id === c.id;
                                     const isPinned = pinnedConversationIds.includes(c.id);
@@ -848,6 +1102,7 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                                             key={c.id} 
                                             draggable="true"
                                             onDragStart={(e) => {
+                                                e.dataTransfer.setData("application/json", JSON.stringify({ type: "conversation", id: c.id, title: c.title }));
                                                 e.dataTransfer.setData("text/plain", c.id);
                                             }}
                                             className={`conversation-item ${isActive ? "active" : ""}`}
@@ -903,106 +1158,182 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                                         </div>
                                     );
                                 })
-                            )
-                        ) : (
-                            /* Search interface */
-                            <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
-                                <div className="explorer-search-box">
-                                    <input 
-                                        className="input"
-                                        placeholder="Type keywords to search..."
-                                        value={searchQuery}
-                                        onChange={(e) => setSearchQuery(e.target.value)}
-                                        style={{ padding: "10px" }}
-                                    />
-                                    {selectedDay && (
-                                        <div style={{ marginTop: "8px", padding: "6px 10px", background: "rgba(63,216,255,0.06)", border: "1px solid rgba(63,216,255,0.2)", borderRadius: "4px", display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "0.75rem" }}>
-                                            <span style={{ color: "var(--accent)" }}>Searching only in: <strong>{selectedDay}</strong></span>
-                                            <button 
-                                                className="button-link" 
-                                                onClick={() => setSelectedDay(null)} 
-                                                style={{ color: "var(--text-light)", fontSize: "0.75rem", textDecoration: "underline" }}
-                                            >
-                                                Search Globally
-                                            </button>
-                                        </div>
-                                    )}
-                                </div>
-                                <div className="explorer-scroll-area">
-                                    {searchLoading ? (
-                                        <div className="pane-loading-indicator">SEARCHING ARCHIVE...</div>
-                                    ) : searchResults.length > 0 ? (
-                                        searchResults.map(result => {
-                                            const isPinned = pinnedConversationIds.includes(result.conversationId);
-                                            return (
-                                                <div 
-                                                    key={`${result.conversationId}-${result.timestamp}`} 
-                                                    className="search-result-card"
-                                                    draggable="true"
-                                                    onDragStart={(e) => {
-                                                        e.dataTransfer.setData("text/plain", result.conversationId);
-                                                    }}
-                                                >
-                                                    <div className="search-card-header">
-                                                        <div className="search-card-date">{result.dateString}</div>
-                                                        <span className={`relevance-badge ${result.relevance.toLowerCase()}`}>
-                                                            {result.relevance} relevance
-                                                        </span>
-                                                    </div>
-                                                    <h4 className="search-card-title">{result.conversationTitle}</h4>
-                                                    <p className="search-card-reason">{result.reason}</p>
-                                                    
-                                                    {/* Context Window (before & after matched text) */}
-                                                    <div className="search-card-context-window">
-                                                        {result.contextWindow.map((msg) => (
-                                                            <div 
-                                                                key={msg.id} 
-                                                                className={`context-message-bubble ${msg.contextRole}`}
-                                                            >
-                                                                <span className="context-message-sender">
-                                                                    {msg.direction === "sent" ? "Me" : (msg.metadata?.contact || msg.sender)}:
+                            ) : (
+                                /* Curated Threadline: show linked and available threads */
+                                <div style={{ display: "flex", flexDirection: "column", gap: "16px", padding: "10px 4px" }}>
+                                    <div>
+                                        <h4 style={{ margin: "0 0 8px 0", fontSize: "0.85rem", color: "var(--success)", letterSpacing: "1px", textTransform: "uppercase" }}>Linked Threads ({conversations.length})</h4>
+                                        {conversations.length > 0 ? (
+                                            conversations.map(c => {
+                                                const isActive = activeConversation?.id === c.id;
+                                                const isPinned = pinnedConversationIds.includes(c.id);
+                                                return (
+                                                    <div 
+                                                        key={c.id} 
+                                                        draggable="true"
+                                                        onDragStart={(e) => {
+                                                            e.dataTransfer.setData("application/json", JSON.stringify({ type: "conversation", id: c.id, title: c.title }));
+                                                            e.dataTransfer.setData("text/plain", c.id);
+                                                        }}
+                                                        className={`conversation-item ${isActive ? "active" : ""}`}
+                                                        onClick={() => {
+                                                            setActiveConversation(c);
+                                                            setActiveRightTab("conversation");
+                                                        }}
+                                                        style={{ border: "1px solid rgba(48, 209, 88, 0.2)", background: "rgba(48, 209, 88, 0.03)", marginBottom: "8px", borderRadius: "6px" }}
+                                                    >
+                                                        <div className="conversation-header-row">
+                                                            <span className="conversation-title-text" title={c.title}>
+                                                                {c.title}
+                                                            </span>
+                                                            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                                                                <button 
+                                                                    className={`pin-thread-btn ${isPinned ? "pinned" : ""}`}
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        if (isPinned) {
+                                                                             handleUnpinConversation(c.id);
+                                                                        } else {
+                                                                             handlePinConversation(c.id);
+                                                                        }
+                                                                    }}
+                                                                    style={{ color: isPinned ? getPinColor(c.id) : "inherit" }}
+                                                                >
+                                                                    📌
+                                                                </button>
+                                                                <span className="conversation-badge">
+                                                                    {c.messageCount}
                                                                 </span>
-                                                                <span className="context-message-body">{msg.body}</span>
                                                             </div>
-                                                        ))}
+                                                        </div>
                                                     </div>
+                                                );
+                                            })
+                                        ) : (
+                                            <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>No threads linked. Drag threads from below or link segments.</div>
+                                        )}
+                                    </div>
 
-                                                    <div className="search-card-actions">
-                                                        <button 
-                                                            className="search-card-btn view-btn"
-                                                            onClick={() => handleSearchResultClick(result)}
+                                    <div style={{ borderTop: "1px solid var(--border)", paddingTop: "12px" }}>
+                                        <h4 style={{ margin: "0 0 8px 0", fontSize: "0.85rem", color: "var(--accent)", letterSpacing: "1px", textTransform: "uppercase" }}>Available Threads ({archiveConversations.filter(ac => !conversations.some(c => c.id === ac.id)).length})</h4>
+                                        {archiveConversations.filter(ac => !conversations.some(c => c.id === ac.id)).length > 0 ? (
+                                            archiveConversations
+                                                .filter(ac => !conversations.some(c => c.id === ac.id))
+                                                .map(c => (
+                                                    <div 
+                                                        key={c.id} 
+                                                        draggable="true"
+                                                        onDragStart={(e) => {
+                                                            e.dataTransfer.setData("application/json", JSON.stringify({ type: "conversation", id: c.id, title: c.title }));
+                                                            e.dataTransfer.setData("text/plain", c.id);
+                                                        }}
+                                                        className="conversation-item"
+                                                        style={{ background: "rgba(255,255,255,0.02)", marginBottom: "8px", borderRadius: "6px", cursor: "grab" }}
+                                                    >
+                                                        <div className="conversation-header-row">
+                                                            <span className="conversation-title-text" title={c.title} style={{ flex: 1 }}>
+                                                                {c.title}
+                                                            </span>
+                                                            <button 
+                                                                className="button-link"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    handleLinkConversationAsSegment(c.id, c.title);
+                                                                }}
+                                                                style={{ color: "var(--accent)", fontSize: "0.8rem", fontWeight: "700", marginLeft: "10px" }}
+                                                            >
+                                                                [ADD]
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                ))
+                                        ) : (
+                                            <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>No other threads available. Ingest more files in the Archive.</div>
+                                        )}
+                                    </div>
+                                </div>
+                            )
+                        ) : activeTab === "search" ? (
+                            /* Search results list only */
+                            <>
+                                {searchLoading ? (
+                                    <div className="pane-loading-indicator">SEARCHING ARCHIVE...</div>
+                                ) : searchResults.length > 0 ? (
+                                    searchResults.map(result => {
+                                        const isPinned = pinnedConversationIds.includes(result.conversationId);
+                                        return (
+                                            <div 
+                                                key={`${result.conversationId}-${result.timestamp}`} 
+                                                className="search-result-card"
+                                                draggable="true"
+                                                onDragStart={(e) => {
+                                                    e.dataTransfer.setData("application/json", JSON.stringify({ type: "searchResult", result: result }));
+                                                    e.dataTransfer.setData("text/plain", result.conversationId);
+                                                }}
+                                            >
+                                                <div className="search-card-header">
+                                                    <div className="search-card-date">{result.dateString}</div>
+                                                    <span className={`relevance-badge ${result.relevance.toLowerCase()}`}>
+                                                        {result.relevance} relevance
+                                                    </span>
+                                                </div>
+                                                <h4 className="search-card-title">{result.conversationTitle}</h4>
+                                                <p className="search-card-reason">{result.reason}</p>
+                                                
+                                                {/* Context Window (before & after matched text) */}
+                                                <div className="search-card-context-window">
+                                                    {result.contextWindow.map((msg) => (
+                                                        <div 
+                                                            key={msg.id} 
+                                                            className={`context-message-bubble ${msg.contextRole}`}
                                                         >
-                                                            [VIEW]
-                                                        </button>
-                                                        <button 
-                                                            className="search-card-btn add-btn"
-                                                            onClick={() => {
+                                                            <span className="context-message-sender">
+                                                                {msg.direction === "sent" ? "Me" : (msg.metadata?.contact || msg.sender)}:
+                                                            </span>
+                                                            <span className="context-message-body">{msg.body}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+
+                                                <div className="search-card-actions">
+                                                    <button 
+                                                        className="search-card-btn view-btn"
+                                                        onClick={() => handleSearchResultClick(result)}
+                                                    >
+                                                        [VIEW]
+                                                    </button>
+                                                    <button 
+                                                        className="search-card-btn add-btn"
+                                                        onClick={() => {
+                                                            if (isArchive) {
                                                                 if (isPinned) {
                                                                     handleUnpinConversation(result.conversationId);
                                                                 } else {
                                                                     handlePinConversation(result.conversationId);
                                                                 }
-                                                            }}
-                                                            style={{ color: isPinned ? "var(--danger)" : "var(--accent)" }}
-                                                        >
-                                                            {isPinned ? "[REMOVE]" : "[ADD TO THREADLINE]"}
-                                                        </button>
-                                                    </div>
+                                                            } else {
+                                                                handleLinkSearchResultAsSegment(result);
+                                                            }
+                                                        }}
+                                                        style={{ color: isPinned ? "var(--danger)" : "var(--accent)" }}
+                                                    >
+                                                        {isArchive ? (isPinned ? "[REMOVE]" : "[ADD TO THREADLINE]") : "[LINK TO TIMELINE]"}
+                                                    </button>
                                                 </div>
-                                            );
-                                        })
-                                    ) : searchQuery.trim() ? (
-                                        <div className="pane-loading-indicator" style={{ color: "var(--text-muted)" }}>
-                                            NO MATCHES FOUND
-                                        </div>
-                                    ) : (
-                                        <div className="pane-loading-indicator" style={{ color: "var(--text-muted)" }}>
-                                            ENTER TERMS TO SEARCH
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        )}
+                                            </div>
+                                        );
+                                    })
+                                ) : searchQuery.trim() ? (
+                                    <div className="pane-loading-indicator" style={{ color: "var(--text-muted)" }}>
+                                        NO MATCHES FOUND
+                                    </div>
+                                ) : (
+                                    <div className="pane-loading-indicator" style={{ color: "var(--text-muted)" }}>
+                                        ENTER TERMS TO SEARCH
+                                    </div>
+                                )}
+                            </>
+                        ) : null}
                     </div>
                 </div>
 
@@ -1285,19 +1616,32 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                             )
                         ) : (
                             /* Default empty workspace screen */
-                            <div className="viewer-empty" style={{ display: "flex", flexDirection: "column", gap: "20px", alignItems: "center", padding: "20px" }}>
-                                <div className="viewer-empty-icon" style={{ fontSize: "2rem" }}>📊</div>
-                                <h3>{threadline.title.toUpperCase()}</h3>
-                                <p style={{ color: "var(--text-muted)", fontSize: "0.9rem", textAlign: "center" }}>
-                                    Select a Thread from the list to view messages,<br />
-                                    or select a data point on the heartbeat timeline wave above to explore.
-                                </p>
-                                <div style={{ width: "100%", maxWidth: "500px", marginTop: "20px", borderTop: "1px solid var(--border)", paddingTop: "20px" }}>
-                                    <div style={{ fontSize: "0.85rem", color: "var(--accent)", fontWeight: "700", marginBottom: "12px", textTransform: "uppercase", letterSpacing: "1px", textAlign: "center" }}>Import Additional Communications:</div>
-                                    <UploadPanel setImportResult={handleImportSuccess} threadlineId={threadline.id} />
-                                    <ImportPreview result={importResult} />
+                            isArchive ? (
+                                <div className="viewer-empty" style={{ display: "flex", flexDirection: "column", gap: "20px", alignItems: "center", padding: "20px" }}>
+                                    <div className="viewer-empty-icon" style={{ fontSize: "2.5rem" }}>📁</div>
+                                    <h3 style={{ letterSpacing: "1px", textTransform: "uppercase", color: "var(--accent)" }}>COMMUNICATIONS ARCHIVE</h3>
+                                    <p style={{ color: "var(--text-muted)", fontSize: "0.9rem", textAlign: "center", lineHeight: "1.5" }}>
+                                        Select a discovered Thread from the left pane list to inspect messages,<br />
+                                        or use the Search tab to query history in plain English.
+                                    </p>
+                                    <div style={{ width: "100%", maxWidth: "500px", marginTop: "20px", borderTop: "1px solid var(--border)", paddingTop: "20px" }}>
+                                        <div style={{ fontSize: "0.85rem", color: "var(--accent)", fontWeight: "700", marginBottom: "12px", textTransform: "uppercase", letterSpacing: "1px", textAlign: "center" }}>Import Additional Backup History:</div>
+                                        <UploadPanel setImportResult={handleImportSuccess} threadlineId={threadline.id} />
+                                        <ImportPreview result={importResult} />
+                                    </div>
                                 </div>
-                            </div>
+                            ) : (
+                                <div className="viewer-empty" style={{ display: "flex", flexDirection: "column", gap: "20px", alignItems: "center", padding: "20px" }}>
+                                    <div className="viewer-empty-icon" style={{ fontSize: "2.5rem" }}>📊</div>
+                                    <h3 style={{ letterSpacing: "1px", textTransform: "uppercase", color: "var(--accent)" }}>THREADLINE ANALYSIS WORKSPACE</h3>
+                                    <p style={{ color: "var(--text-muted)", fontSize: "0.9rem", textAlign: "center", lineHeight: "1.5" }}>
+                                        This workspace is empty. To build your timeline:<br />
+                                        1. Link entire conversations from the <strong>Threads</strong> tab.<br />
+                                        2. Drag & drop Saved Segments from the <strong>Segments</strong> tab.<br />
+                                        3. Use the <strong>Search</strong> tab to find specific matches, and click <strong>[LINK TO TIMELINE]</strong>.
+                                    </p>
+                                </div>
+                            )
                         )}
                     </div>
                 </div>

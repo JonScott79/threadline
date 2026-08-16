@@ -32,18 +32,11 @@ function Sidebar({
     onNew,
     onDelete,
     onRename,
-    onShowHelp
+    onShowHelp,
+    archiveEmpty
 }){
     const [compareIds, setCompareIds] = useState([]);
-    /*==============================================
-                        AUTH
-    ==============================================*/
-
     const { user, logoutLocalGuest } = useAuth();
-
-    /*==============================================
-                        EVENTS
-    ==============================================*/
 
     async function handleSignOut(){
         try {
@@ -57,16 +50,17 @@ function Sidebar({
         }
     }
 
-    /*==============================================
-                        RENDER
-    ==============================================*/
-
     return(
+
         <aside className="sidebar">
-            {/* Lanzar Ecosystem Branding */}
-            <div className="lanzar-branding" style={{ padding: "0 0 15px 0" }}>
-                <div style={{ color: "var(--text-light)", fontSize: "1.4rem", letterSpacing: "2px", fontWeight: "700" }}>THREADLINE</div>
-                <div style={{ color: "var(--text-muted)", fontSize: "0.65rem", letterSpacing: "2px", margin: "4px 0 0 0", fontWeight: "600", textTransform: "uppercase" }}>
+
+            <div className="sidebar-header">
+                
+                <h1 style={{ fontSize: "1.3rem", fontWeight: "800", color: "var(--text)" }}>
+                    THREADLINE
+                </h1>
+                
+                <div style={{ fontSize: "0.65rem", fontWeight: "600", letterSpacing: "1px", color: "var(--text-muted)", marginTop: "4px" }}>
                     by <span style={{ color: "var(--accent)" }}>▲ LANZAR</span>
                 </div>
             </div>
@@ -86,9 +80,9 @@ function Sidebar({
                 ==============================*/}
 
                 <div
-                    className="nav-item"
-                    onClick={onNew}
-                    style={{ fontWeight: "600" }}
+                    className={archiveEmpty ? "nav-item disabled" : "nav-item"}
+                    onClick={archiveEmpty ? () => alert("Please upload a backup file to your Communications Archive first to unlock workspace features.") : onNew}
+                    style={{ fontWeight: "600", opacity: archiveEmpty ? 0.4 : 1, cursor: archiveEmpty ? "not-allowed" : "pointer" }}
                 >
                     + New Threadline
                 </div>
@@ -99,6 +93,26 @@ function Sidebar({
                     style={{ fontWeight: "600", color: "var(--accent)" }}
                 >
                     📖 Help & Guide
+                </div>
+
+                <div
+                    className={
+                        (currentThreadline?.id || "").startsWith("archive_")
+                            ? "nav-item active"
+                            : "nav-item"
+                    }
+                    onClick={() => onSelect({
+                        id: `archive_${user?.uid || "local"}`,
+                        firestoreId: `archive_${user?.uid || "local"}`,
+                        title: "Communications Archive",
+                        source: "Ingested History",
+                        platform: "Multi",
+                        messageCount: 0,
+                        conversationCount: 0
+                    })}
+                    style={{ fontWeight: "600", color: "var(--text-light)" }}
+                >
+                    📁 Communications Archive
                 </div>
 
                 <div className="sidebar-divider"></div>
@@ -113,22 +127,26 @@ function Sidebar({
 
                 {
                     threadlines
+                        .filter(t => !(t.firestoreId || t.id || "").startsWith("archive_"))
                         .map(threadline=>(
                         <div
                             key={threadline.firestoreId || threadline.id}
                             className={
+                                archiveEmpty ? "nav-item nav-item-threadline disabled" : 
                                 (threadline.firestoreId || threadline.id) === (currentThreadline?.firestoreId || currentThreadline?.id)
                                     ? "nav-item active nav-item-threadline"
                                     : "nav-item nav-item-threadline"
                             }
-                            onClick={()=>onSelect(threadline)}
-                            style={{ display: "flex", alignItems: "center", paddingLeft: "10px" }}
+                            onClick={archiveEmpty ? () => alert("Please upload a backup file to your Communications Archive first to unlock custom workspaces.") : ()=>onSelect(threadline)}
+                            style={{ display: "flex", alignItems: "center", paddingLeft: "10px", opacity: archiveEmpty ? 0.4 : 1, cursor: archiveEmpty ? "not-allowed" : "pointer" }}
                         >
                             <input 
                                 type="checkbox"
-                                checked={compareIds.includes(threadline.firestoreId || threadline.id)}
+                                disabled={archiveEmpty}
+                                checked={!archiveEmpty && compareIds.includes(threadline.firestoreId || threadline.id)}
                                 onClick={(e) => e.stopPropagation()} // Prevent selecting single row
                                 onChange={(e) => {
+                                    if (archiveEmpty) return;
                                     const tid = threadline.firestoreId || threadline.id;
                                     if (e.target.checked) {
                                         setCompareIds(prev => [...prev, tid]);
@@ -138,7 +156,7 @@ function Sidebar({
                                 }}
                                 style={{ 
                                     marginRight: "10px", 
-                                    cursor: "pointer",
+                                    cursor: archiveEmpty ? "not-allowed" : "pointer",
                                     accentColor: "var(--accent)",
                                     width: "14px",
                                     height: "14px"
@@ -151,7 +169,10 @@ function Sidebar({
                                 <button 
                                     className="edit-threadline-btn" 
                                     title="Rename Threadline"
+                                    disabled={archiveEmpty}
+                                    style={{ cursor: archiveEmpty ? "not-allowed" : "pointer" }}
                                     onClick={(e) => {
+                                        if (archiveEmpty) return;
                                         e.stopPropagation();
                                         const newName = prompt("Rename threadline:", threadline.title);
                                         if (newName && newName.trim() && newName.trim() !== threadline.title) {
@@ -164,7 +185,10 @@ function Sidebar({
                                 <button 
                                     className="delete-threadline-btn" 
                                     title="Delete Threadline"
+                                    disabled={archiveEmpty}
+                                    style={{ cursor: archiveEmpty ? "not-allowed" : "pointer" }}
                                     onClick={(e) => {
+                                        if (archiveEmpty) return;
                                         e.stopPropagation();
                                         if (confirm(`Are you sure you want to delete "${threadline.title}"? All associated conversation logs will be permanently deleted.`)) {
                                             onDelete(threadline);

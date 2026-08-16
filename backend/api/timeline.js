@@ -57,16 +57,19 @@ router.get("/", (request, response) => {
         }
 
         // Validate threadlines exist and belong to the user
-        const placeholders = threadlineIds.map(() => "?").join(",");
-        const existing = db.query(
-            `SELECT id FROM threadlines WHERE id IN (${placeholders}) AND owner_id = ?`, 
-            [...threadlineIds, request.uid]
-        );
-        if (existing.length !== threadlineIds.length) {
-            return response.status(403).json({
-                status: "error",
-                message: "Access denied: One or more threadlines are missing or not owned by you."
-            });
+        const nonArchiveIds = threadlineIds.filter(id => id !== `archive_${request.uid}`);
+        if (nonArchiveIds.length > 0) {
+            const placeholders = nonArchiveIds.map(() => "?").join(",");
+            const existing = db.query(
+                `SELECT id FROM threadlines WHERE id IN (${placeholders}) AND owner_id = ?`, 
+                [...nonArchiveIds, request.uid]
+            );
+            if (existing.length !== nonArchiveIds.length) {
+                return response.status(403).json({
+                    status: "error",
+                    message: "Access denied: One or more threadlines are missing or not owned by you."
+                });
+            }
         }
 
         const zoom = request.query.zoom || "day";

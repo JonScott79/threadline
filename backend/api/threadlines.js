@@ -183,8 +183,9 @@ router.get("/:id/participants", (request, response) => {
     try {
         const { id } = request.params;
         // Verify ownership
+        const isArchive = id === `archive_${request.uid}`;
         const row = db.queryOne("SELECT owner_id FROM threadlines WHERE id = ?", [id]);
-        if (!row || row.owner_id !== request.uid) {
+        if (!isArchive && (!row || row.owner_id !== request.uid)) {
             return response.status(403).json({ status: "error", message: "Access denied." });
         }
         const rows = db.query(
@@ -241,8 +242,9 @@ router.get("/:id/conversations", (request, response) => {
 
         // Verify ownership for all requested threadlines
         for (const id of threadlineIds) {
+            const isArchive = id === `archive_${request.uid}`;
             const row = db.queryOne("SELECT owner_id FROM threadlines WHERE id = ?", [id]);
-            if (!row || row.owner_id !== request.uid) {
+            if (!isArchive && (!row || row.owner_id !== request.uid)) {
                 return response.status(403).json({ status: "error", message: "Access denied." });
             }
         }
@@ -351,12 +353,21 @@ router.get("/:id/conversations/:convId/messages", (request, response) => {
         const end = request.query.end ? Number(request.query.end) : null;
 
         // Verify conversation ownership.
-        const checkOwner = db.queryOne(
-            `SELECT c.id FROM conversations c 
-             JOIN threadlines t ON c.threadline_id = t.id 
-             WHERE t.id = ? AND t.owner_id = ? AND c.id = ?`,
-            [id, request.uid, convId]
-        );
+        const isArchive = id === `archive_${request.uid}`;
+        let checkOwner;
+        if (isArchive) {
+            checkOwner = db.queryOne(
+                `SELECT id FROM conversations WHERE threadline_id = ? AND id = ?`,
+                [id, convId]
+            );
+        } else {
+            checkOwner = db.queryOne(
+                `SELECT c.id FROM conversations c 
+                 JOIN threadlines t ON c.threadline_id = t.id 
+                 WHERE t.id = ? AND t.owner_id = ? AND c.id = ?`,
+                [id, request.uid, convId]
+            );
+        }
         if (!checkOwner) {
             return response.status(403).json({ status: "error", message: "Access denied." });
         }
@@ -420,8 +431,9 @@ router.get("/:id/days/:dateString", (request, response) => {
 
         // Verify ownership for all requested threadline IDs
         for (const id of threadlineIds) {
+            const isArchive = id === `archive_${request.uid}`;
             const row = db.queryOne("SELECT owner_id FROM threadlines WHERE id = ?", [id]);
-            if (!row || row.owner_id !== request.uid) {
+            if (!isArchive && (!row || row.owner_id !== request.uid)) {
                 return response.status(403).json({ status: "error", message: "Access denied." });
             }
         }

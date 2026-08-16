@@ -68,8 +68,9 @@ router.get("/", async (request, response) => {
 
         // Verify ownership of all threadline IDs
         for (const id of threadlineIds) {
+            const isArchive = id === `archive_${request.uid}`;
             const row = db.queryOne("SELECT owner_id FROM threadlines WHERE id = ?", [id]);
-            if (!row || row.owner_id !== request.uid) {
+            if (!isArchive && (!row || row.owner_id !== request.uid)) {
                 return response.status(403).json({
                     status: "error",
                     message: "Access denied."
@@ -81,7 +82,8 @@ router.get("/", async (request, response) => {
         const results = await searchEngine.search(threadlineId, queryText, {
             day,
             conversations: conversationsParam,
-            ids: request.query.ids || null
+            ids: request.query.ids || null,
+            uid: request.uid
         });
 
         response.json({

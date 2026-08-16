@@ -339,8 +339,21 @@ class SearchEngine {
         const clauses = [];
         const scopeParams = [];
         ids.forEach(id => {
-            clauses.push(" m.threadline_id = ? ");
-            scopeParams.push(id);
+            if (id.startsWith("archive_")) {
+                clauses.push(" m.threadline_id = ? ");
+                scopeParams.push(id);
+            } else {
+                // If it is a custom workspace, we search the user's global archive so they can find new segments to add
+                const archiveId = filters.uid ? `archive_${filters.uid}` : null;
+                if (archiveId) {
+                    clauses.push(" m.threadline_id = ? ");
+                    scopeParams.push(archiveId);
+                } else {
+                    // Fallback to searching linked messages if no user ID context is available
+                    clauses.push(" m.id IN (SELECT ssm.message_id FROM saved_segment_messages ssm JOIN threadline_segments ts ON ssm.saved_segment_id = ts.saved_segment_id WHERE ts.threadline_id = ?) ");
+                    scopeParams.push(id);
+                }
+            }
         });
         const scopeClause = `WHERE ( ${clauses.join(" OR ")} )`;
 
