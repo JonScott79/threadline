@@ -1,16 +1,63 @@
-# React + Vite
+# THREADLINE
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+**Threadline** is a local-first communication analysis platform. It processes exported communication data (such as SMS XML and HTML chat logs), normalizes them into a unified format, and presents them as a searchable, chronological timeline.
 
-Currently, two official plugins are available:
+It is designed with privacy and professional workflows in mind: your data stays on your machine and is stored in a local SQLite database.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Architecture
 
-## React Compiler
+Threadline operates as a **Monolithic Node.js/React Application**:
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- **Frontend:** React (Vite)
+- **Backend:** Node.js (Express)
+- **Database:** SQLite (`better-sqlite3`)
+- **Parsers:** Native Node.js parsers
+- **Authentication:** Firebase Auth (Client-side only)
 
-## Expanding the ESLint configuration
+*(Note: An experimental C++ engine repository exists separately at `JonScott79/threadline-engine`, but it is currently disconnected and not utilized by this web application.)*
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## Supported Formats
+
+| Format | Status |
+|--------|--------|
+| SMS Backup & Restore (`.xml`) | **IMPLEMENTED** |
+| HTML Conversation Export (`.html`) | **IMPLEMENTED** |
+| Facebook Messenger (`.json`) | PLANNED |
+| WhatsApp Export (`.txt`/`.zip`) | PLANNED |
+| Signal Export | PLANNED |
+| Email (`.eml`/`.msg`) | PLANNED |
+| PDF Documents | PLANNED |
+
+## How to Run
+
+### 1. Backend
+
+```bash
+cd backend
+npm install
+npm run dev
+```
+
+The Express server runs on `localhost:3001` and connects to `backend/database/threadline.db`.
+
+### 2. Frontend
+
+```bash
+# In the root directory (website/)
+npm install
+npm run dev
+```
+
+The Vite dev server will typically run on `localhost:5174`.
+
+## Current Limitations & Known Issues
+
+- **Local-First Only**: Despite having frontend login, there is currently no backend cryptographic token verification or cloud persistence. The application is strictly local.
+- **Parser Coverage**: Only SMS XML and HTML tables are supported.
+- **Port Sensitivity**: The backend strictly requires port `3001`. If another service is occupying it, the backend will fail to bind.
+
+## Development
+
+- `backend/` contains the Express API, SQLite integration, and parser logic.
+- `src/` contains the React frontend.
+- `docs/` contains legacy architecture and planning documents.
