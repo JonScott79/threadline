@@ -33,7 +33,6 @@ export async function uploadArchive(file, user, threadlineId = null){
             formData,
             {
                 headers:{
-                    "Content-Type":"multipart/form-data",
                     "x-user-uid": user.uid
                 }
             }
