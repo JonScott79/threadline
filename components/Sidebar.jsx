@@ -185,10 +185,8 @@ function Sidebar({
                                 <button 
                                     className="delete-threadline-btn" 
                                     title="Delete Threadline"
-                                    disabled={archiveEmpty}
-                                    style={{ cursor: archiveEmpty ? "not-allowed" : "pointer" }}
+                                    style={{ cursor: "pointer" }}
                                     onClick={(e) => {
-                                        if (archiveEmpty) return;
                                         e.stopPropagation();
                                         if (confirm(`Are you sure you want to delete "${threadline.title}"? All associated conversation logs will be permanently deleted.`)) {
                                             onDelete(threadline);
