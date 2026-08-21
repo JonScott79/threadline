@@ -1,3 +1,3 @@
 User-agent: *
 Allow: /
-Sitemap: https://threadline.lanzar.app/sitemap.xml
+Sitemap: https://threadline.lanzar.me/sitemap.xml
