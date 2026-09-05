@@ -118,13 +118,17 @@ async function runTest() {
             const filteredCount = filteredTimeline.buckets.reduce((acc, b) => acc + b.count, 0);
             assert.strictEqual(filteredCount, 2, 'Should match events for that conversation');
 
-            // 6. Verify non-existent conversation filter returns 0 events
-            const nonePath = `/api/threadlines/${threadlineId}/timeline?conversations=non_existent_conv`;
+            // 6. Verify non-existent / none_selected conversation filter returns 0 events (Deselect All)
+            const nonePath = `/api/threadlines/${threadlineId}/timeline?conversations=none_selected`;
             const noneTimeline = await httpGet(nonePath);
             assert.strictEqual(noneTimeline.status, 'success');
-            assert.strictEqual(noneTimeline.buckets.length, 0, 'Should return 0 buckets for hidden conversation');
+            assert.strictEqual(noneTimeline.buckets.length, 0, 'Should return 0 buckets when all conversations are deselected');
 
-            console.log('✅ Timeline backend integration test passed (aggregation, individual events, conversation visibility)');
+            // 7. Verify hiding conversations does NOT mutate or delete data from the database
+            const metaAfterHide = await httpGet(metaPath);
+            assert.strictEqual(metaAfterHide.totalEvents, 2, 'Total events in database must remain intact after timeline visibility filtering');
+
+            console.log('✅ Timeline backend integration test passed (aggregation, individual events, conversation layers & visibility)');
             server.close();
             process.exit(0);
         } catch (innerErr) {

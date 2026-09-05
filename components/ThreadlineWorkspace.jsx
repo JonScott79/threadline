@@ -767,6 +767,19 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
         // Set target highlight message to dominant representative message
         setActiveSearchMessageId(cluster.representativeMessageId || cluster.id);
 
+        // Ensure all participating conversations in this cluster are revealed on the timeline
+        if (cluster.conversations && cluster.conversations.length > 0) {
+            const clusterConvIds = cluster.conversations.map(c => c.id);
+            setVisibleConversationIds(prev => {
+                const missing = clusterConvIds.filter(id => !prev.includes(id));
+                return missing.length > 0 ? [...prev, ...missing] : prev;
+            });
+        } else if (cluster.conversationId) {
+            setVisibleConversationIds(prev =>
+                prev.includes(cluster.conversationId) ? prev : [...prev, cluster.conversationId]
+            );
+        }
+
         // Select the primary conversation and switch to Thread View
         const foundConv = conversations.find(c => c.id === cluster.conversationId) || {
             id: cluster.conversationId,
@@ -798,7 +811,14 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
             timelineRef.current.moveToTimestamp(msg.timestamp);
         }
 
-        // 2. Select the specific conversation this message originated from
+        // 2. Ensure this message's conversation layer is visible on the timeline
+        if (msg.conversationId) {
+            setVisibleConversationIds(prev =>
+                prev.includes(msg.conversationId) ? prev : [...prev, msg.conversationId]
+            );
+        }
+
+        // 3. Select the specific conversation this message originated from
         const foundConv = conversations.find(c => c.id === msg.conversationId) || {
             id: msg.conversationId,
             title: msg.conversationTitle || "Conversation",
@@ -807,7 +827,7 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
         setActiveConversation(foundConv);
         setActiveRightTab("conversation");
 
-        // 3. Scroll to target message bubble in existing Thread View
+        // 4. Scroll to target message bubble in existing Thread View
         setTimeout(() => {
             const el = document.getElementById(`msg-${msg.id}`);
             if (el) {
@@ -1399,16 +1419,26 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                                     {/* Timeline Layer Visibility Controls Header */}
                                     {conversations.length > 0 && (
                                         <div className="threads-visibility-toolbar">
-                                            <label title="Toggle timeline visibility for all conversations">
-                                                <input 
-                                                    type="checkbox"
-                                                    className="conversation-visibility-checkbox"
-                                                    checked={visibleConversationIds.length === conversations.length}
-                                                    onChange={handleToggleAllConversations}
-                                                />
-                                                <span>SELECT ALL</span>
-                                            </label>
-                                            <span className="threads-visibility-count">
+                                            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                                                <button
+                                                    type="button"
+                                                    className="layer-toggle-link"
+                                                    onClick={() => setVisibleConversationIds(conversations.map(c => c.id))}
+                                                    title="Show all conversation layers on timeline"
+                                                >
+                                                    SELECT ALL
+                                                </button>
+                                                <span style={{ color: "var(--border)", fontSize: "0.8rem" }}>|</span>
+                                                <button
+                                                    type="button"
+                                                    className="layer-toggle-link"
+                                                    onClick={() => setVisibleConversationIds([])}
+                                                    title="Hide all conversation layers on timeline"
+                                                >
+                                                    DESELECT ALL
+                                                </button>
+                                            </div>
+                                            <span className="threads-visibility-count" title="Number of visible layers on timeline">
                                                 {visibleConversationIds.length} / {conversations.length} VISIBLE
                                             </span>
                                         </div>

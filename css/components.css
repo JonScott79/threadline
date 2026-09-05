@@ -960,6 +960,24 @@
     user-select: none;
 }
 
+.layer-toggle-link {
+    background: none;
+    border: none;
+    color: var(--accent);
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    font-weight: 700;
+    cursor: pointer;
+    padding: 2px 4px;
+    letter-spacing: 0.04rem;
+    transition: var(--transition);
+}
+
+.layer-toggle-link:hover {
+    color: #fff;
+    text-decoration: underline;
+}
+
 .threads-visibility-count {
     font-family: var(--font-mono);
     font-size: 0.72rem;
