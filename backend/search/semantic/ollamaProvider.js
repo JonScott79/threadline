@@ -82,6 +82,34 @@ class OllamaSemanticProvider extends SemanticProvider {
     }
 
     /**
+     * Propose semantic vocabulary expansion terms for a user search query.
+     */
+    async expandQuery(query, options = {}) {
+        if (!query || typeof query !== "string" || !query.trim()) {
+            return { concepts: [] };
+        }
+
+        const maxExpansions = options.maxExpansions || 8;
+        const minConfidence = options.minConfidence || 0.65;
+
+        const prompt = `Propose 2 to 4 search synonyms or casual keywords for the query: "${query.trim()}"
+
+Output JSON strictly as:
+{"concepts": [{"term": "keyword", "confidence": 0.9, "reason": "brief"}]}`;
+
+        try {
+            const raw = await this._generateJson(prompt, { ...options, numPredict: 300 });
+            return SemanticSchemaValidator.validateQueryExpansionOutput(raw, {
+                maxExpansions,
+                minConfidence
+            });
+        } catch (error) {
+            // Graceful failure: return empty concepts so caller falls back to unexpanded query
+            return { concepts: [], error: error.message };
+        }
+    }
+
+    /**
      * Re-rank and score a bounded set of candidate messages for semantic relevance.
      */
     async scoreRelevance(query, candidates, options = {}) {

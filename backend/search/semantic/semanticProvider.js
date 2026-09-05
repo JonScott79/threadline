@@ -14,6 +14,17 @@ class SemanticProvider {
     }
 
     /**
+     * Propose semantic vocabulary expansion terms for a user search query.
+     * 
+     * @param {string} query - The natural-language user query.
+     * @param {Object} options - Options (maxExpansions, minConfidence, etc.)
+     * @returns {Promise<Object>} Structured result: { concepts: [{ term, confidence, reason }] }
+     */
+    async expandQuery(query, options = {}) {
+        throw new Error("expandQuery must be implemented by concrete SemanticProvider");
+    }
+
+    /**
      * Re-rank and score a bounded set of deterministic candidate messages for semantic relevance.
      * 
      * @param {string} query - The user search query.

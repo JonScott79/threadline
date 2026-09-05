@@ -118,6 +118,49 @@ async function runTests() {
     assert.strictEqual(typeof semanticAdapter.isEnabled(), "boolean");
     console.log(`✓ Adapter enabled status: ${semanticAdapter.isEnabled()} (governed by THREADLINE_SEMANTIC_ENABLED).`);
 
+    // 8. Schema Validation - Query Expansion
+    console.log("8. Schema validation for query expansion...");
+    const rawExpMock = {
+        concepts: [
+            { term: "cash", confidence: 0.95, reason: "currency" },
+            { term: "atm machine", confidence: 0.90, reason: "funds" },
+            { term: "cash", confidence: 0.88, reason: "duplicate term" },
+            { term: "x", confidence: 0.99, reason: "too short" },
+            { term: "a".repeat(45), confidence: 0.99, reason: "too long" },
+            { term: "unsafe<script>alert(1)</script>", confidence: 0.99, reason: "hostile characters" },
+            { term: "low-confidence-term", confidence: 0.30, reason: "below threshold" },
+            { term: "funds", confidence: "invalid", reason: "defaults to 0 and filtered" }
+        ]
+    };
+
+    const validatedExp = SemanticSchemaValidator.validateQueryExpansionOutput(rawExpMock, {
+        maxExpansions: 5,
+        minConfidence: 0.65
+    });
+
+    assert.strictEqual(validatedExp.concepts.length, 3, "Should keep only cash, atm machine, and sanitized unsafescriptalert1script");
+    assert.strictEqual(validatedExp.concepts[0].term, "cash");
+    assert.strictEqual(validatedExp.concepts[0].confidence, 0.95);
+    assert.strictEqual(validatedExp.concepts[1].term, "atm machine");
+    assert.strictEqual(validatedExp.concepts[2].term, "unsafescriptalert1script", "Special characters safely stripped");
+    console.log("✓ Malformed, duplicate, hostile, and low-confidence expansion terms correctly filtered.");
+
+    // 9. Query Expansion Max Capping
+    console.log("9. Query expansion max cap enforcement...");
+    const excessiveMock = {
+        concepts: Array.from({ length: 20 }, (_, i) => ({
+            term: `term${i}`,
+            confidence: 0.9,
+            reason: "bulk"
+        }))
+    };
+    const cappedExp = SemanticSchemaValidator.validateQueryExpansionOutput(excessiveMock, {
+        maxExpansions: 4,
+        minConfidence: 0.5
+    });
+    assert.strictEqual(cappedExp.concepts.length, 4, "Should strictly cap expansions at maxExpansions");
+    console.log("✓ Query expansion count strictly capped.");
+
     console.log("ALL SEMANTIC INFRASTRUCTURE UNIT TESTS PASSED! ✅\n");
 }
 

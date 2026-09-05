@@ -41,6 +41,49 @@ class SemanticAdapter {
     }
 
     /**
+     * Propose semantic vocabulary expansion terms for a user search query.
+     * Controlled by THREADLINE_SEMANTIC_EXPANSION_ENABLED (defaults to true if semantic is enabled).
+     */
+    async expandQuery(query, options = {}) {
+        const expansionFlag = process.env.THREADLINE_SEMANTIC_EXPANSION_ENABLED !== "false";
+        if (!this.isEnabled() || !expansionFlag || !query || !query.trim()) {
+            return { concepts: [], applied: false };
+        }
+
+        const t0 = Date.now();
+        try {
+            const maxExpansions = Number(options.maxExpansions || process.env.THREADLINE_SEMANTIC_MAX_EXPANSIONS || 6);
+            const minConfidence = Number(options.minConfidence || process.env.THREADLINE_SEMANTIC_MIN_CONFIDENCE || 0.65);
+
+            const res = await this.provider.expandQuery(query, {
+                ...options,
+                maxExpansions,
+                minConfidence
+            });
+            const elapsed = Date.now() - t0;
+
+            const concepts = res && Array.isArray(res.concepts) ? res.concepts : [];
+            return {
+                applied: concepts.length > 0,
+                concepts,
+                diagnostics: {
+                    model: this.provider.model,
+                    elapsed,
+                    expansionCount: concepts.length
+                },
+                error: res.error || null
+            };
+        } catch (error) {
+            return {
+                applied: false,
+                concepts: [],
+                error: error.message,
+                diagnostics: { elapsed: Date.now() - t0 }
+            };
+        }
+    }
+
+    /**
      * Re-rank and score bounded candidates semantically.
      * Guaranteed: Pure deterministic fallback if disabled or on error.
      */

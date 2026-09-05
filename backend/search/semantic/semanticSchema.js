@@ -137,6 +137,76 @@ class SemanticSchemaValidator {
 
         return sanitized;
     }
+
+    /**
+     * Validate and sanitize semantic query expansion output.
+     * 
+     * Requirements:
+     * - Valid array of concept terms
+     * - Strictly string terms, sanitized for safe FTS/SQL usage (letters, numbers, single spaces/hyphens)
+     * - Discard empty strings, excessive length (>40 chars), or unsafe characters
+     * - Deduplicate terms case-insensitively
+     * - Confidence clamped to [0.0, 1.0] and filtered by minConfidence
+     * - Capped to maxExpansions (default 8)
+     */
+    static validateQueryExpansionOutput(rawOutput, options = {}) {
+        const maxExpansions = Number(options.maxExpansions || 8);
+        const minConfidence = Number(options.minConfidence || 0.65);
+        const sanitized = { concepts: [] };
+
+        if (!rawOutput || typeof rawOutput !== "object") {
+            return sanitized;
+        }
+
+        const list = Array.isArray(rawOutput.concepts) ? rawOutput.concepts : [];
+        const seenTerms = new Set();
+
+        for (const item of list) {
+            if (!item || typeof item !== "object") continue;
+
+            const rawTerm = String(item.term || "").trim();
+            // Sanitize term: only allow alphanumeric, spaces, and hyphens; collapse whitespace
+            const cleanTerm = rawTerm
+                .replace(/[^a-zA-Z0-9\s-]/g, "")
+                .replace(/\s+/g, " ")
+                .trim()
+                .toLowerCase();
+
+            // Length constraints: between 2 and 40 characters
+            if (cleanTerm.length < 2 || cleanTerm.length > 40) {
+                continue;
+            }
+
+            // Deduplicate
+            if (seenTerms.has(cleanTerm)) {
+                continue;
+            }
+
+            let confidence = Number(item.confidence);
+            if (isNaN(confidence)) confidence = 0.0;
+            confidence = Math.max(0.0, Math.min(1.0, confidence));
+
+            if (confidence < minConfidence) {
+                continue;
+            }
+
+            const reason = String(item.reason || "Semantic expansion term").substring(0, 250);
+
+            sanitized.concepts.push({
+                term: cleanTerm,
+                confidence,
+                reason,
+                inference: true
+            });
+            seenTerms.add(cleanTerm);
+
+            if (sanitized.concepts.length >= maxExpansions) {
+                break;
+            }
+        }
+
+        return sanitized;
+    }
 }
 
 module.exports = SemanticSchemaValidator;

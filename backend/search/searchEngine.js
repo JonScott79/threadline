@@ -379,6 +379,23 @@ class SearchEngine {
             });
         });
 
+        // --- LAYER 2.5: OPTIONAL SEMANTIC QUERY EXPANSION ---
+        // Propose additional vocabulary terms without weakening explicit structural/temporal constraints
+        let expandedConcepts = [];
+        if (semanticAdapter.isEnabled()) {
+            try {
+                const expRes = await semanticAdapter.expandQuery(queryText, {
+                    maxExpansions: Number(process.env.THREADLINE_SEMANTIC_MAX_EXPANSIONS || 6),
+                    minConfidence: Number(process.env.THREADLINE_SEMANTIC_MIN_CONFIDENCE || 0.65)
+                });
+                if (expRes.applied && Array.isArray(expRes.concepts)) {
+                    expandedConcepts = expRes.concepts;
+                }
+            } catch (err) {
+                console.warn("[SemanticAdapter] Query expansion fallback:", err.message);
+            }
+        }
+
         // Add matching synonyms if concepts are parsed
         intent.concepts.forEach(concept => {
             const synonyms = this.conceptSynonyms[concept] || [];
@@ -386,6 +403,14 @@ class SearchEngine {
                 const formatted = formatFtsTerm(syn);
                 if (formatted && !ftsTerms.includes(formatted)) ftsTerms.push(formatted);
             });
+        });
+
+        // Add semantically expanded concepts into FTS candidate retrieval
+        expandedConcepts.forEach(ec => {
+            const formatted = formatFtsTerm(ec.term);
+            if (formatted && !ftsTerms.includes(formatted)) {
+                ftsTerms.push(formatted);
+            }
         });
 
         const hasTemporalConstraint = Boolean(timeFilterSql);
@@ -504,6 +529,23 @@ class SearchEngine {
                 });
             });
 
+            // 3.5. Semantically expanded vocabulary matches
+            let semanticExpansionMatch = null;
+            expandedConcepts.forEach(ec => {
+                const rxWord = new RegExp(`\\b${escapeRegExp(ec.term)}\\b`, "i");
+                if (rxWord.test(bodyLower)) {
+                    score += Math.round(ec.confidence * 30);
+                    matchReasons.push(`Semantic expansion match: "${ec.term}" (${Math.round(ec.confidence * 100)}% confidence)`);
+                    if (!semanticExpansionMatch || ec.confidence > semanticExpansionMatch.confidence) {
+                        semanticExpansionMatch = {
+                            expandedTerm: ec.term,
+                            confidence: ec.confidence,
+                            reason: ec.reason
+                        };
+                    }
+                }
+            });
+
             // 4. Participant matches
             intent.people.forEach(person => {
                 const personClean = person.toLowerCase();
@@ -552,7 +594,12 @@ class SearchEngine {
                 }
             }
 
-            return { message: m, score, matchReasons };
+            return {
+                message: m,
+                score,
+                matchReasons,
+                semanticExpansion: semanticExpansionMatch
+            };
         });
 
         // Filter and sort candidates
