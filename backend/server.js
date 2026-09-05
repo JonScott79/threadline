@@ -63,10 +63,13 @@ app.get("/", (request, response) => {
 
 });
 
+const exportRoutes = require("./api/export");
+
 app.use("/api/import", authMiddleware, importRoutes);
 app.use("/api/threadlines", authMiddleware, threadlineRoutes);
 app.use("/api/threadlines/:id/timeline", authMiddleware, timelineRoutes);
 app.use("/api/threadlines/:id/search", authMiddleware, searchRoutes);
+app.use("/api/threadlines/:id/export", authMiddleware, exportRoutes);
 app.use("/api", authMiddleware, segmentRoutes);
 
 /*======================================================

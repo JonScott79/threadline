@@ -117,6 +117,58 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
     // Tracks expanded Event Clusters in the Search Explorer pane
     const [expandedClusterIds, setExpandedClusterIds] = useState([]);
 
+    // Evidence Export Modal States
+    const [exportModalCluster, setExportModalCluster] = useState(null);
+    const [exportFormat, setExportFormat] = useState("pdf"); // 'pdf' | 'watermarked_pdf' | 'json'
+    const [exportCaseName, setExportCaseName] = useState("");
+    const [isExporting, setIsExporting] = useState(false);
+
+    async function handleExecuteExport() {
+        if (!exportModalCluster) return;
+        setIsExporting(true);
+        try {
+            const response = await axios.post(
+                `${API_BASE_URL}/threadlines/${threadline.id}/export`,
+                {
+                    format: exportFormat,
+                    cluster: exportModalCluster,
+                    query: searchQuery,
+                    caseInfo: {
+                        caseName: exportCaseName.trim() || "Threadline Investigation",
+                        investigator: uid,
+                        notes: `Exported from Event Cluster: ${exportModalCluster.title || exportModalCluster.topic}`
+                    }
+                },
+                {
+                    headers: { "x-user-uid": uid },
+                    responseType: "blob"
+                }
+            );
+
+            // Trigger browser download
+            const blob = new Blob([response.data], {
+                type: exportFormat === "json" ? "application/json" : "application/pdf"
+            });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            const ext = exportFormat === "json" ? "json" : (exportFormat === "watermarked_pdf" ? "READONLY.pdf" : "pdf");
+            const clusterTitle = (exportModalCluster.title || "evidence").toLowerCase().replace(/[^a-z0-9]/g, "_").substring(0, 30);
+            a.download = `threadline_export_${clusterTitle}.${ext}`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+
+            setExportModalCluster(null);
+        } catch (error) {
+            console.error("Export request failed:", error);
+            alert("Export failed: " + (error.response?.data?.message || error.message));
+        } finally {
+            setIsExporting(false);
+        }
+    }
+
     // Viewer (Right Pane) States
     const [activeRightTab, setActiveRightTab] = useState("day"); // 'day' | 'conversation'
     const [activeConversation, setActiveConversation] = useState(null);
@@ -1761,7 +1813,7 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                                                         </div>
                                                     </div>
 
-                                                    {/* Actions: View on Timeline & Link */}
+                                                    {/* Actions: View on Timeline, Link, & Export Evidence */}
                                                     <div className="search-card-actions">
                                                         <button 
                                                             className="search-card-btn view-btn"
@@ -1786,6 +1838,16 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                                                             style={{ color: isPinned ? "var(--danger)" : "var(--accent)" }}
                                                         >
                                                             {isArchive ? (isPinned ? "[REMOVE]" : "[ADD TO THREADLINE]") : "[LINK TO TIMELINE]"}
+                                                        </button>
+                                                        <button 
+                                                            className="search-card-btn export-btn"
+                                                            onClick={() => {
+                                                                setExportModalCluster(result);
+                                                                setExportCaseName("");
+                                                            }}
+                                                            title="Export this reconstructed event as PDF or JSON evidence"
+                                                        >
+                                                            [⬇ EXPORT]
                                                         </button>
                                                     </div>
                                                 </div>
@@ -2178,6 +2240,122 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                     </div>
                 </div>
             </div>
+
+            {/* Evidence Export Modal */}
+            {exportModalCluster && (
+                <div className="export-modal-backdrop" onClick={() => !isExporting && setExportModalCluster(null)}>
+                    <div className="export-modal-card" onClick={(e) => e.stopPropagation()}>
+                        <div className="export-modal-header">
+                            <div className="export-modal-title">
+                                <span>⚖️ EXPORT EVIDENCE</span>
+                                <span className="export-modal-badge">TAMPER-EVIDENT</span>
+                            </div>
+                            <button 
+                                className="button-link" 
+                                style={{ color: "#94a3b8", fontSize: "1.2rem", lineHeight: 1 }}
+                                onClick={() => !isExporting && setExportModalCluster(null)}
+                                disabled={isExporting}
+                            >
+                                ✕
+                            </button>
+                        </div>
+
+                        <div className="export-modal-body">
+                            <div className="export-context-box">
+                                <div className="export-context-title">
+                                    {exportModalCluster.title || "Event Reconstruction"}
+                                </div>
+                                <div className="export-context-meta">
+                                    <span>💬 <strong>{exportModalCluster.messages?.length || 0}</strong> messages</span>
+                                    <span>🧵 <strong>{exportModalCluster.conversations?.length || 1}</strong> conversations</span>
+                                    {exportModalCluster.timeSpan?.dateString && (
+                                        <span>📅 {exportModalCluster.timeSpan.dateString}</span>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="export-field-group">
+                                <label className="export-field-label">Export Format</label>
+                                <div className="export-format-options">
+                                    <label className={`export-option-label ${exportFormat === "pdf" ? "active" : ""}`}>
+                                        <input 
+                                            type="radio" 
+                                            name="exportFormat" 
+                                            value="pdf" 
+                                            checked={exportFormat === "pdf"} 
+                                            onChange={() => setExportFormat("pdf")}
+                                            className="export-option-radio"
+                                        />
+                                        <div className="export-option-text">
+                                            <span className="export-option-name">PDF — Evidence Report</span>
+                                            <span className="export-option-desc">Human-readable forensic report with complete chronology, provenance, and SHA-256 integrity manifest.</span>
+                                        </div>
+                                    </label>
+
+                                    <label className={`export-option-label ${exportFormat === "watermarked_pdf" ? "active" : ""}`}>
+                                        <input 
+                                            type="radio" 
+                                            name="exportFormat" 
+                                            value="watermarked_pdf" 
+                                            checked={exportFormat === "watermarked_pdf"} 
+                                            onChange={() => setExportFormat("watermarked_pdf")}
+                                            className="export-option-radio"
+                                        />
+                                        <div className="export-option-text">
+                                            <span className="export-option-name">PDF — Watermarked / Read-Only Evidence Copy</span>
+                                            <span className="export-option-desc">Includes background watermark, PDF permission restrictions, and tamper-evident cryptographic hash section.</span>
+                                        </div>
+                                    </label>
+
+                                    <label className={`export-option-label ${exportFormat === "json" ? "active" : ""}`}>
+                                        <input 
+                                            type="radio" 
+                                            name="exportFormat" 
+                                            value="json" 
+                                            checked={exportFormat === "json"} 
+                                            onChange={() => setExportFormat("json")}
+                                            className="export-option-radio"
+                                        />
+                                        <div className="export-option-text">
+                                            <span className="export-option-name">JSON — Evidence Package</span>
+                                            <span className="export-option-desc">Machine-readable package with per-item canonical hashes, event reconstruction, and complete integrity manifest.</span>
+                                        </div>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div className="export-field-group">
+                                <label className="export-field-label">Case / Investigation Name (Optional)</label>
+                                <input 
+                                    type="text" 
+                                    className="export-field-input"
+                                    placeholder="e.g. Case #2026-TL-09, Review, or Incident ID"
+                                    value={exportCaseName}
+                                    onChange={(e) => setExportCaseName(e.target.value)}
+                                    disabled={isExporting}
+                                />
+                            </div>
+                        </div>
+
+                        <div className="export-modal-footer">
+                            <button 
+                                className="export-btn-cancel"
+                                onClick={() => setExportModalCluster(null)}
+                                disabled={isExporting}
+                            >
+                                Cancel
+                            </button>
+                            <button 
+                                className="export-btn-submit"
+                                onClick={handleExecuteExport}
+                                disabled={isExporting}
+                            >
+                                {isExporting ? "GENERATING EXPORT..." : "EXPORT EVIDENCE"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

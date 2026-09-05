@@ -2168,4 +2168,234 @@
     }
 }
 
+/*======================================================
+            EVIDENCE EXPORT MODAL & BUTTONS
+======================================================*/
+
+.export-modal-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(10, 15, 29, 0.82);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    padding: 20px;
+}
+
+.export-modal-card {
+    background: #0f172a;
+    border: 1px solid rgba(56, 189, 248, 0.25);
+    border-radius: 12px;
+    width: 100%;
+    max-width: 520px;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+    overflow: hidden;
+    animation: fadeInModal 0.18s ease-out;
+}
+
+@keyframes fadeInModal {
+    from { opacity: 0; transform: scale(0.96); }
+    to { opacity: 1; transform: scale(1); }
+}
+
+.export-modal-header {
+    padding: 16px 20px;
+    background: #1e293b;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.export-modal-title {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #f8fafc;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.export-modal-badge {
+    font-size: 0.72rem;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: rgba(56, 189, 248, 0.15);
+    color: #38bdf8;
+    border: 1px solid rgba(56, 189, 248, 0.3);
+    font-weight: 600;
+}
+
+.export-modal-body {
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.export-context-box {
+    background: #1e293b;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 8px;
+    padding: 12px 14px;
+}
+
+.export-context-title {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #38bdf8;
+    margin-bottom: 4px;
+}
+
+.export-context-meta {
+    font-size: 0.78rem;
+    color: #94a3b8;
+    display: flex;
+    gap: 12px;
+}
+
+.export-format-options {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.export-option-label {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px;
+    border-radius: 8px;
+    background: #162032;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.export-option-label:hover {
+    border-color: rgba(56, 189, 248, 0.4);
+    background: #1a273e;
+}
+
+.export-option-label.active {
+    border-color: #38bdf8;
+    background: rgba(56, 189, 248, 0.08);
+}
+
+.export-option-radio {
+    margin-top: 3px;
+    accent-color: #38bdf8;
+}
+
+.export-option-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.export-option-name {
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: #f1f5f9;
+}
+
+.export-option-desc {
+    font-size: 0.75rem;
+    color: #94a3b8;
+    line-height: 1.35;
+}
+
+.export-field-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.export-field-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.export-field-input {
+    background: #162032;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 6px;
+    color: #f1f5f9;
+    padding: 8px 12px;
+    font-size: 0.85rem;
+    outline: none;
+    transition: border-color 0.15s ease;
+}
+
+.export-field-input:focus {
+    border-color: #38bdf8;
+}
+
+.export-modal-footer {
+    padding: 14px 20px;
+    background: #1e293b;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+.export-btn-cancel {
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: #94a3b8;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.export-btn-cancel:hover {
+    color: #f8fafc;
+    border-color: rgba(255, 255, 255, 0.3);
+}
+
+.export-btn-submit {
+    background: #0284c7;
+    border: none;
+    color: #ffffff;
+    padding: 8px 20px;
+    border-radius: 6px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: background 0.15s ease;
+}
+
+.export-btn-submit:hover:not(:disabled) {
+    background: #0369a1;
+}
+
+.export-btn-submit:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.search-card-btn.export-btn {
+    border-color: rgba(56, 189, 248, 0.4);
+    color: #38bdf8;
+}
+
+.search-card-btn.export-btn:hover {
+    background: rgba(56, 189, 248, 0.12);
+    border-color: #38bdf8;
+}
 
