@@ -191,7 +191,7 @@ async function ingestArchive(uid, archive, filename, file_size, targetThreadline
                     );
                 } else {
                     newMessagesCount++;
-                    const msgId = crypto.randomUUID();
+                    const msgId = msg.id || crypto.randomUUID();
                     const senderName = msg.direction === "sent" ? "Me" : (msg.metadata?.contact || msg.sender);
 
                     db.run(

@@ -176,7 +176,8 @@ class EventClusterer {
                     matchReason: (item.matchReasons && item.matchReasons.length > 0)
                         ? item.matchReasons.join("; ")
                         : "Related communication in event timeframe",
-                    score: item.score
+                    score: item.score,
+                    semanticInference: item.semanticInference || null
                 }))
                 .sort((a, b) => a.timestamp - b.timestamp);
 

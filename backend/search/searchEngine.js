@@ -9,6 +9,7 @@
 
 const db = require("../database/database");
 const eventClusterer = require("./eventClusterer");
+const semanticAdapter = require("./semantic/semanticAdapter");
 
 class SearchEngine {
     constructor() {
@@ -558,6 +559,36 @@ class SearchEngine {
         const sorted = scored
             .filter(sm => sm.score > 0)
             .sort((a, b) => b.score - a.score);
+
+        // --- LAYER 4.5: OPTIONAL SEMANTIC RE-RANKING & RELEVANCE ENRICHMENT ---
+        // If semantic intelligence is enabled via environment flag, score bounded candidates
+        if (semanticAdapter.isEnabled() && sorted.length > 0) {
+            try {
+                const semanticRes = await semanticAdapter.scoreCandidates(queryText, sorted);
+                if (semanticRes.applied && semanticRes.relevanceMap) {
+                    sorted.forEach(sm => {
+                        const semHit = semanticRes.relevanceMap.get(sm.message.id);
+                        if (semHit) {
+                            // Boost candidate score conservatively proportional to semantic confidence (max +50 pts)
+                            const semBonus = Math.round(semHit.relevanceScore * 50);
+                            sm.score += semBonus;
+                            sm.semanticInference = {
+                                relevanceScore: semHit.relevanceScore,
+                                reason: semHit.reason,
+                                model: semanticRes.diagnostics.model,
+                                inference: true
+                            };
+                            sm.matchReasons.push(`Semantic inference: ${semHit.reason} (${Math.round(semHit.relevanceScore * 100)}% confidence)`);
+                        }
+                    });
+                    // Re-sort with semantic adjustment
+                    sorted.sort((a, b) => b.score - a.score);
+                }
+            } catch (err) {
+                // Graceful fallback: continue with deterministic ranking
+                console.warn("[SemanticAdapter] Fallback to deterministic scoring:", err.message);
+            }
+        }
 
         // --- LAYER 5: EVENT CLUSTERING & CONTEXT EXPANSION ---
         // Clusters candidates into coherent Event Clusters across conversations while preserving forensic provenance
