@@ -14,10 +14,11 @@ class SearchEngine {
     constructor() {
         // Concept and topic mapping synonyms for semantic expansion (purged of generic terms like 'no', 'time', 'date')
         this.conceptSynonyms = {
-            visitation: ["visit", "schedule", "pick up", "drop off", "custody", "child", "children", "overnight", "sleepover"],
+            visitation: ["visit", "schedule", "custody", "child", "children", "overnight", "sleepover"],
+            transportation: ["transportation", "ride", "drive", "car", "pick up", "picking up", "drop off", "dropping off", "uber", "lyft", "traffic", "flight", "airport"],
             refused: ["refuse", "cancel", "deny", "not tonight", "withheld", "denied"],
             shopping: ["shop", "store", "buy", "mall", "grocery", "groceries", "bought", "purchased", "market"],
-            concert: ["concert", "show", "band", "music", "ticket", "tickets", "stage", "venue", "live"],
+            concert: ["concert", "band", "music", "ticket", "tickets", "stage", "venue", "live"],
             argument: ["argue", "argument", "fight", "dispute", "screaming", "angry", "yelling", "shouted", "mad", "upset", "shouting"],
             camping: ["camp", "camping", "tent", "outside", "nature", "woods", "forest", "gear", "sleeping bag"]
         };
@@ -141,7 +142,13 @@ class SearchEngine {
                 info.concepts.push(concept);
             } else {
                 for (const kw of keywords) {
-                    if (new RegExp(`\\b${escapeRegExp(kw)}\\b`, "i").test(cleanedQuery)) {
+                    // Support multi-word phrases with optional pronouns/particles in between (e.g. "pick me up", "picking her up")
+                    let pattern = `\\b${escapeRegExp(kw)}\\b`;
+                    if (kw.includes(" ")) {
+                        const parts = kw.split(/\s+/).map(escapeRegExp);
+                        pattern = `\\b${parts[0]}(?:\\s+(?:me|her|him|us|them|someone|you))?\\s+${parts.slice(1).join("\\s+")}\\b`;
+                    }
+                    if (new RegExp(pattern, "i").test(cleanedQuery)) {
                         info.concepts.push(concept);
                         break;
                     }
@@ -149,8 +156,16 @@ class SearchEngine {
             }
         }
 
-        // 8. Extract remaining keywords (ignoring fillers)
-        const fillers = new Set(["that", "time", "we", "went", "in", "when", "me", "the", "conversation", "about", "going", "where", "i", "told", "him", "couldn't", "make", "it", "what", "did", "talk", "to", "had", "our", "a", "for", "with", "around", "of", "and", "or", "on", "was", "were", "went"]);
+        // 8. Extract remaining keywords (ignoring conversational fillers and question prompts)
+        const fillers = new Set([
+            "that", "time", "we", "went", "in", "when", "me", "the", "conversation", "conversations",
+            "about", "going", "where", "i", "told", "him", "her", "she", "he", "they", "them", "us",
+            "couldn't", "make", "it", "what", "did", "talk", "talks", "talking", "talked", "to", "had",
+            "our", "a", "an", "for", "with", "around", "of", "and", "or", "on", "was", "were", "said",
+            "say", "saying", "would", "could", "should", "find", "show", "tell", "get", "figuring",
+            "out", "all", "both", "who", "whom", "whose", "why", "how", "been", "there", "their", "is",
+            "are", "am", "be", "this", "these", "those"
+        ]);
         cleanedQuery
             .replace(/[^\w\s]/g, "")
             .split(/\s+/)
@@ -413,7 +428,12 @@ class SearchEngine {
                 }
                 const synonyms = this.conceptSynonyms[concept] || [];
                 synonyms.forEach(syn => {
-                    const rxWord = new RegExp(`\\b${escapeRegExp(syn)}\\b`, "i");
+                    let pattern = `\\b${escapeRegExp(syn)}\\b`;
+                    if (syn.includes(" ")) {
+                        const parts = syn.split(/\s+/).map(escapeRegExp);
+                        pattern = `\\b${parts[0]}(?:\\s+(?:me|her|him|us|them|someone|you))?\\s+${parts.slice(1).join("\\s+")}\\b`;
+                    }
+                    const rxWord = new RegExp(pattern, "i");
                     if (rxWord.test(bodyLower)) {
                         score += 35;
                         matchReasons.push(`Related concept: ${concept} (${syn})`);

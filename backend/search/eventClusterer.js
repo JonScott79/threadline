@@ -253,10 +253,11 @@ class EventClusterer {
         let hasSharedConcept = false;
 
         const conceptSynonyms = {
-            visitation: ["visit", "schedule", "pick up", "drop off", "custody", "child", "children", "overnight", "sleepover"],
+            visitation: ["visit", "schedule", "custody", "child", "children", "overnight", "sleepover"],
+            transportation: ["transportation", "ride", "drive", "car", "pick up", "picking up", "drop off", "dropping off", "uber", "lyft", "traffic", "flight", "airport"],
             refused: ["refuse", "cancel", "deny", "not tonight", "withheld", "denied"],
             shopping: ["shop", "store", "buy", "mall", "grocery", "groceries", "bought", "purchased", "market"],
-            concert: ["concert", "show", "band", "music", "ticket", "tickets", "stage", "venue", "live"],
+            concert: ["concert", "band", "music", "ticket", "tickets", "stage", "venue", "live"],
             argument: ["argue", "argument", "fight", "dispute", "screaming", "angry", "yelling", "shouted", "mad", "upset", "shouting"],
             camping: ["camp", "camping", "tent", "outside", "nature", "woods", "forest", "gear", "sleeping bag"]
         };
@@ -270,7 +271,12 @@ class EventClusterer {
                 }
                 const syns = conceptSynonyms[c] || [];
                 for (const s of syns) {
-                    if (bodyLower.includes(s.toLowerCase())) {
+                    let pattern = `\\b${s}\\b`;
+                    if (s.includes(" ")) {
+                        const parts = s.split(/\s+/);
+                        pattern = `\\b${parts[0]}(?:\\s+(?:me|her|him|us|them|someone|you))?\\s+${parts.slice(1).join("\\s+")}\\b`;
+                    }
+                    if (new RegExp(pattern, "i").test(bodyLower)) {
                         hasSharedConcept = true;
                         fitScore += 0.40;
                         break;
@@ -280,9 +286,11 @@ class EventClusterer {
             }
         }
 
+        let hasSharedKeyword = false;
         if (intent.keywords && intent.keywords.length > 0) {
             for (const kw of intent.keywords) {
                 if (bodyLower.includes(kw.toLowerCase())) {
+                    hasSharedKeyword = true;
                     fitScore += 0.25;
                     break;
                 }
@@ -317,9 +325,12 @@ class EventClusterer {
 
         // Conservative guard:
         // Do NOT create an Event Cluster merely because people know each other or messages occurred near the same time.
-        // There must be meaningful shared evidence (shared concept or query keywords or same conversation context)
-        // connecting the communications.
-        if (!hasSharedConcept && !cluster.conversationIds.includes(m.conversationId)) {
+        // There must be meaningful shared evidence:
+        // - Shared concept
+        // - OR shared query keyword within active temporal proximity (<= 7 days)
+        // - OR same conversation continuity
+        const hasCrossThreadEvidence = hasSharedConcept || (hasSharedKeyword && minDistanceMs <= 7 * dayMs);
+        if (!hasCrossThreadEvidence && !cluster.conversationIds.includes(m.conversationId)) {
             return 0.0;
         }
 
