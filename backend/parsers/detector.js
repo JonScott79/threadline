@@ -64,36 +64,38 @@ function detectFile(filePath){
         Facebook Messenger
     ------------------------------------------*/
 
-    if(
-
+    if (
         fileSample.includes("\"participants\"") &&
-
         fileSample.includes("\"messages\"")
-
-    ){
-
-        return{
-
-            type:"Facebook Messenger",
-
-            confidence:100
-
+    ) {
+        return {
+            type: "Facebook Messenger",
+            confidence: 100
         };
+    }
 
+    /*------------------------------------------
+        Communication Log / Plaintext (.log / .txt)
+    ------------------------------------------*/
+
+    const hasTimestampedLines = /(?:\[?\d{4}[-/.]\d{2}[-/.]\d{2}[ T]\d{2}:\d{2}|\[\d{10,13}\]|[A-Za-z]{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2})/.test(fileSample);
+    const isTxtOrLog = filePath.endsWith(".log") || filePath.endsWith(".txt");
+
+    if (hasTimestampedLines || isTxtOrLog) {
+        return {
+            type: "Log / Plaintext",
+            confidence: hasTimestampedLines ? 90 : 50
+        };
     }
 
     /*------------------------------------------
         Unknown
     ------------------------------------------*/
 
-    return{
-
-        type:"Unknown",
-
-        confidence:0
-
+    return {
+        type: "Unknown",
+        confidence: 0
     };
-
 }
 
 /*======================================================

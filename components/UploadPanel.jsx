@@ -47,8 +47,9 @@ function UploadPanel({ setImportResult, threadlineId }) {
             throw new Error("The selected file is empty (0 bytes).");
         }
         const ext = file.name.split(".").pop().toLowerCase();
-        if (ext !== "xml" && ext !== "html") {
-            throw new Error(`Invalid file format (.${ext}). Only XML and HTML backup files are supported.`);
+        const supported = ["xml", "html", "json", "log", "txt"];
+        if (!supported.includes(ext)) {
+            throw new Error(`Invalid file format (.${ext}). Supported formats: XML, HTML, JSON, LOG, TXT.`);
         }
         
         // Limit browser parsing size to 150MB to prevent memory crashes

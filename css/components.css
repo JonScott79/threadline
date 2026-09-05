@@ -798,6 +798,236 @@
     color: var(--text);
 }
 
+/* vis-timeline container */
+.vis-timeline-container {
+    height: 180px;
+}
+
+.vis-timeline-mount {
+    width: 100%;
+    height: 100%;
+}
+
+/* ============================================
+   VIS-TIMELINE DARK THEME OVERRIDES
+   Match Threadline's forensic aesthetic
+============================================ */
+
+/* Main timeline panel */
+.vis-timeline {
+    border: none !important;
+    background: transparent !important;
+    font-family: var(--font-mono) !important;
+}
+
+/* Time axis */
+.vis-time-axis {
+    background: rgba(16, 24, 32, 0.3) !important;
+}
+
+.vis-time-axis .vis-text {
+    color: var(--text-muted) !important;
+    font-family: var(--font-mono) !important;
+    font-size: 0.72rem !important;
+}
+
+.vis-time-axis .vis-text.vis-major {
+    color: var(--text-light) !important;
+    font-weight: 600 !important;
+    font-size: 0.78rem !important;
+}
+
+.vis-time-axis .vis-grid.vis-minor {
+    border-color: rgba(36, 52, 69, 0.4) !important;
+}
+
+.vis-time-axis .vis-grid.vis-major {
+    border-color: rgba(36, 52, 69, 0.7) !important;
+}
+
+/* Item panel / content area */
+.vis-panel.vis-center,
+.vis-panel.vis-left,
+.vis-panel.vis-right {
+    border-color: transparent !important;
+}
+
+.vis-panel.vis-bottom {
+    border-color: var(--border) !important;
+}
+
+/* Bar items — intensity levels */
+.vis-item.vis-range.tl-bar {
+    border: none !important;
+    border-radius: 1px !important;
+    min-height: 8px;
+}
+
+.vis-item.vis-range.tl-bar .vis-item-content {
+    padding: 0 !important;
+    display: none !important;
+}
+
+.vis-item.vis-range.tl-bar-low {
+    background: rgba(63, 216, 255, 0.2) !important;
+    box-shadow: 0 0 4px rgba(63, 216, 255, 0.1) !important;
+}
+
+.vis-item.vis-range.tl-bar-med {
+    background: rgba(63, 216, 255, 0.45) !important;
+    box-shadow: 0 0 8px rgba(63, 216, 255, 0.15) !important;
+}
+
+.vis-item.vis-range.tl-bar-high {
+    background: rgba(63, 216, 255, 0.75) !important;
+    box-shadow: 0 0 14px rgba(63, 216, 255, 0.3) !important;
+}
+
+.vis-item.vis-range.tl-bar-selected {
+    background: var(--success) !important;
+    box-shadow: 0 0 16px rgba(66, 211, 146, 0.4) !important;
+}
+
+/* Search match highlight with pulsing glow */
+.vis-item.vis-range.tl-bar-match {
+    background: #ffd60a !important;
+    box-shadow: 0 0 18px rgba(255, 214, 10, 0.75) !important;
+    border: 1px solid #ffffff !important;
+    animation: pulse-search-match 1.8s infinite ease-in-out;
+}
+
+@keyframes pulse-search-match {
+    0%, 100% { box-shadow: 0 0 14px rgba(255, 214, 10, 0.6); }
+    50% { box-shadow: 0 0 24px rgba(255, 214, 10, 1); }
+}
+
+/* Individual timeline communication event items */
+.vis-item.vis-box.tl-event-item,
+.vis-item.vis-point.tl-event-item {
+    background: rgba(16, 24, 32, 0.95) !important;
+    border: 1px solid var(--accent) !important;
+    color: var(--text) !important;
+    border-radius: 4px !important;
+    font-size: 0.72rem !important;
+    padding: 3px 6px !important;
+    cursor: pointer !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5) !important;
+    transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease !important;
+}
+
+.vis-item.vis-box.tl-event-item:hover,
+.vis-item.vis-point.tl-event-item:hover {
+    transform: translateY(-2px) !important;
+    border-color: #ffffff !important;
+    box-shadow: 0 4px 14px rgba(63, 216, 255, 0.4) !important;
+}
+
+.vis-item.vis-box.tl-event-item.tl-event-match,
+.vis-item.vis-point.tl-event-item.tl-event-match {
+    border-color: #ffd60a !important;
+    background: rgba(30, 25, 10, 0.95) !important;
+    box-shadow: 0 0 16px rgba(255, 214, 10, 0.8) !important;
+    animation: pulse-search-match 1.8s infinite ease-in-out;
+}
+
+.vis-item.vis-box.tl-event-item.tl-event-match:hover {
+    border-color: #ffffff !important;
+    box-shadow: 0 0 22px rgba(255, 214, 10, 1) !important;
+}
+
+/* Conversation Visibility & Layers Toolbar */
+.threads-visibility-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px;
+    background: rgba(13, 20, 27, 0.85);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    backdrop-filter: blur(4px);
+}
+
+.threads-visibility-toolbar label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text-light);
+    cursor: pointer;
+    user-select: none;
+}
+
+.threads-visibility-count {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--accent);
+    background: rgba(63, 216, 255, 0.1);
+    padding: 2px 6px;
+    border-radius: 3px;
+    border: 1px solid rgba(63, 216, 255, 0.25);
+}
+
+.conversation-item.hidden-layer {
+    opacity: 0.45;
+    background: transparent !important;
+}
+
+.conversation-item.hidden-layer:hover {
+    opacity: 0.75;
+}
+
+.conversation-visibility-checkbox {
+    width: 15px;
+    height: 15px;
+    cursor: pointer;
+    accent-color: var(--accent);
+    flex-shrink: 0;
+}
+
+/* Item hover state */
+.vis-item.vis-range.tl-bar:hover {
+    box-shadow: 0 0 20px rgba(63, 216, 255, 0.5) !important;
+}
+
+/* Selected item */
+.vis-item.vis-selected {
+    outline: 1px solid var(--accent) !important;
+}
+
+/* Custom range bar (drag) */
+.vis-custom-time {
+    background-color: var(--accent) !important;
+    width: 1px !important;
+}
+
+/* Tooltip (vis-timeline native) */
+.vis-tooltip {
+    background: var(--panel-light) !important;
+    border: 1px solid var(--accent) !important;
+    color: var(--text) !important;
+    font-family: var(--font-mono) !important;
+    font-size: 0.78rem !important;
+    padding: 6px 10px !important;
+    box-shadow: var(--shadow) !important;
+    border-radius: 2px !important;
+}
+
+/* Scrollbar in the timeline area */
+.vis-timeline::-webkit-scrollbar {
+    height: 4px;
+}
+.vis-timeline::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 2px;
+}
+.vis-timeline::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+
 /* Dashboard Split layout - Unified Panel Workbench */
 .dashboard-content-split {
     display: flex;
@@ -1227,6 +1457,7 @@
 ======================================================*/
 
 .timeline-dropzone {
+    position: relative;
     border: 2px dashed transparent;
     border-radius: 8px;
     transition: var(--transition);
@@ -1242,6 +1473,35 @@
     border-color: var(--accent) !important;
     background: rgba(63, 216, 255, 0.08) !important;
     box-shadow: 0 0 15px rgba(63, 216, 255, 0.2);
+}
+
+.timeline-dropzone-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 50;
+    background: rgba(11, 16, 22, 0.88);
+    backdrop-filter: blur(4px);
+    border: 2px dashed var(--accent);
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    pointer-events: none;
+    color: var(--accent);
+    font-family: var(--font-mono);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    font-size: 0.95rem;
+    font-weight: 600;
+}
+
+.timeline-dropzone-overlay .drop-sub {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-weight: normal;
+    letter-spacing: 0.5px;
 }
 
 .pinned-comparison-bar {

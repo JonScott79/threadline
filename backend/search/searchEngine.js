@@ -8,6 +8,7 @@
 */
 
 const db = require("../database/database");
+const eventClusterer = require("./eventClusterer");
 
 class SearchEngine {
     constructor() {
@@ -377,9 +378,10 @@ class SearchEngine {
 
         const candidates = db.query(sql, [...scopeParams, ...queryParams, ...candidateParams]);
 
-        // --- LAYER 4: RELEVANCE SCORING ---
+        // --- LAYER 4: RELEVANCE SCORING & PROVENANCE RECORDING ---
         const scored = candidates.map(m => {
             let score = 0;
+            const matchReasons = [];
             const bodyLower = (m.body || "").toLowerCase();
             const titleLower = (m.conversationTitle || "").toLowerCase();
 
@@ -387,6 +389,7 @@ class SearchEngine {
             intent.quotedPhrases.forEach(qp => {
                 if (bodyLower.includes(qp.toLowerCase())) {
                     score += 200;
+                    matchReasons.push(`Exact phrase match: "${qp}"`);
                 }
             });
 
@@ -395,8 +398,10 @@ class SearchEngine {
                 const rxWord = new RegExp(`\\b${escapeRegExp(kw)}\\b`, "i");
                 if (rxWord.test(bodyLower)) {
                     score += 40; // Whole-word match
+                    matchReasons.push(`Keyword match: ${kw}`);
                 } else if (bodyLower.includes(kw)) {
                     score += 5;  // Substring match
+                    matchReasons.push(`Partial keyword match: ${kw}`);
                 }
             });
 
@@ -404,12 +409,14 @@ class SearchEngine {
             intent.concepts.forEach(concept => {
                 if (new RegExp(`\\b${escapeRegExp(concept)}\\b`, "i").test(bodyLower)) {
                     score += 45;
+                    matchReasons.push(`Direct concept match: ${concept}`);
                 }
                 const synonyms = this.conceptSynonyms[concept] || [];
                 synonyms.forEach(syn => {
                     const rxWord = new RegExp(`\\b${escapeRegExp(syn)}\\b`, "i");
                     if (rxWord.test(bodyLower)) {
                         score += 35;
+                        matchReasons.push(`Related concept: ${concept} (${syn})`);
                     }
                 });
             });
@@ -420,9 +427,11 @@ class SearchEngine {
                 const rxWord = new RegExp(`\\b${escapeRegExp(personClean)}\\b`, "i");
                 if (rxWord.test(bodyLower)) {
                     score += 50; // Mentions person
+                    matchReasons.push(`Participant mention: ${person}`);
                 }
                 if (titleLower.includes(personClean) || (m.sender && m.sender.toLowerCase().includes(personClean))) {
                     score += 80; // Sourced from or conversation with person
+                    matchReasons.push(`Participant match: ${person}`);
                 }
             });
 
@@ -431,6 +440,7 @@ class SearchEngine {
                 const rxWord = new RegExp(`\\b${escapeRegExp(intent.location)}\\b`, "i");
                 if (rxWord.test(bodyLower)) {
                     score += 80;
+                    matchReasons.push(`Location match: ${intent.location}`);
                 }
             }
 
@@ -441,6 +451,7 @@ class SearchEngine {
                 if (diffMs <= 14 * dayMs) {
                     // Score bonus: +100 max decaying to 0 at 14 days
                     score += Math.max(0, Math.round(100 * (1 - diffMs / (14 * dayMs))));
+                    matchReasons.push("Temporal proximity to anchor event");
                 }
             }
 
@@ -450,13 +461,15 @@ class SearchEngine {
                 const mDate = new Date(m.timestamp);
                 if (intent.month && mDate.getUTCMonth() + 1 === intent.month) {
                     score += 100;
+                    matchReasons.push(`Date match: month ${intent.month}`);
                 }
                 if (intent.year && mDate.getUTCFullYear() === intent.year) {
                     score += 100;
+                    matchReasons.push(`Date match: year ${intent.year}`);
                 }
             }
 
-            return { message: m, score };
+            return { message: m, score, matchReasons };
         });
 
         // Filter and sort candidates
@@ -464,110 +477,10 @@ class SearchEngine {
             .filter(sm => sm.score > 0)
             .sort((a, b) => b.score - a.score);
 
-        // --- LAYER 5: RESULT GROUPING ---
-        const groupMap = new Map();
-        for (const item of sorted) {
-            const m = item.message;
-            const key = m.conversationId;
+        // --- LAYER 5: EVENT CLUSTERING & CONTEXT EXPANSION ---
+        // Clusters candidates into coherent Event Clusters across conversations while preserving forensic provenance
+        return eventClusterer.cluster(sorted, intent, db);
 
-            if (!groupMap.has(key)) {
-                groupMap.set(key, {
-                    conversationId: m.conversationId,
-                    conversationTitle: m.conversationTitle,
-                    platform: m.platform,
-                    maxScore: item.score,
-                    matchesCount: 0,
-                    timestamps: [],
-                    representativeMessage: m,
-                    matchedMessages: []
-                });
-            }
-
-            const group = groupMap.get(key);
-            group.matchesCount += 1;
-            group.timestamps.push(m.timestamp);
-            if (item.score > group.maxScore) {
-                group.maxScore = item.score;
-                group.representativeMessage = m;
-            }
-            group.matchedMessages.push(m);
-        }
-
-        // --- LAYER 6: CONTEXT EXPANSION ---
-        const results = [];
-        for (const group of groupMap.values()) {
-            group.timestamps.sort((a, b) => a - b);
-
-            let relevance = "Low";
-            if (group.maxScore >= 180) relevance = "High";
-            else if (group.maxScore >= 70) relevance = "Medium";
-
-            let reason = "Relevant discussion found";
-            if (intent.concepts.length > 0) {
-                reason = `Relevant discussion found around ${intent.concepts.join(" and ")}`;
-            }
-            if (intent.month) {
-                const monthName = Object.keys(this.months).find(k => this.months[k] === intent.month);
-                reason += ` in ${monthName.toUpperCase()}`;
-            }
-            if (intent.location) {
-                reason += ` relating to ${intent.location.toUpperCase()}`;
-            }
-            reason += ".";
-
-            const repMsg = group.representativeMessage;
-
-            // Fetch preceding messages context
-            const preceding = db.query(
-                `SELECT id, sender, recipient, timestamp, body, direction, platform, metadata
-                 FROM messages
-                 WHERE conversation_id = ? AND timestamp < ?
-                 ORDER BY timestamp DESC
-                 LIMIT 2`,
-                [group.conversationId, repMsg.timestamp]
-            ).reverse();
-
-            // Fetch succeeding messages context
-            const succeeding = db.query(
-                `SELECT id, sender, recipient, timestamp, body, direction, platform, metadata
-                 FROM messages
-                 WHERE conversation_id = ? AND timestamp > ?
-                 ORDER BY timestamp ASC
-                 LIMIT 2`,
-                [group.conversationId, repMsg.timestamp]
-            );
-
-            const contextWindow = [
-                ...preceding.map(pm => ({ ...pm, contextRole: "preceding" })),
-                { ...repMsg, contextRole: "match" },
-                ...succeeding.map(sm => ({ ...sm, contextRole: "succeeding" }))
-            ].map(m => ({
-                ...m,
-                metadata: typeof m.metadata === "string" ? JSON.parse(m.metadata || "{}") : m.metadata
-            }));
-
-            // Format displayed date using UTC representation
-            const repDate = new Date(repMsg.timestamp);
-            const dateOptions = { timeZone: "UTC", year: "numeric", month: "long", day: "numeric" };
-            const dateStr = repDate.toLocaleDateString("en-US", dateOptions);
-
-            results.push({
-                conversationId: group.conversationId,
-                conversationTitle: group.conversationTitle,
-                platform: group.platform,
-                relevance,
-                relevanceScore: group.maxScore,
-                reason,
-                dateString: dateStr,
-                timestamp: repMsg.timestamp,
-                messageCount: group.matchedMessages.length,
-                representativeMessageId: repMsg.id,
-                contextWindow
-            });
-        }
-
-        results.sort((a, b) => b.relevanceScore - a.relevanceScore);
-        return results;
     }
 }
 

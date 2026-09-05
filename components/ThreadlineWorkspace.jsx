@@ -30,6 +30,7 @@ import SupportedImports from "./SupportedImports";
 import UploadPanel from "./UploadPanel";
 import ImportPreview from "./ImportPreview";
 import Timeline from "./Timeline";
+import { uploadArchive } from "../js/imports/upload";
 
 // =====================================
 // Constants
@@ -48,7 +49,7 @@ const PINNED_COLORS = [
 // Component
 // =====================================
 
-function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline, uid }) {
+function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline, uid, onImportSuccess }) {
     const isArchive = threadline?.id?.startsWith("archive_") || false;
 
     /*==============================================
@@ -56,6 +57,8 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
     ==============================================*/
 
     const [importResult, setImportResult] = useState(null);
+    const [showImportOverlay, setShowImportOverlay] = useState(false);
+    const [timelineRefreshKey, setTimelineRefreshKey] = useState(0);
     const [stats, setStats] = useState({
         messageCount: threadline.messageCount || 0,
         conversationCount: threadline.conversationCount || 0
@@ -73,8 +76,11 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
     // Toggle to bypass timeframe filter in chat viewer
     const [showFullConversation, setShowFullConversation] = useState(false);
 
-    // Compared conversations (pinned ids)
+    // Pinned comparison states
     const [pinnedConversationIds, setPinnedConversationIds] = useState([]);
+
+    // Timeline layer visibility controls (selected conversations visible on timeline)
+    const [visibleConversationIds, setVisibleConversationIds] = useState([]);
 
     // Curated saved segments states
     const [savedSegments, setSavedSegments] = useState([]);
@@ -104,6 +110,7 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
     const [searchResults, setSearchResults] = useState([]);
     const [searchLoading, setSearchLoading] = useState(false);
     const [isDraggingOver, setIsDraggingOver] = useState(false);
+    const [timelineUploading, setTimelineUploading] = useState(false);
 
     // Search matched message ID to jump/highlight
     const [activeSearchMessageId, setActiveSearchMessageId] = useState(null);
@@ -116,8 +123,9 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
     const [dayEvents, setDayEvents] = useState([]);
     const [dayEventsLoading, setDayEventsLoading] = useState(false);
 
-    // Refs for auto scrolling
+    // Refs for auto scrolling and timeline imperative control
     const messagesEndRef = useRef(null);
+    const timelineRef = useRef(null);
 
     // Derive active pinned conversation objects
     const pinnedConversations = conversations.filter(c => pinnedConversationIds.includes(c.id));
@@ -177,17 +185,16 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
 
     // Fetch imports, participants or segment maps depending on workspace type
     useEffect(() => {
-        if (threadline.id) {
-            const isArchive = threadline.id.startsWith("archive_");
-            if (isArchive) {
-                fetchImports();
+        if (threadline && threadline.id) {
+            fetchConversations();
+            fetchImports();
+            if (threadline.id.startsWith("archive_")) {
                 fetchParticipants();
                 setSavedSegments([]);
                 setLinkedSegments([]);
             } else {
                 fetchSegmentsData();
-                setImports([]);
-                setParticipants([]);
+                fetchParticipants();
             }
         } else {
             setImports([]);
@@ -420,7 +427,16 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                 }
             );
             if (response.data && response.data.status === "success") {
-                setConversations(response.data.conversations || []);
+                const convs = response.data.conversations || [];
+                setConversations(convs);
+                setVisibleConversationIds(prev => {
+                    if (prev.length === 0) {
+                        return convs.map(c => c.id);
+                    }
+                    // Keep valid IDs from previous state, add any new ones
+                    const existingValid = prev.filter(id => convs.some(c => c.id === id));
+                    return existingValid.length > 0 ? existingValid : convs.map(c => c.id);
+                });
             }
 
             if (isCustom) {
@@ -601,6 +617,28 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
         setPinnedConversationIds(prev => prev.filter(id => id !== convId));
     }
 
+    // Toggle layer visibility for an individual conversation on the timeline
+    function handleToggleConversationVisibility(convId) {
+        setVisibleConversationIds(prev => {
+            if (prev.includes(convId)) {
+                return prev.filter(id => id !== convId);
+            } else {
+                return [...prev, convId];
+            }
+        });
+    }
+
+    // Select All / Deselect All conversations on the timeline
+    function handleToggleAllConversations() {
+        setVisibleConversationIds(prev => {
+            if (prev.length === conversations.length) {
+                return []; // Deselect All
+            } else {
+                return conversations.map(c => c.id); // Select All
+            }
+        });
+    }
+
     // Color mapper for pinned tags
     function getPinColor(id) {
         const index = pinnedConversationIds.indexOf(id);
@@ -642,6 +680,7 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                             messageCount: newThreadline.messageCount,
                             conversationCount: newThreadline.conversationCount
                         });
+                        setTimelineRefreshKey(k => k + 1);
                         fetchConversations();
                         if (newThreadline.id.startsWith("archive_")) {
                             fetchImports();
@@ -658,6 +697,7 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                         messageCount: response.archive.messageCount,
                         conversationCount: response.archive.conversationCount
                     });
+                    setTimelineRefreshKey(k => k + 1);
                     fetchConversations();
                     if (threadline.id.startsWith("archive_")) {
                         fetchImports();
@@ -668,6 +708,30 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                     }
                 });
         }
+    }
+
+    // Handles clicking an individual communication on the timeline
+    function handleTimelineMessageSelect(event) {
+        if (!event) return;
+        const msgId = event.sourceId || event.id;
+        setActiveSearchMessageId(msgId);
+
+        // Find or create conversation object
+        const foundConv = conversations.find(c => c.id === event.conversationId) || {
+            id: event.conversationId,
+            title: event.conversationTitle || "Conversation",
+            platform: event.platform || "SMS"
+        };
+        setActiveConversation(foundConv);
+        setActiveRightTab("conversation");
+
+        // Scroll to message bubble
+        setTimeout(() => {
+            const el = document.getElementById(`msg-${msgId}`);
+            if (el) {
+                el.scrollIntoView({ behavior: "smooth", block: "center" });
+            }
+        }, 350);
     }
 
     // Handles clicking a search result: zooms timeline & scrolls to conversation
@@ -687,12 +751,17 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
         // Set message highlight target
         setActiveSearchMessageId(result.representativeMessageId || result.id);
 
-        // 1. Jump timeline zoom & period
+        // 1. Move & center timeline on the search match timestamp
+        if (timelineRef.current && timelineRef.current.moveToTimestamp) {
+            timelineRef.current.moveToTimestamp(result.timestamp);
+        }
+
+        // 2. Jump timeline zoom & period states
         setZoom("day");
         setSelectedYearMonth(yearMonthStr);
         setSelectedDay(dateStr);
 
-        // 2. Select matching conversation
+        // 3. Select matching conversation
         const foundConv = conversations.find(c => c.id === result.conversationId) || {
             id: result.conversationId,
             title: result.conversationTitle,
@@ -701,7 +770,7 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
         setActiveConversation(foundConv);
         setActiveRightTab("conversation");
 
-        // 3. Scroll to target message bubble
+        // 4. Scroll to target message bubble
         setTimeout(() => {
             const targetId = result.representativeMessageId || result.id;
             const el = document.getElementById(`msg-${targetId}`);
@@ -718,26 +787,73 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
     // 1. Render empty/importer view if no messages are present in the global archive
     if (isArchive && stats.messageCount === 0) {
         return (
-            <div className="workspace-dashboard empty-state" style={{ display: "flex", flexDirection: "column", gap: "20px", padding: "40px" }}>
-                <section className="panel hero" style={{ padding: "30px", width: "100%", maxWidth: "600px", margin: "0 auto", textAlign: "center" }}>
-                    <h2 style={{ color: "var(--accent)", textTransform: "uppercase", letterSpacing: "1px" }}>{threadline.title}</h2>
-                    <p style={{ color: "var(--text-muted)", marginTop: "12px", fontSize: "0.95rem" }}>
-                        Import your phone backup history to build a searchable Communications Archive.
+            <div className="workspace-dashboard empty-state" style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                minHeight: "100%",
+                padding: "40px 20px",
+                gap: "0"
+            }}>
+                {/* Branding */}
+                <div style={{ textAlign: "center", marginBottom: "12px" }}>
+                    <h1 style={{
+                        fontSize: "2.4rem",
+                        fontWeight: "800",
+                        color: "var(--accent)",
+                        letterSpacing: "0.25rem",
+                        marginBottom: "6px"
+                    }}>
+                        THREADLINE
+                    </h1>
+                    <p style={{
+                        fontSize: "0.85rem",
+                        color: "var(--text-muted)",
+                        letterSpacing: "0.15rem",
+                        textTransform: "uppercase"
+                    }}>
+                        Communication Forensics Workspace
                     </p>
-                    
-                    <div style={{ marginTop: "24px", width: "100%" }}>
-                        <UploadPanel
-                            setImportResult={handleImportSuccess}
-                            threadlineId={threadline.id}
-                        />
+                </div>
 
-                        <ImportPreview
-                            result={importResult}
-                        />
+                {/* Large drop zone */}
+                <div style={{ width: "100%", maxWidth: "640px" }}>
+                    <UploadPanel
+                        setImportResult={handleImportSuccess}
+                        threadlineId={threadline.id}
+                    />
+                </div>
+
+                {/* Import result */}
+                {importResult && (
+                    <div style={{ width: "100%", maxWidth: "640px" }}>
+                        <ImportPreview result={importResult} />
                     </div>
-                </section>
+                )}
 
-                <div style={{ width: "100%", maxWidth: "600px", margin: "0 auto" }}>
+                {/* Workflow description */}
+                <div style={{
+                    textAlign: "center",
+                    maxWidth: "500px",
+                    margin: "20px auto 0",
+                    padding: "20px",
+                    borderTop: "1px solid var(--border)"
+                }}>
+                    <p style={{
+                        color: "var(--text-muted)",
+                        fontSize: "0.88rem",
+                        lineHeight: "1.7",
+                        margin: "0 0 16px 0"
+                    }}>
+                        Import your communication archives to build a searchable,
+                        zoomable historical timeline. Drop a backup file above or
+                        click to browse.
+                    </p>
+                </div>
+
+                {/* Supported formats */}
+                <div style={{ width: "100%", maxWidth: "640px" }}>
                     <SupportedImports />
                 </div>
             </div>
@@ -747,6 +863,57 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
     // 2. Render primary communication timeline workspace
     return (
         <div className="workspace-dashboard">
+            {/* Import Overlay — appears when clicking Import in populated workspace */}
+            {showImportOverlay && (
+                <div style={{
+                    position: "absolute",
+                    inset: 0,
+                    zIndex: 100,
+                    background: "rgba(11, 16, 22, 0.95)",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "20px",
+                    padding: "40px"
+                }}>
+                    <button
+                        className="button-link"
+                        onClick={() => setShowImportOverlay(false)}
+                        style={{
+                            position: "absolute",
+                            top: "20px",
+                            right: "20px",
+                            fontSize: "1.2rem",
+                            color: "var(--text-muted)",
+                            cursor: "pointer"
+                        }}
+                    >
+                        ✕ CLOSE
+                    </button>
+                    <h2 style={{
+                        color: "var(--accent)",
+                        textTransform: "uppercase",
+                        letterSpacing: "2px",
+                        fontSize: "1.2rem"
+                    }}>
+                        IMPORT ADDITIONAL ARCHIVE
+                    </h2>
+                    <div style={{ width: "100%", maxWidth: "560px" }}>
+                        <UploadPanel
+                            setImportResult={(result) => {
+                                handleImportSuccess(result);
+                                setShowImportOverlay(false);
+                            }}
+                            threadlineId={threadline.id}
+                        />
+                    </div>
+                    <div style={{ width: "100%", maxWidth: "560px" }}>
+                        <SupportedImports />
+                    </div>
+                </div>
+            )}
+
             {/* Dashboard Header */}
             <div className="dashboard-header">
                 <div>
@@ -755,19 +922,72 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                 <div className="dashboard-stats">
                     <span>THREADS: <strong>{stats.conversationCount}</strong></span>
                     <span>EVENTS: <strong>{stats.messageCount}</strong></span>
-                    <span>SOURCE: <strong>{threadline.source}</strong></span>
+                    <button
+                        className="button-link"
+                        onClick={() => setShowImportOverlay(true)}
+                        style={{
+                            color: "var(--accent)",
+                            fontWeight: "700",
+                            fontSize: "0.75rem",
+                            textTransform: "uppercase",
+                            letterSpacing: "1px",
+                            border: "1px solid var(--accent)",
+                            padding: "4px 12px",
+                            borderRadius: "3px",
+                            cursor: "pointer",
+                            marginLeft: "8px"
+                        }}
+                    >
+                        ＋ IMPORT
+                    </button>
                 </div>
             </div>
 
             {/* Glowing Heartbeat Timeline component wrapped in drag drop listeners */}
             <div 
                 className={`timeline-dropzone ${isDraggingOver ? "drag-active" : ""}`}
-                onDragOver={(e) => e.preventDefault()}
-                onDragEnter={() => setIsDraggingOver(true)}
-                onDragLeave={() => setIsDraggingOver(false)}
+                onDragOver={(e) => {
+                    e.preventDefault();
+                    if (!isDraggingOver) setIsDraggingOver(true);
+                }}
+                onDragEnter={(e) => {
+                    e.preventDefault();
+                    setIsDraggingOver(true);
+                }}
+                onDragLeave={(e) => {
+                    // Only unset if leaving the dropzone container itself
+                    if (!e.currentTarget.contains(e.relatedTarget)) {
+                        setIsDraggingOver(false);
+                    }
+                }}
                 onDrop={async (e) => {
                     e.preventDefault();
                     setIsDraggingOver(false);
+
+                    // 1. Direct OS file drop (e.g. .log, .txt, .xml, .html, .json)
+                    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                        const file = e.dataTransfer.files[0];
+                        const ext = file.name.split(".").pop().toLowerCase();
+                        const allowedExts = ["xml", "html", "json", "log", "txt"];
+                        if (!allowedExts.includes(ext)) {
+                            alert(`Unsupported file format (.${ext}). Supported formats: .log, .txt, .xml, .html, .json`);
+                            return;
+                        }
+
+                        try {
+                            setTimelineUploading(true);
+                            const response = await uploadArchive(file, { uid }, threadline.id);
+                            handleImportSuccess(response);
+                        } catch (err) {
+                            console.error("Timeline drop upload error:", err);
+                            alert(err.response?.data?.message || err.message || "Failed to upload log file.");
+                        } finally {
+                            setTimelineUploading(false);
+                        }
+                        return;
+                    }
+
+                    // 2. Internal Drag & Drop (segment, search result, or thread)
                     const dataStr = e.dataTransfer.getData("application/json");
                     if (dataStr) {
                         try {
@@ -794,7 +1014,21 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                     }
                 }}
             >
+                {/* Visual drag/upload overlay */}
+                {isDraggingOver && (
+                    <div className="timeline-dropzone-overlay">
+                        <span>📥 DROP LOG / ARCHIVE TO INGEST INTO TIMELINE</span>
+                        <span className="drop-sub">Supports .log, .txt, .json, .xml, .html</span>
+                    </div>
+                )}
+                {timelineUploading && (
+                    <div className="timeline-dropzone-overlay">
+                        <span className="heartbeat-pulse">⚡ INGESTING COMMUNICATION LOG...</span>
+                        <span className="drop-sub">Parsing timestamps & normalizing conversations</span>
+                    </div>
+                )}
                 <Timeline
+                    ref={timelineRef}
                     threadlineId={threadline.id}
                     selectedDay={selectedDay}
                     onSelectDay={(day) => {
@@ -807,9 +1041,15 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                     onPeriodChange={setSelectedYearMonth}
                     startDate={startTimestamp}
                     endDate={endTimestamp}
-                    conversations={pinnedConversationIds.join(",")}
+                    conversations={visibleConversationIds.length === conversations.length ? "" : (visibleConversationIds.length === 0 ? "none_selected" : visibleConversationIds.join(","))}
                     compareIds={threadline.isCompare ? threadline.ids : null}
                     uid={uid}
+                    searchQuery={searchQuery}
+                    searchMatches={searchResults}
+                    refreshKey={timelineRefreshKey}
+                    onUploadClick={() => setShowImportOverlay(true)}
+                    onSelectMessage={handleTimelineMessageSelect}
+                    onSelectSearchResult={handleSearchResultClick}
                 />
             </div>
 
@@ -884,14 +1124,12 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                 {/* Left explorer pane */}
                 <div className="explorer-pane">
                     <div className="pane-tabs">
-                        {isArchive && (
-                            <button 
-                                className={`pane-tab-btn ${activeTab === "imports" ? "active" : ""}`}
-                                onClick={() => setActiveTab("imports")}
-                            >
-                                Imports
-                            </button>
-                        )}
+                        <button 
+                            className={`pane-tab-btn ${activeTab === "imports" ? "active" : ""}`}
+                            onClick={() => setActiveTab("imports")}
+                        >
+                            Imports
+                        </button>
                         {!isArchive && (
                             <button 
                                 className={`pane-tab-btn ${activeTab === "segments" ? "active" : ""}`}
@@ -951,37 +1189,64 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                     )}
 
                     <div className="explorer-scroll-area">
-                        {activeTab === "imports" && isArchive ? (
-                            importsLoading ? (
-                                <div className="pane-loading-indicator">LOADING IMPORTS...</div>
-                            ) : imports.length > 0 ? (
-                                <div style={{ display: "flex", flexDirection: "column", gap: "10px", padding: "10px 4px" }}>
-                                    {imports.map(imp => (
-                                        <div key={imp.id} className="preview-card" style={{ background: "rgba(255, 255, 255, 0.02)", border: "1px solid var(--border)", padding: "12px", borderRadius: "6px", textAlign: "left" }}>
-                                            <strong style={{ display: "block", fontSize: "0.9rem", color: "var(--accent)", textTransform: "none", letterSpacing: "normal", marginBottom: "4px" }}>
-                                                📄 {imp.filename}
-                                            </strong>
-                                            <div style={{ display: "flex", flexDirection: "column", gap: "2px", fontSize: "0.75rem", color: "var(--text-muted)" }}>
-                                                <span>Source: <strong>{imp.source}</strong> ({imp.platform})</span>
-                                                <span>Imported: <strong>{new Date(imp.importedAt).toLocaleString()}</strong></span>
-                                                <span>File Size: <strong>{(imp.fileSize / 1024).toFixed(1)} KB</strong></span>
-                                                <span>Messages Loaded: <strong>{imp.messageCount}</strong></span>
-                                                <span>Discovered Threads: <strong>{imp.threadCount}</strong></span>
-                                                {imp.earliestTimestamp && (
-                                                    <span>Range: <strong>{new Date(imp.earliestTimestamp).toLocaleDateString()} — {new Date(imp.latestTimestamp).toLocaleDateString()}</strong></span>
-                                                )}
-                                                {imp.errors && JSON.parse(imp.errors).length > 0 && (
-                                                    <div style={{ color: "var(--danger)", fontSize: "0.75rem", borderTop: "1px solid rgba(255,255,255,0.05)", paddingTop: "4px", marginTop: "4px" }}>
-                                                        ⚠️ Errors: {JSON.parse(imp.errors).join(", ")}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    ))}
+                        {activeTab === "imports" ? (
+                            <div style={{ display: "flex", flexDirection: "column", gap: "14px", padding: "10px 4px" }}>
+                                <div style={{ border: "1px solid var(--border)", borderRadius: "6px", padding: "10px", background: "rgba(16, 24, 32, 0.4)" }}>
+                                    <h4 style={{
+                                        margin: "0 0 8px 0",
+                                        fontSize: "0.78rem",
+                                        color: "var(--accent)",
+                                        textTransform: "uppercase",
+                                        letterSpacing: "1px"
+                                    }}>
+                                        Add Archive to Threadline
+                                    </h4>
+                                    <UploadPanel
+                                        setImportResult={handleImportSuccess}
+                                        threadlineId={threadline.id}
+                                    />
                                 </div>
-                            ) : (
-                                <div className="pane-loading-indicator" style={{ color: "var(--text-muted)" }}>NO IMPORTS LOGGED</div>
-                            )
+
+                                {importsLoading ? (
+                                    <div className="pane-loading-indicator">LOADING IMPORTS...</div>
+                                ) : imports.length > 0 ? (
+                                    <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                                        <h4 style={{
+                                            margin: "4px 0 0 0",
+                                            fontSize: "0.75rem",
+                                            color: "var(--text-muted)",
+                                            textTransform: "uppercase",
+                                            letterSpacing: "1px"
+                                        }}>
+                                            Import History ({imports.length})
+                                        </h4>
+                                        {imports.map(imp => (
+                                            <div key={imp.id} className="preview-card" style={{ background: "rgba(255, 255, 255, 0.02)", border: "1px solid var(--border)", padding: "12px", borderRadius: "6px", textAlign: "left" }}>
+                                                <strong style={{ display: "block", fontSize: "0.9rem", color: "var(--accent)", textTransform: "none", letterSpacing: "normal", marginBottom: "4px" }}>
+                                                    📄 {imp.filename}
+                                                </strong>
+                                                <div style={{ display: "flex", flexDirection: "column", gap: "2px", fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                                                    <span>Source: <strong>{imp.source}</strong> ({imp.platform})</span>
+                                                    <span>Imported: <strong>{new Date(imp.importedAt).toLocaleString()}</strong></span>
+                                                    <span>File Size: <strong>{(imp.fileSize / 1024).toFixed(1)} KB</strong></span>
+                                                    <span>Messages Loaded: <strong>{imp.messageCount}</strong></span>
+                                                    <span>Discovered Threads: <strong>{imp.threadCount}</strong></span>
+                                                    {imp.earliestTimestamp && (
+                                                        <span>Range: <strong>{new Date(imp.earliestTimestamp).toLocaleDateString()} — {new Date(imp.latestTimestamp).toLocaleDateString()}</strong></span>
+                                                    )}
+                                                    {imp.errors && JSON.parse(imp.errors).length > 0 && (
+                                                        <div style={{ color: "var(--danger)", fontSize: "0.75rem", borderTop: "1px solid rgba(255,255,255,0.05)", paddingTop: "4px", marginTop: "4px" }}>
+                                                            ⚠️ Errors: {JSON.parse(imp.errors).join(", ")}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="pane-loading-indicator" style={{ color: "var(--text-muted)" }}>NO IMPORTS LOGGED</div>
+                                )}
+                            </div>
                         ) : activeTab === "people" && isArchive ? (
                             participantsLoading ? (
                                 <div className="pane-loading-indicator">LOADING PEOPLE...</div>
@@ -1093,126 +1358,168 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                         ) : activeTab === "threads" ? (
                             conversationsLoading ? (
                                 <div className="pane-loading-indicator">LOADING THREADS...</div>
-                            ) : isArchive ? (
-                                conversations.map(c => {
-                                    const isActive = activeConversation?.id === c.id;
-                                    const isPinned = pinnedConversationIds.includes(c.id);
-                                    return (
-                                        <div 
-                                            key={c.id} 
-                                            draggable="true"
-                                            onDragStart={(e) => {
-                                                e.dataTransfer.setData("application/json", JSON.stringify({ type: "conversation", id: c.id, title: c.title }));
-                                                e.dataTransfer.setData("text/plain", c.id);
-                                            }}
-                                            className={`conversation-item ${isActive ? "active" : ""}`}
-                                            onClick={() => {
-                                                setActiveConversation(c);
-                                                setActiveRightTab("conversation");
-                                            }}
-                                        >
-                                            <div className="conversation-header-row">
-                                                <span className="conversation-title-text" title={c.title}>
-                                                    {c.title}
-                                                </span>
-                                                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                                                    <button 
-                                                        className={`pin-thread-btn ${isPinned ? "pinned" : ""}`}
-                                                        title={isPinned ? "Remove from Comparison" : "Pin to Comparison"}
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            if (isPinned) {
-                                                                 handleUnpinConversation(c.id);
-                                                            } else {
-                                                                 handlePinConversation(c.id);
-                                                            }
-                                                        }}
-                                                        style={{ color: isPinned ? getPinColor(c.id) : "inherit" }}
-                                                    >
-                                                        📌
-                                                    </button>
-                                                    <span className="conversation-badge">
-                                                        {c.messageCount}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                            <div className="conversation-details-row" style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "4px" }}>
-                                                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                                                    <span>Platform: <strong>{c.platform}</strong></span>
-                                                    {c.lastImported && (
-                                                        <span>Imported: <strong>{new Date(c.lastImported).toLocaleDateString()}</strong></span>
-                                                    )}
-                                                </div>
-                                                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                                                    <span>Range: <strong>{c.startDate ? new Date(Number(c.startDate)).toLocaleDateString() : "?"} — {c.endDate ? new Date(Number(c.endDate)).toLocaleDateString() : "?"}</strong></span>
-                                                    {c.endDate && (
-                                                        <span>Newest: <strong>{new Date(Number(c.endDate)).toLocaleDateString()}</strong></span>
-                                                    )}
-                                                </div>
-                                                {c.sources && c.sources.length > 0 && (
-                                                    <div style={{ fontSize: "0.75rem", borderTop: "1px solid rgba(255,255,255,0.05)", paddingTop: "3px", marginTop: "3px", textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }}>
-                                                        Sources: <span style={{ color: "var(--accent)" }}>{c.sources.map(s => s.filename).join(", ")}</span>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    );
-                                })
                             ) : (
-                                /* Curated Threadline: show linked and available threads */
-                                <div style={{ display: "flex", flexDirection: "column", gap: "16px", padding: "10px 4px" }}>
-                                    <div>
-                                        <h4 style={{ margin: "0 0 8px 0", fontSize: "0.85rem", color: "var(--success)", letterSpacing: "1px", textTransform: "uppercase" }}>Linked Threads ({conversations.length})</h4>
-                                        {conversations.length > 0 ? (
-                                            conversations.map(c => {
-                                                const isActive = activeConversation?.id === c.id;
-                                                const isPinned = pinnedConversationIds.includes(c.id);
-                                                return (
-                                                    <div 
-                                                        key={c.id} 
-                                                        draggable="true"
-                                                        onDragStart={(e) => {
-                                                            e.dataTransfer.setData("application/json", JSON.stringify({ type: "conversation", id: c.id, title: c.title }));
-                                                            e.dataTransfer.setData("text/plain", c.id);
-                                                        }}
-                                                        className={`conversation-item ${isActive ? "active" : ""}`}
-                                                        onClick={() => {
-                                                            setActiveConversation(c);
-                                                            setActiveRightTab("conversation");
-                                                        }}
-                                                        style={{ border: "1px solid rgba(48, 209, 88, 0.2)", background: "rgba(48, 209, 88, 0.03)", marginBottom: "8px", borderRadius: "6px" }}
-                                                    >
-                                                        <div className="conversation-header-row">
+                                <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+                                    {/* Timeline Layer Visibility Controls Header */}
+                                    {conversations.length > 0 && (
+                                        <div className="threads-visibility-toolbar">
+                                            <label title="Toggle timeline visibility for all conversations">
+                                                <input 
+                                                    type="checkbox"
+                                                    className="conversation-visibility-checkbox"
+                                                    checked={visibleConversationIds.length === conversations.length}
+                                                    onChange={handleToggleAllConversations}
+                                                />
+                                                <span>SELECT ALL</span>
+                                            </label>
+                                            <span className="threads-visibility-count">
+                                                {visibleConversationIds.length} / {conversations.length} VISIBLE
+                                            </span>
+                                        </div>
+                                    )}
+
+                                    {isArchive ? (
+                                        conversations.map(c => {
+                                            const isActive = activeConversation?.id === c.id;
+                                            const isPinned = pinnedConversationIds.includes(c.id);
+                                            const isVisible = visibleConversationIds.includes(c.id);
+                                            return (
+                                                <div 
+                                                    key={c.id} 
+                                                    draggable="true"
+                                                    onDragStart={(e) => {
+                                                        e.dataTransfer.setData("application/json", JSON.stringify({ type: "conversation", id: c.id, title: c.title }));
+                                                        e.dataTransfer.setData("text/plain", c.id);
+                                                    }}
+                                                    className={`conversation-item ${isActive ? "active" : ""} ${!isVisible ? "hidden-layer" : ""}`}
+                                                    onClick={() => {
+                                                        setActiveConversation(c);
+                                                        setActiveRightTab("conversation");
+                                                    }}
+                                                >
+                                                    <div className="conversation-header-row">
+                                                        <div style={{ display: "flex", alignItems: "center", gap: "10px", flex: 1, minWidth: 0 }}>
+                                                            <input 
+                                                                type="checkbox"
+                                                                className="conversation-visibility-checkbox"
+                                                                checked={isVisible}
+                                                                title={isVisible ? "Hide from Timeline" : "Show on Timeline"}
+                                                                onClick={(e) => e.stopPropagation()}
+                                                                onChange={() => handleToggleConversationVisibility(c.id)}
+                                                            />
                                                             <span className="conversation-title-text" title={c.title}>
                                                                 {c.title}
                                                             </span>
-                                                            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                                                                <button 
-                                                                    className={`pin-thread-btn ${isPinned ? "pinned" : ""}`}
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        if (isPinned) {
-                                                                             handleUnpinConversation(c.id);
-                                                                        } else {
-                                                                             handlePinConversation(c.id);
-                                                                        }
-                                                                    }}
-                                                                    style={{ color: isPinned ? getPinColor(c.id) : "inherit" }}
-                                                                >
-                                                                    📌
-                                                                </button>
-                                                                <span className="conversation-badge">
-                                                                    {c.messageCount}
-                                                                </span>
-                                                            </div>
+                                                        </div>
+                                                        <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
+                                                            <button 
+                                                                className={`pin-thread-btn ${isPinned ? "pinned" : ""}`}
+                                                                title={isPinned ? "Remove from Comparison" : "Pin to Comparison"}
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    if (isPinned) {
+                                                                        handleUnpinConversation(c.id);
+                                                                    } else {
+                                                                        handlePinConversation(c.id);
+                                                                    }
+                                                                }}
+                                                                style={{ color: isPinned ? getPinColor(c.id) : "inherit" }}
+                                                            >
+                                                                📌
+                                                            </button>
+                                                            <span className="conversation-badge">
+                                                                {c.messageCount}
+                                                            </span>
                                                         </div>
                                                     </div>
-                                                );
-                                            })
-                                        ) : (
-                                            <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>No threads linked. Drag threads from below or link segments.</div>
-                                        )}
-                                    </div>
+                                                    <div className="conversation-details-row" style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "4px" }}>
+                                                        <div style={{ display: "flex", justifyContent: "space-between" }}>
+                                                            <span>Platform: <strong>{c.platform}</strong></span>
+                                                            {c.lastImported && (
+                                                                <span>Imported: <strong>{new Date(c.lastImported).toLocaleDateString()}</strong></span>
+                                                            )}
+                                                        </div>
+                                                        <div style={{ display: "flex", justifyContent: "space-between" }}>
+                                                            <span>Range: <strong>{c.startDate ? new Date(Number(c.startDate)).toLocaleDateString() : "?"} — {c.endDate ? new Date(Number(c.endDate)).toLocaleDateString() : "?"}</strong></span>
+                                                            {c.endDate && (
+                                                                <span>Newest: <strong>{new Date(Number(c.endDate)).toLocaleDateString()}</strong></span>
+                                                            )}
+                                                        </div>
+                                                        {c.sources && c.sources.length > 0 && (
+                                                            <div style={{ fontSize: "0.75rem", borderTop: "1px solid rgba(255,255,255,0.05)", paddingTop: "3px", marginTop: "3px", textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }}>
+                                                                Sources: <span style={{ color: "var(--accent)" }}>{c.sources.map(s => s.filename).join(", ")}</span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })
+                                    ) : (
+                                        /* Curated Threadline: show linked and available threads */
+                                        <div style={{ display: "flex", flexDirection: "column", gap: "16px", padding: "10px 4px" }}>
+                                            <div>
+                                                <h4 style={{ margin: "0 0 8px 0", fontSize: "0.85rem", color: "var(--success)", letterSpacing: "1px", textTransform: "uppercase" }}>Linked Threads ({conversations.length})</h4>
+                                                {conversations.length > 0 ? (
+                                                    conversations.map(c => {
+                                                        const isActive = activeConversation?.id === c.id;
+                                                        const isPinned = pinnedConversationIds.includes(c.id);
+                                                        const isVisible = visibleConversationIds.includes(c.id);
+                                                        return (
+                                                            <div 
+                                                                key={c.id} 
+                                                                draggable="true"
+                                                                onDragStart={(e) => {
+                                                                    e.dataTransfer.setData("application/json", JSON.stringify({ type: "conversation", id: c.id, title: c.title }));
+                                                                    e.dataTransfer.setData("text/plain", c.id);
+                                                                }}
+                                                                className={`conversation-item ${isActive ? "active" : ""} ${!isVisible ? "hidden-layer" : ""}`}
+                                                                onClick={() => {
+                                                                    setActiveConversation(c);
+                                                                    setActiveRightTab("conversation");
+                                                                }}
+                                                                style={{ border: "1px solid rgba(48, 209, 88, 0.2)", background: "rgba(48, 209, 88, 0.03)", marginBottom: "8px", borderRadius: "6px" }}
+                                                            >
+                                                                <div className="conversation-header-row">
+                                                                    <div style={{ display: "flex", alignItems: "center", gap: "10px", flex: 1, minWidth: 0 }}>
+                                                                        <input 
+                                                                            type="checkbox"
+                                                                            className="conversation-visibility-checkbox"
+                                                                            checked={isVisible}
+                                                                            title={isVisible ? "Hide from Timeline" : "Show on Timeline"}
+                                                                            onClick={(e) => e.stopPropagation()}
+                                                                            onChange={() => handleToggleConversationVisibility(c.id)}
+                                                                        />
+                                                                        <span className="conversation-title-text" title={c.title}>
+                                                                            {c.title}
+                                                                        </span>
+                                                                    </div>
+                                                                    <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
+                                                                        <button 
+                                                                            className={`pin-thread-btn ${isPinned ? "pinned" : ""}`}
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                if (isPinned) {
+                                                                                     handleUnpinConversation(c.id);
+                                                                                } else {
+                                                                                     handlePinConversation(c.id);
+                                                                                }
+                                                                            }}
+                                                                            style={{ color: isPinned ? getPinColor(c.id) : "inherit" }}
+                                                                        >
+                                                                            📌
+                                                                        </button>
+                                                                        <span className="conversation-badge">
+                                                                            {c.messageCount}
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })
+                                                ) : (
+                                                    <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>No threads linked. Drag threads from below or link segments.</div>
+                                                )}
+                                            </div>
 
                                     <div style={{ borderTop: "1px solid var(--border)", paddingTop: "12px" }}>
                                         <h4 style={{ margin: "0 0 8px 0", fontSize: "0.85rem", color: "var(--accent)", letterSpacing: "1px", textTransform: "uppercase" }}>Available Threads ({archiveConversations.filter(ac => !conversations.some(c => c.id === ac.id)).length})</h4>
@@ -1252,7 +1559,9 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                                         )}
                                     </div>
                                 </div>
-                            )
+                            )}
+                        </div>
+                    )
                         ) : activeTab === "search" ? (
                             /* Search results list only */
                             <>

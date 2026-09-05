@@ -18,9 +18,11 @@ function SupportedImports(){
 
                 <div className="import-item"><span className="check">✓</span>SMS Backup & Restore (.xml)</div>
 
-                <div className="import-item"><span className="check">✓</span>HTML Conversation Exports</div>
+                <div className="import-item"><span className="check">✓</span>HTML Conversation Exports (.html)</div>
 
-                <div className="import-item"><span className="planned">⌛</span>Facebook Messenger (Planned)</div>
+                <div className="import-item"><span className="check">✓</span>Communication Logs (.log, .txt)</div>
+
+                <div className="import-item"><span className="check">✓</span>Facebook Messenger (.json)</div>
 
                 <div className="import-item"><span className="planned">⌛</span>WhatsApp (Planned)</div>
 

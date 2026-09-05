@@ -2,6 +2,8 @@ const { detectFile } = require("../parsers/detector");
 
 const { parseSMSBackup } = require("../parsers/smsbackup");
 const { parseHTMLBackup } = require("../parsers/htmlbackup");
+const { parseMessengerJSON } = require("../parsers/messenger");
+const { parseLogFile } = require("../parsers/logbackup");
 
 const { buildConversations } = require("./conversationBuilder");
 
@@ -12,10 +14,10 @@ const Archive = require("../models/Archive");
 /*======================================================*/
 
 const parsers = {
-
     "SMS Backup & Restore": parseSMSBackup,
-    
-    "HTML Conversation Export": parseHTMLBackup
+    "HTML Conversation Export": parseHTMLBackup,
+    "Facebook Messenger": parseMessengerJSON,
+    "Log / Plaintext": parseLogFile
 };
 
 /*======================================================
