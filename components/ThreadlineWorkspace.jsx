@@ -799,6 +799,9 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
         }, 400);
     }
 
+    // Alias for search result selection / fallback legacy cards
+    const handleSearchResultClick = handleClusterClick;
+
     // Handles clicking an individual constituent source message inside an Event Cluster
     function handleClusterMessageClick(msg) {
         setStartDateStr("");
