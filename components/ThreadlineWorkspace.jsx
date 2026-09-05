@@ -206,6 +206,9 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
     // Refs for auto scrolling and timeline imperative control
     const messagesEndRef = useRef(null);
     const timelineRef = useRef(null);
+    const targetScrollMessageIdRef = useRef(null);
+    const hasScrolledConversationRef = useRef(false);
+    const skipScrollToBottomRef = useRef(false);
 
     // Derive active pinned conversation objects
     const pinnedConversations = conversations.filter(c => pinnedConversationIds.includes(c.id));
@@ -233,6 +236,9 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
         setSearchQuery("");
         setActiveRightTab("day");
         setActiveSearchMessageId(null);
+        targetScrollMessageIdRef.current = null;
+        hasScrolledConversationRef.current = false;
+        skipScrollToBottomRef.current = false;
         setShowFullConversation(false);
         setPinnedConversationIds([]);
         setSelectedMessageIds([]);
@@ -589,35 +595,57 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
         fetchMessages();
     }, [activeConversation, threadline.id, startTimestamp, endTimestamp, showFullConversation, uid]);
 
-    // Scroll chat window to bottom when a conversation loads, UNLESS we are jumping to a search result
+    // Reset conversation scroll tracking when activeConversation changes
     useEffect(() => {
-        if (activeSearchMessageId) return; // Skip standard bottom-scroll on search jump
-        if (messagesEndRef.current && activeRightTab === "conversation") {
-            messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
-        }
-    }, [messages, activeRightTab, activeSearchMessageId]);
+        hasScrolledConversationRef.current = false;
+    }, [activeConversation?.id]);
 
-    // Scroll-to and Highlight searched message bubble inside thread
+    // Handle scroll positioning when messages render in conversation view
     useEffect(() => {
-        if (activeSearchMessageId && messages.length > 0 && activeRightTab === "conversation") {
-            const timer = setTimeout(() => {
-                const element = document.getElementById(`msg-${activeSearchMessageId}`);
+        if (activeRightTab !== "conversation" || messages.length === 0) return;
+
+        // Path A: User explicitly selected a message -> scroll target into view and stop
+        if (targetScrollMessageIdRef.current) {
+            const targetId = targetScrollMessageIdRef.current;
+            const tryScroll = () => {
+                const element = document.getElementById(`msg-${targetId}`);
                 if (element) {
                     element.scrollIntoView({ behavior: "smooth", block: "center" });
+                    targetScrollMessageIdRef.current = null;
+                    skipScrollToBottomRef.current = true;
+                    hasScrolledConversationRef.current = true;
                 }
-            }, 150); // Small timeout to ensure browser renders list
-
-            // Clear glow animation highlight after 4 seconds
-            const clearTimer = setTimeout(() => {
-                setActiveSearchMessageId(null);
-            }, 4000);
-
-            return () => {
-                clearTimeout(timer);
-                clearTimeout(clearTimer);
             };
+
+            // Execute after browser completes DOM layout
+            requestAnimationFrame(() => {
+                tryScroll();
+                if (targetScrollMessageIdRef.current) {
+                    setTimeout(tryScroll, 50);
+                }
+            });
+            return;
         }
-    }, [messages, activeSearchMessageId, activeRightTab]);
+
+        // Path B: Normal conversation open without target message -> scroll to latest ONCE
+        if (!skipScrollToBottomRef.current && !hasScrolledConversationRef.current) {
+            if (messagesEndRef.current) {
+                messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+                hasScrolledConversationRef.current = true;
+            }
+        }
+    }, [messages, activeRightTab]);
+
+    // Independent visual glow highlight timer: fades highlight without triggering scroll
+    useEffect(() => {
+        if (!activeSearchMessageId) return;
+
+        const clearTimer = setTimeout(() => {
+            setActiveSearchMessageId(null);
+        }, 4000);
+
+        return () => clearTimeout(clearTimer);
+    }, [activeSearchMessageId]);
 
     // Load day events when a day is selected on the timeline (filtered by pinned comparison threads if active)
     useEffect(() => {
@@ -801,6 +829,10 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
     function handleTimelineMessageSelect(event) {
         if (!event) return;
         const msgId = event.sourceId || event.id;
+        
+        // Register explicit target message scroll & highlight intent
+        targetScrollMessageIdRef.current = msgId;
+        skipScrollToBottomRef.current = true;
         setActiveSearchMessageId(msgId);
 
         // Find or create conversation object
@@ -812,13 +844,13 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
         setActiveConversation(foundConv);
         setActiveRightTab("conversation");
 
-        // Scroll to message bubble
-        setTimeout(() => {
-            const el = document.getElementById(`msg-${msgId}`);
-            if (el) {
-                el.scrollIntoView({ behavior: "smooth", block: "center" });
-            }
-        }, 350);
+        // Immediate check if element is already mounted in DOM
+        const el = document.getElementById(`msg-${msgId}`);
+        if (el) {
+            el.scrollIntoView({ behavior: "smooth", block: "center" });
+            targetScrollMessageIdRef.current = null;
+            hasScrolledConversationRef.current = true;
+        }
     }
 
     // Toggles inline chronological messages transcript for an Event Cluster
@@ -850,7 +882,10 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
         }
 
         // Set target highlight message to dominant representative message
-        setActiveSearchMessageId(cluster.representativeMessageId || cluster.id);
+        const targetId = cluster.representativeMessageId || cluster.id;
+        targetScrollMessageIdRef.current = targetId;
+        skipScrollToBottomRef.current = true;
+        setActiveSearchMessageId(targetId);
 
         // Ensure all participating conversations in this cluster are revealed on the timeline
         if (cluster.conversations && cluster.conversations.length > 0) {
@@ -874,14 +909,15 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
         setActiveConversation(foundConv);
         setActiveRightTab("conversation");
 
-        // Scroll to representative message
-        setTimeout(() => {
-            const targetId = cluster.representativeMessageId || cluster.id;
+        // Immediate check if element is already mounted in DOM
+        if (targetId) {
             const el = document.getElementById(`msg-${targetId}`);
             if (el) {
                 el.scrollIntoView({ behavior: "smooth", block: "center" });
+                targetScrollMessageIdRef.current = null;
+                hasScrolledConversationRef.current = true;
             }
-        }, 400);
+        }
     }
 
     // Alias for search result selection / fallback legacy cards
@@ -892,6 +928,9 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
         setStartDateStr("");
         setEndDateStr("");
 
+        // Register explicit target message scroll & highlight intent
+        targetScrollMessageIdRef.current = msg.id;
+        skipScrollToBottomRef.current = true;
         setActiveSearchMessageId(msg.id);
 
         // 1. Move & center timeline on the exact message timestamp
@@ -915,13 +954,13 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
         setActiveConversation(foundConv);
         setActiveRightTab("conversation");
 
-        // 4. Scroll to target message bubble in existing Thread View
-        setTimeout(() => {
-            const el = document.getElementById(`msg-${msg.id}`);
-            if (el) {
-                el.scrollIntoView({ behavior: "smooth", block: "center" });
-            }
-        }, 350);
+        // Immediate check if element is already mounted in DOM
+        const el = document.getElementById(`msg-${msg.id}`);
+        if (el) {
+            el.scrollIntoView({ behavior: "smooth", block: "center" });
+            targetScrollMessageIdRef.current = null;
+            hasScrolledConversationRef.current = true;
+        }
     }
 
     /*==============================================
