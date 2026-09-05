@@ -334,6 +334,14 @@ class SearchEngine {
         }
 
         // Additional Request Context Filters
+        if (filters.start) {
+            timeFilterSql += " AND m.timestamp >= ? ";
+            queryParams.push(Number(filters.start));
+        }
+        if (filters.end) {
+            timeFilterSql += " AND m.timestamp <= ? ";
+            queryParams.push(Number(filters.end));
+        }
         if (filters.day) {
             timeFilterSql += " AND strftime('%Y-%m-%d', datetime(m.timestamp / 1000, 'unixepoch')) = ? ";
             queryParams.push(filters.day);
@@ -639,7 +647,7 @@ class SearchEngine {
 
         // --- LAYER 5: EVENT CLUSTERING & CONTEXT EXPANSION ---
         // Clusters candidates into coherent Event Clusters across conversations while preserving forensic provenance
-        return eventClusterer.cluster(sorted, intent, db);
+        return eventClusterer.cluster(sorted, intent, db, filters);
 
     }
 }

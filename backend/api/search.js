@@ -42,6 +42,8 @@ router.get("/", async (request, response) => {
         const threadlineId = request.params.id;
         const queryText = request.query.q || "";
         const day = request.query.day || null;
+        const start = request.query.start ? Number(request.query.start) : null;
+        const end = request.query.end ? Number(request.query.end) : null;
         const conversationsParam = request.query.conversations || null;
 
         if (!queryText.trim()) {
@@ -81,6 +83,8 @@ router.get("/", async (request, response) => {
         // Execute hybrid search engine
         const results = await searchEngine.search(threadlineId, queryText, {
             day,
+            start,
+            end,
             conversations: conversationsParam,
             ids: request.query.ids || null,
             uid: request.uid

@@ -679,7 +679,7 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
         fetchDayEvents();
     }, [selectedDay, threadline.id, pinnedConversationIds, uid]);
 
-    // Execute keyword search (constrains search to selectedDay and pinned comparison threads if set)
+    // Execute keyword search (constrains search to selectedDay, start/end date range, and pinned comparison threads if set)
     useEffect(() => {
         if (!searchQuery.trim()) {
             setSearchResults([]);
@@ -694,6 +694,8 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                     { 
                         params: { 
                             q: searchQuery,
+                            start: startTimestamp && endTimestamp && startTimestamp > endTimestamp ? undefined : startTimestamp,
+                            end: startTimestamp && endTimestamp && startTimestamp > endTimestamp ? undefined : endTimestamp,
                             day: selectedDay,
                             conversations: pinnedConversationIds.join(","),
                             ids: threadline.isCompare ? threadline.ids.join(",") : undefined
@@ -714,7 +716,7 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
         }, 300); // 300ms debounce to prevent spamming backend
 
         return () => clearTimeout(delayDebounce);
-    }, [searchQuery, threadline.id, selectedDay, pinnedConversationIds, uid]);
+    }, [searchQuery, threadline.id, selectedDay, pinnedConversationIds, uid, startTimestamp, endTimestamp]);
 
     /*==============================================
                     EVENT HANDLERS
@@ -1305,6 +1307,11 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                         onChange={(e) => setEndDateStr(e.target.value)} 
                     />
                 </div>
+                {startTimestamp && endTimestamp && startTimestamp > endTimestamp && (
+                    <span style={{ color: "var(--danger)", fontSize: "0.8rem", fontWeight: "600", marginLeft: "8px" }}>
+                        ⚠️ Start date cannot be after end date
+                    </span>
+                )}
                 {(startDateStr || endDateStr) && (
                     <button 
                         className="button-link" 
@@ -1429,7 +1436,7 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                                                     <span>Messages Loaded: <strong>{imp.messageCount}</strong></span>
                                                     <span>Discovered Threads: <strong>{imp.threadCount}</strong></span>
                                                     {imp.earliestTimestamp && (
-                                                        <span>Range: <strong>{new Date(imp.earliestTimestamp).toLocaleDateString()} — {new Date(imp.latestTimestamp).toLocaleDateString()}</strong></span>
+                                                        <span>Range: <strong>{formatDisplayDate(imp.earliestTimestamp)} — {formatDisplayDate(imp.latestTimestamp)}</strong></span>
                                                     )}
                                                     {imp.errors && JSON.parse(imp.errors).length > 0 && (
                                                         <div style={{ color: "var(--danger)", fontSize: "0.75rem", borderTop: "1px solid rgba(255,255,255,0.05)", paddingTop: "4px", marginTop: "4px" }}>
@@ -1659,13 +1666,13 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                                                         <div style={{ display: "flex", justifyContent: "space-between" }}>
                                                             <span>Platform: <strong>{c.platform}</strong></span>
                                                             {c.lastImported && (
-                                                                <span>Imported: <strong>{new Date(c.lastImported).toLocaleDateString()}</strong></span>
+                                                                <span>Imported: <strong>{formatDisplayDate(c.lastImported)}</strong></span>
                                                             )}
                                                         </div>
                                                         <div style={{ display: "flex", justifyContent: "space-between" }}>
-                                                            <span>Range: <strong>{c.startDate ? new Date(Number(c.startDate)).toLocaleDateString() : "?"} — {c.endDate ? new Date(Number(c.endDate)).toLocaleDateString() : "?"}</strong></span>
+                                                            <span>Range: <strong>{c.startDate ? formatDisplayDate(c.startDate) : "?"} — {c.endDate ? formatDisplayDate(c.endDate) : "?"}</strong></span>
                                                             {c.endDate && (
-                                                                <span>Newest: <strong>{new Date(Number(c.endDate)).toLocaleDateString()}</strong></span>
+                                                                <span>Newest: <strong>{formatDisplayDate(c.endDate)}</strong></span>
                                                             )}
                                                         </div>
                                                         {c.sources && c.sources.length > 0 && (
@@ -1893,8 +1900,8 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                                                                             )}
                                                                         </div>
                                                                         <span className="cluster-msg-time">
-                                                                            {new Date(Number(m.timestamp)).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "UTC" })}
-                                                                        </span>
+                                                                             {formatFullTimestamp(m.timestamp)}
+                                                                         </span>
                                                                     </div>
                                                                     <div className="cluster-msg-body">{m.body}</div>
                                                                     {m.matchReason && (
@@ -2638,10 +2645,22 @@ function formatTime(timestamp) {
     return date.toLocaleTimeString("en-US", { timeZone: "UTC", hour12: false, hour: '2-digit', minute: '2-digit' });
 }
 
+function formatDisplayDate(timestamp) {
+    if (!timestamp) return "?";
+    const date = new Date(Number(timestamp));
+    return date.toLocaleDateString("en-US", { 
+        timeZone: "UTC",
+        year: 'numeric',
+        month: 'numeric',
+        day: 'numeric'
+    });
+}
+
 function formatFullTimestamp(timestamp) {
     const date = new Date(Number(timestamp));
     return date.toLocaleString("en-US", { 
         timeZone: "UTC",
+        year: 'numeric',
         month: 'short', 
         day: 'numeric', 
         hour: '2-digit', 

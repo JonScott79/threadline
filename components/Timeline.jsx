@@ -226,8 +226,11 @@ const Timeline = forwardRef(function Timeline({
                 end: Math.ceil(vEnd)
             };
 
-            if (startDate) params.start = Math.max(params.start, startDate);
-            if (endDate) params.end = Math.min(params.end, endDate);
+            const isValidRange = (!startDate || !endDate || startDate <= endDate);
+            if (isValidRange) {
+                if (startDate) params.start = Math.max(params.start, startDate);
+                if (endDate) params.end = Math.min(params.end, endDate);
+            }
             if (conversations) params.conversations = conversations;
             if (compareIds) params.ids = compareIds.join(",");
 
@@ -474,6 +477,24 @@ const Timeline = forwardRef(function Timeline({
 
     useEffect(() => {
         if (!timelineRef.current || !isInitializedRef.current) return;
+
+        // If a valid date range is selected, adjust timeline window to display it
+        if (startDate && endDate && startDate <= endDate) {
+            const span = endDate - startDate || 86400000;
+            const padding = Math.max(span * 0.05, 3600000); // at least 1 hour padding
+            suppressRangeRef.current = true;
+            timelineRef.current.setWindow(
+                new Date(startDate - padding),
+                new Date(endDate + padding),
+                { animation: { duration: 400, easingFunction: "easeInOutQuad" } },
+                () => {
+                    suppressRangeRef.current = false;
+                    fetchBuckets(startDate, endDate);
+                }
+            );
+            return;
+        }
+
         const window = timelineRef.current.getWindow();
         fetchBuckets(window.start.getTime(), window.end.getTime());
     }, [conversations, compareIds, startDate, endDate]);

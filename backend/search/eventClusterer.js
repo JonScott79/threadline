@@ -23,9 +23,10 @@ class EventClusterer {
      * @param {Array} scoredCandidates - Array of { message, score, matchReasons }
      * @param {Object} intent - Parsed query intent from searchEngine.parseQuery
      * @param {Object} db - Database access handle for context expansion
+     * @param {Object} filters - Optional search filters (start, end, etc.)
      * @returns {Array<Object>} Array of EventCluster objects (with backward-compatibility fields)
      */
-    cluster(scoredCandidates, intent, db) {
+    cluster(scoredCandidates, intent, db, filters = {}) {
         if (!scoredCandidates || scoredCandidates.length === 0) {
             return [];
         }
@@ -93,8 +94,17 @@ class EventClusterer {
                 for (const item of cluster.items) {
                     const m = item.message;
                     const contextWindowMs = 60 * 60 * 1000; // Bounded 60-minute window for adjacent sequence context
-                    const minTime = m.timestamp - contextWindowMs;
-                    const maxTime = m.timestamp + contextWindowMs;
+                    let minTime = m.timestamp - contextWindowMs;
+                    let maxTime = m.timestamp + contextWindowMs;
+
+                    if (filters.start) {
+                        minTime = Math.max(minTime, Number(filters.start));
+                    }
+                    if (filters.end) {
+                        maxTime = Math.min(maxTime, Number(filters.end));
+                    }
+
+                    if (minTime > maxTime) continue;
 
                     const neighbors = db.query(
                         `SELECT m.id, 
