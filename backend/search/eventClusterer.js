@@ -91,7 +91,9 @@ class EventClusterer {
                 const existingMsgIds = new Set(cluster.items.map(item => item.message.id));
                 const candidatesToAdd = [];
 
-                for (const item of cluster.items) {
+                // Only expand around high-confidence seed items (score >= 80), not subordinate items
+                const seedItems = cluster.items.filter(it => it.score >= 80);
+                for (const item of seedItems) {
                     const m = item.message;
                     const contextWindowMs = 60 * 60 * 1000; // Bounded 60-minute window for adjacent sequence context
                     let minTime = m.timestamp - contextWindowMs;
@@ -448,11 +450,17 @@ class EventClusterer {
         // There must be meaningful shared evidence:
         // - Shared concept
         // - OR shared query keyword within active temporal proximity (<= 7 days)
-        // - OR same conversation continuity
         // - OR explicit calendar window match (e.g. pure temporal queries within requested month)
+        // - For same-conversation continuity, if there is no shared concept or calendar match, require temporal proximity (<= 7 days)
+        //   to prevent distant single-keyword hits from chaining across weeks or months.
         const hasCrossThreadEvidence = hasSharedConcept || (hasSharedKeyword && minDistanceMs <= 7 * dayMs) || (hasCalendarMatch && minDistanceMs <= 7 * dayMs);
-        if (!hasCrossThreadEvidence && !cluster.conversationIds.includes(m.conversationId)) {
-            return 0.0;
+        if (!hasCrossThreadEvidence) {
+            if (!cluster.conversationIds.includes(m.conversationId)) {
+                return 0.0;
+            }
+            if (minDistanceMs > 7 * dayMs) {
+                return 0.0;
+            }
         }
 
         return Math.min(fitScore, 1.0);

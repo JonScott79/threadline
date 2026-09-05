@@ -128,12 +128,18 @@ class SearchEngine {
         }
 
         // 5. Extract location anchors (e.g. "in Florida", "to Boston")
+        // Exclude common non-geographic nouns/idiomatic actions from being consumed as location filters
+        const nonLocationNouns = new Set([
+            "court", "work", "bed", "school", "church", "sleep", "jail", "prison",
+            "hospital", "custody", "trial", "home", "dinner", "lunch", "breakfast",
+            "town", "life", "mind", "light", "pieces", "tears", "shreds", "hell"
+        ]);
         const locRegex = /\b(?:in|at|to|from)\s+([a-zA-Z]+)\b/gi;
         let locMatch;
         while ((locMatch = locRegex.exec(cleanedQuery)) !== null) {
             const potentialLoc = locMatch[1].toLowerCase();
             const fillers = ["the", "a", "an", "this", "that", "my", "our", "your"];
-            if (!fillers.includes(potentialLoc)) {
+            if (!fillers.includes(potentialLoc) && !nonLocationNouns.has(potentialLoc)) {
                 info.location = potentialLoc;
                 cleanedQuery = cleanedQuery.replace(locMatch[0], "");
             }
@@ -421,6 +427,14 @@ class SearchEngine {
             }
         });
 
+        // Add location term into FTS candidate retrieval if present
+        if (intent.location) {
+            const formatted = formatFtsTerm(intent.location);
+            if (formatted && !ftsTerms.includes(formatted)) {
+                ftsTerms.push(formatted);
+            }
+        }
+
         const hasTemporalConstraint = Boolean(timeFilterSql);
 
         if (ftsTerms.length > 0) {
@@ -492,6 +506,7 @@ class SearchEngine {
             });
 
             // 2. Token whole-word matching (distinguish substrings and verb inflections)
+            let matchedKeywordsCount = 0;
             intent.keywords.forEach(kw => {
                 const variants = this.getVerbVariants(kw);
                 let matchedVariant = null;
@@ -505,6 +520,7 @@ class SearchEngine {
 
                 if (matchedVariant) {
                     score += 40; // Whole-word match (or inflection match)
+                    matchedKeywordsCount++;
                     if (matchedVariant === kw) {
                         matchReasons.push(`Keyword match: ${kw}`);
                     } else {
@@ -515,6 +531,15 @@ class SearchEngine {
                     matchReasons.push(`Partial keyword match: ${kw}`);
                 }
             });
+
+            // Multi-keyword intent bonus: messages matching multiple query terms rank significantly higher
+            if (intent.keywords.length > 1 && matchedKeywordsCount > 1) {
+                score += (matchedKeywordsCount - 1) * 80;
+                if (matchedKeywordsCount === intent.keywords.length) {
+                    score += 40; // All keywords matched bonus
+                }
+                matchReasons.push(`Multi-keyword match (${matchedKeywordsCount}/${intent.keywords.length} terms)`);
+            }
 
             // 3. Synonym whole-word matches
             intent.concepts.forEach(concept => {
