@@ -30,6 +30,7 @@ import SupportedImports from "./SupportedImports";
 import UploadPanel from "./UploadPanel";
 import ImportPreview from "./ImportPreview";
 import Timeline from "./Timeline";
+import DeleteThreadlineModal from "./DeleteThreadlineModal";
 import { uploadArchive } from "../js/imports/upload";
 
 // =====================================
@@ -49,7 +50,7 @@ const PINNED_COLORS = [
 // Component
 // =====================================
 
-function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline, uid, onImportSuccess }) {
+function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline, uid, onImportSuccess, onDelete }) {
     const isArchive = threadline?.id?.startsWith("archive_") || false;
 
     /*==============================================
@@ -59,6 +60,11 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
     const [importResult, setImportResult] = useState(null);
     const [showImportOverlay, setShowImportOverlay] = useState(false);
     const [timelineRefreshKey, setTimelineRefreshKey] = useState(0);
+
+    // Deletion Modal state for current threadline workspace
+    const [showDeleteModal, setShowDeleteModal] = useState(false);
+    const [isDeletingWorkspace, setIsDeletingWorkspace] = useState(false);
+    const [deleteWorkspaceError, setDeleteWorkspaceError] = useState(null);
     const [stats, setStats] = useState({
         messageCount: threadline.messageCount || 0,
         conversationCount: threadline.conversationCount || 0
@@ -123,6 +129,12 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
     const [exportCaseName, setExportCaseName] = useState("");
     const [isExporting, setIsExporting] = useState(false);
 
+    // In-App Modal States for Segment Deletion and Thread Renaming (replacing native confirm/prompt)
+    const [segmentToDelete, setSegmentToDelete] = useState(null);
+    const [isDeletingSegment, setIsDeletingSegment] = useState(false);
+    const [renameConversationTarget, setRenameConversationTarget] = useState(null);
+    const [renameConversationValue, setRenameConversationValue] = useState("");
+
     async function handleExecuteExport() {
         if (!exportModalCluster) return;
         setIsExporting(true);
@@ -166,6 +178,20 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
             alert("Export failed: " + (error.response?.data?.message || error.message));
         } finally {
             setIsExporting(false);
+        }
+    }
+
+    async function handleConfirmDeleteWorkspace() {
+        if (!onDelete || isArchive) return;
+        setIsDeletingWorkspace(true);
+        setDeleteWorkspaceError(null);
+        try {
+            await onDelete(threadline);
+            setShowDeleteModal(false);
+        } catch (err) {
+            setDeleteWorkspaceError(err.message || "Failed to delete threadline.");
+        } finally {
+            setIsDeletingWorkspace(false);
         }
     }
 
@@ -338,10 +364,9 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
         }
     }
 
-    async function handleDeleteSegment(segmentId) {
-        if (!confirm("Are you sure you want to permanently delete this saved segment? This will not affect the underlying messages.")) {
-            return;
-        }
+    async function handleDeleteSegment(segment) {
+        const segmentId = typeof segment === "object" ? segment.id : segment;
+        setIsDeletingSegment(true);
         try {
             const response = await axios.delete(`${API_BASE_URL}/saved-segments/${segmentId}`, {
                 headers: { "x-user-uid": uid }
@@ -355,10 +380,12 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                 } else {
                     await fetchSegmentsData();
                 }
-                alert("Segment deleted successfully!");
+                setSegmentToDelete(null);
             }
         } catch (error) {
             console.error("Failed to delete segment:", error);
+        } finally {
+            setIsDeletingSegment(false);
         }
     }
 
@@ -378,8 +405,15 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
             });
             
             if (resSeg.data && resSeg.data.status === "success") {
-                const segmentId = resSeg.data.segmentId;
-                await handleAddSegment(segmentId);
+                if (threadline.id.startsWith("archive_")) {
+                    const res = await axios.get(`${API_BASE_URL}/saved-segments`, { headers: { "x-user-uid": uid } });
+                    if (res.data && res.data.status === "success") {
+                        setSavedSegments(res.data.segments || []);
+                    }
+                } else {
+                    const segmentId = resSeg.data.segmentId;
+                    await handleAddSegment(segmentId);
+                }
             }
         } catch (error) {
             console.error("Failed to link search result as segment:", error);
@@ -439,10 +473,9 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                 } else {
                     await fetchSegmentsData();
                 }
-                alert("Segment saved successfully!");
             }
         } catch (error) {
-            alert("Failed to save segment: " + error.message);
+            console.error("Failed to save segment:", error);
         }
     }
 
@@ -1051,6 +1084,20 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                     >
                         ＋ IMPORT
                     </button>
+                    {!isArchive && (
+                        <button
+                            type="button"
+                            className="threads-delete-action-btn"
+                            onClick={() => {
+                                setDeleteWorkspaceError(null);
+                                setShowDeleteModal(true);
+                            }}
+                            title="Delete this Threadline workspace"
+                            style={{ marginLeft: "4px" }}
+                        >
+                            DELETE THREADLINE
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -1452,8 +1499,9 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                                                             </button>
                                                             <button 
                                                                 className="button-link"
-                                                                onClick={() => handleDeleteSegment(seg.id)}
+                                                                onClick={() => setSegmentToDelete(seg)}
                                                                 style={{ color: "var(--danger)", fontSize: "0.8rem", fontWeight: "700" }}
+                                                                title="Delete saved segment"
                                                             >
                                                                 [DEL]
                                                             </button>
@@ -1493,9 +1541,24 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                                                     DESELECT ALL
                                                 </button>
                                             </div>
-                                            <span className="threads-visibility-count" title="Number of visible layers on timeline">
-                                                {visibleConversationIds.length} / {conversations.length} VISIBLE
-                                            </span>
+                                            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                                                <span className="threads-visibility-count" title="Number of visible layers on timeline">
+                                                    {visibleConversationIds.length} / {conversations.length} VISIBLE
+                                                </span>
+                                                {!isArchive && (
+                                                    <button
+                                                        type="button"
+                                                        className="threads-toolbar-delete-btn"
+                                                        onClick={() => {
+                                                            setDeleteWorkspaceError(null);
+                                                            setShowDeleteModal(true);
+                                                        }}
+                                                        title="Delete this Threadline workspace"
+                                                    >
+                                                        🗑️ DELETE THREADLINE
+                                                    </button>
+                                                )}
+                                            </div>
                                         </div>
                                     )}
 
@@ -1996,10 +2059,8 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                                                 {activeConversation.title}
                                                 <button
                                                     onClick={() => {
-                                                        const newName = prompt("Rename thread:", activeConversation.title);
-                                                        if (newName && newName.trim() && newName.trim() !== activeConversation.title) {
-                                                            handleRenameConversation(newName.trim());
-                                                        }
+                                                        setRenameConversationTarget(activeConversation);
+                                                        setRenameConversationValue(activeConversation.title);
                                                     }}
                                                     title="Rename Thread"
                                                     style={{ background: "none", border: "none", cursor: "pointer", fontSize: "0.9rem" }}
@@ -2351,6 +2412,175 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                                 disabled={isExporting}
                             >
                                 {isExporting ? "GENERATING EXPORT..." : "EXPORT EVIDENCE"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Custom In-App Delete Confirmation Modal */}
+            <DeleteThreadlineModal
+                isOpen={showDeleteModal}
+                threadline={threadline}
+                onClose={() => {
+                    if (!isDeletingWorkspace) {
+                        setShowDeleteModal(false);
+                        setDeleteWorkspaceError(null);
+                    }
+                }}
+                onConfirm={handleConfirmDeleteWorkspace}
+                isDeleting={isDeletingWorkspace}
+                errorMessage={deleteWorkspaceError}
+            />
+
+            {/* Custom In-App Segment Deletion Modal */}
+            {segmentToDelete && (
+                <div
+                    className="delete-modal-backdrop"
+                    onClick={(e) => {
+                        if (e.target === e.currentTarget && !isDeletingSegment) {
+                            setSegmentToDelete(null);
+                        }
+                    }}
+                    role="presentation"
+                >
+                    <div
+                        className="delete-modal-card"
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="delete-segment-title"
+                    >
+                        <div className="delete-modal-header">
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                                <span className="delete-modal-danger-badge">PERMANENT ACTION</span>
+                                <h3 id="delete-segment-title" style={{ margin: 0, fontSize: "1rem", color: "#f87171" }}>
+                                    DELETE SAVED SEGMENT
+                                </h3>
+                            </div>
+                            <button
+                                type="button"
+                                className="delete-modal-close-btn"
+                                onClick={() => setSegmentToDelete(null)}
+                                disabled={isDeletingSegment}
+                                aria-label="Close dialog"
+                            >
+                                &times;
+                            </button>
+                        </div>
+
+                        <div className="delete-modal-body">
+                            <p style={{ margin: "0 0 12px 0", color: "#e2e8f0", fontSize: "0.9rem", lineHeight: "1.4" }}>
+                                Are you sure you want to permanently delete this saved segment?
+                            </p>
+                            <div className="delete-modal-target-box">
+                                <span className="delete-target-icon">📌</span>
+                                <strong className="delete-target-name">{segmentToDelete.title || "Saved Segment"}</strong>
+                            </div>
+                            <p className="delete-modal-warning-text">
+                                This will remove this curated segment from your library. <strong>This will not affect the underlying source messages.</strong>
+                            </p>
+                        </div>
+
+                        <div className="delete-modal-footer">
+                            <button
+                                type="button"
+                                className="delete-btn-cancel"
+                                onClick={() => setSegmentToDelete(null)}
+                                disabled={isDeletingSegment}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                className="delete-btn-confirm"
+                                onClick={() => handleDeleteSegment(segmentToDelete)}
+                                disabled={isDeletingSegment}
+                            >
+                                {isDeletingSegment ? "DELETING..." : "DELETE SEGMENT"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Custom In-App Thread Rename Modal */}
+            {renameConversationTarget && (
+                <div
+                    className="delete-modal-backdrop"
+                    onClick={(e) => {
+                        if (e.target === e.currentTarget) {
+                            setRenameConversationTarget(null);
+                        }
+                    }}
+                    role="presentation"
+                >
+                    <div
+                        className="delete-modal-card"
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="rename-thread-title"
+                    >
+                        <div className="delete-modal-header">
+                            <h3 id="rename-thread-title" style={{ margin: 0, fontSize: "1rem", color: "var(--accent)" }}>
+                                RENAME THREAD
+                            </h3>
+                            <button
+                                type="button"
+                                className="delete-modal-close-btn"
+                                onClick={() => setRenameConversationTarget(null)}
+                                aria-label="Close dialog"
+                            >
+                                &times;
+                            </button>
+                        </div>
+
+                        <div className="delete-modal-body">
+                            <label style={{ display: "block", fontSize: "0.8rem", color: "var(--text-light)", marginBottom: "6px" }}>
+                                Thread Title
+                            </label>
+                            <input
+                                type="text"
+                                className="input"
+                                value={renameConversationValue}
+                                onChange={(e) => setRenameConversationValue(e.target.value)}
+                                autoFocus
+                                style={{ width: "100%", padding: "8px 10px" }}
+                                onKeyDown={(e) => {
+                                    if (e.key === "Enter") {
+                                        const trimmed = renameConversationValue.trim();
+                                        if (trimmed && trimmed !== renameConversationTarget.title) {
+                                            handleRenameConversation(trimmed);
+                                        }
+                                        setRenameConversationTarget(null);
+                                    } else if (e.key === "Escape") {
+                                        setRenameConversationTarget(null);
+                                    }
+                                }}
+                            />
+                        </div>
+
+                        <div className="delete-modal-footer">
+                            <button
+                                type="button"
+                                className="delete-btn-cancel"
+                                onClick={() => setRenameConversationTarget(null)}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                className="button"
+                                style={{ background: "var(--accent)", color: "#000", fontWeight: "700", padding: "8px 16px", borderRadius: "6px", cursor: "pointer", border: "none" }}
+                                onClick={() => {
+                                    const trimmed = renameConversationValue.trim();
+                                    if (trimmed && trimmed !== renameConversationTarget.title) {
+                                        handleRenameConversation(trimmed);
+                                    }
+                                    setRenameConversationTarget(null);
+                                }}
+                                disabled={!renameConversationValue.trim()}
+                            >
+                                Save
                             </button>
                         </div>
                     </div>

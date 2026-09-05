@@ -164,13 +164,14 @@ function App(){
 
 				onDelete={async (threadline) => {
 					try {
-						await deleteThreadline(user.uid, threadline.firestoreId);
-						setThreadlines(prev => prev.filter(t => t.firestoreId !== threadline.firestoreId));
-						if (currentThreadline?.firestoreId === threadline.firestoreId) {
+						await deleteThreadline(user.uid, threadline.firestoreId || threadline.id);
+						setThreadlines(prev => prev.filter(t => (t.firestoreId || t.id) !== (threadline.firestoreId || threadline.id)));
+						if ((currentThreadline?.firestoreId || currentThreadline?.id) === (threadline.firestoreId || threadline.id)) {
 							setCurrentThreadline(null);
 						}
 					} catch (error) {
 						console.error("Failed to delete threadline:", error);
+						throw error;
 					}
 				}}
 
@@ -218,6 +219,19 @@ function App(){
 				archiveEmpty={archiveEmpty}
 
 				refreshArchiveStatus={refreshArchiveStatus}
+
+				onDelete={async (threadline) => {
+					try {
+						await deleteThreadline(user.uid, threadline.firestoreId || threadline.id);
+						setThreadlines(prev => prev.filter(t => (t.firestoreId || t.id) !== (threadline.firestoreId || threadline.id)));
+						if ((currentThreadline?.firestoreId || currentThreadline?.id) === (threadline.firestoreId || threadline.id)) {
+							setCurrentThreadline(null);
+						}
+					} catch (error) {
+						console.error("Failed to delete threadline:", error);
+						throw error;
+					}
+				}}
 
 			/>
 

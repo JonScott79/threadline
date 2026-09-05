@@ -20,6 +20,7 @@ import { useState } from "react";
 import { useAuth } from "../auth/AuthProvider";
 import { auth } from "../auth/firebase";
 import { signOut } from "firebase/auth";
+import DeleteThreadlineModal from "./DeleteThreadlineModal";
 
 // =====================================
 // Component
@@ -36,6 +37,14 @@ function Sidebar({
     archiveEmpty
 }){
     const [compareIds, setCompareIds] = useState([]);
+    const [threadlineToDelete, setThreadlineToDelete] = useState(null);
+    const [isDeleting, setIsDeleting] = useState(false);
+    const [deleteError, setDeleteError] = useState(null);
+
+    // Custom rename inline/modal state
+    const [editingThreadline, setEditingThreadline] = useState(null);
+    const [renameValue, setRenameValue] = useState("");
+
     const { user, logoutLocalGuest } = useAuth();
 
     async function handleSignOut(){
@@ -48,6 +57,30 @@ function Sidebar({
         } catch(error) {
             console.error("Sign out failed:", error);
         }
+    }
+
+    async function handleConfirmDelete(tl) {
+        if (!tl) return;
+        setIsDeleting(true);
+        setDeleteError(null);
+        try {
+            await onDelete(tl);
+            setThreadlineToDelete(null);
+        } catch (err) {
+            setDeleteError(err.message || "Failed to delete threadline.");
+        } finally {
+            setIsDeleting(false);
+        }
+    }
+
+    function handleSaveRename() {
+        if (!editingThreadline) return;
+        const trimmed = renameValue.trim();
+        if (trimmed && trimmed !== editingThreadline.title) {
+            onRename(editingThreadline, trimmed);
+        }
+        setEditingThreadline(null);
+        setRenameValue("");
     }
 
     return(
@@ -174,10 +207,8 @@ function Sidebar({
                                     onClick={(e) => {
                                         if (archiveEmpty) return;
                                         e.stopPropagation();
-                                        const newName = prompt("Rename threadline:", threadline.title);
-                                        if (newName && newName.trim() && newName.trim() !== threadline.title) {
-                                            onRename(threadline, newName.trim());
-                                        }
+                                        setEditingThreadline(threadline);
+                                        setRenameValue(threadline.title);
                                     }}
                                 >
                                     ✏️
@@ -188,9 +219,8 @@ function Sidebar({
                                     style={{ cursor: "pointer" }}
                                     onClick={(e) => {
                                         e.stopPropagation();
-                                        if (confirm(`Are you sure you want to delete "${threadline.title}"? All associated conversation logs will be permanently deleted.`)) {
-                                            onDelete(threadline);
-                                        }
+                                        setThreadlineToDelete(threadline);
+                                        setDeleteError(null);
                                     }}
                                 >
                                     &times;
@@ -251,6 +281,86 @@ function Sidebar({
             >
                 Sign Out
             </button>
+
+            {/* Custom In-App Threadline Deletion Confirmation Modal */}
+            <DeleteThreadlineModal
+                isOpen={!!threadlineToDelete}
+                threadline={threadlineToDelete}
+                onClose={() => {
+                    if (!isDeleting) {
+                        setThreadlineToDelete(null);
+                        setDeleteError(null);
+                    }
+                }}
+                onConfirm={handleConfirmDelete}
+                isDeleting={isDeleting}
+                errorMessage={deleteError}
+            />
+
+            {/* In-App Rename Dialog */}
+            {editingThreadline && (
+                <div
+                    className="delete-modal-backdrop"
+                    onClick={(e) => {
+                        if (e.target === e.currentTarget) {
+                            setEditingThreadline(null);
+                        }
+                    }}
+                >
+                    <div
+                        className="delete-modal-card"
+                        style={{ borderColor: "rgba(56, 189, 248, 0.35)", boxShadow: "0 25px 50px -12px rgba(0,0,0,0.7), 0 0 25px rgba(56, 189, 248, 0.15)" }}
+                        role="dialog"
+                        aria-modal="true"
+                    >
+                        <div className="delete-modal-header" style={{ background: "#1e293b" }}>
+                            <h3 style={{ margin: 0, fontSize: "1rem", color: "#38bdf8" }}>
+                                RENAME THREADLINE
+                            </h3>
+                            <button
+                                type="button"
+                                className="delete-modal-close-btn"
+                                onClick={() => setEditingThreadline(null)}
+                            >
+                                &times;
+                            </button>
+                        </div>
+                        <div className="delete-modal-body">
+                            <label style={{ fontSize: "0.8rem", color: "#94a3b8", textTransform: "uppercase", fontWeight: 600 }}>
+                                Threadline Title
+                            </label>
+                            <input
+                                type="text"
+                                className="export-field-input"
+                                value={renameValue}
+                                onChange={(e) => setRenameValue(e.target.value)}
+                                autoFocus
+                                onKeyDown={(e) => {
+                                    if (e.key === "Enter") handleSaveRename();
+                                    if (e.key === "Escape") setEditingThreadline(null);
+                                }}
+                            />
+                        </div>
+                        <div className="delete-modal-footer">
+                            <button
+                                type="button"
+                                className="delete-btn-cancel"
+                                onClick={() => setEditingThreadline(null)}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                className="export-btn-submit"
+                                onClick={handleSaveRename}
+                                disabled={!renameValue.trim()}
+                            >
+                                SAVE
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </aside>
     );
 }

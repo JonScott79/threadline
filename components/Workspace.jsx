@@ -38,7 +38,8 @@ function Workspace({
     showingHelp,
     setShowingHelp,
     archiveEmpty,
-    refreshArchiveStatus
+    refreshArchiveStatus,
+    onDelete
 }){
     /*==============================================
                         STATE
@@ -73,6 +74,7 @@ function Workspace({
                         setCurrentThreadline={setCurrentThreadline}
                         uid={user.uid}
                         onImportSuccess={refreshArchiveStatus}
+                        onDelete={onDelete}
                     />
                 ) : currentThreadline ? (
                     <ThreadlineWorkspace
@@ -81,6 +83,7 @@ function Workspace({
                         setCurrentThreadline={setCurrentThreadline}
                         uid={user.uid}
                         onImportSuccess={refreshArchiveStatus}
+                        onDelete={onDelete}
                     />
                 ) : creatingThreadline ? (
                     <NewThreadline
