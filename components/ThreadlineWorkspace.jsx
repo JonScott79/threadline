@@ -114,6 +114,8 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
 
     // Search matched message ID to jump/highlight
     const [activeSearchMessageId, setActiveSearchMessageId] = useState(null);
+    // Tracks expanded Event Clusters in the Search Explorer pane
+    const [expandedClusterIds, setExpandedClusterIds] = useState([]);
 
     // Viewer (Right Pane) States
     const [activeRightTab, setActiveRightTab] = useState("day"); // 'day' | 'conversation'
@@ -734,50 +736,84 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
         }, 350);
     }
 
-    // Handles clicking a search result: zooms timeline & scrolls to conversation
-    function handleSearchResultClick(result) {
-        // Clear active date range filter so it doesn't mask the message we want to jump to
+    // Toggles inline chronological messages transcript for an Event Cluster
+    function handleToggleClusterExpand(clusterId) {
+        setExpandedClusterIds(prev =>
+            prev.includes(clusterId)
+                ? prev.filter(id => id !== clusterId)
+                : [...prev, clusterId]
+        );
+    }
+
+    // Handles clicking an Event Cluster: highlights and centers timeline on the cluster time span
+    function handleClusterClick(cluster) {
         setStartDateStr("");
         setEndDateStr("");
 
-        // Compute the date string from timestamp (YYYY-MM-DD) in UTC
-        const dateObj = new Date(Number(result.timestamp));
-        const yyyy = dateObj.getUTCFullYear();
-        const mm = String(dateObj.getUTCMonth() + 1).padStart(2, "0");
-        const dd = String(dateObj.getUTCDate()).padStart(2, "0");
-        const dateStr = `${yyyy}-${mm}-${dd}`;
-        const yearMonthStr = `${yyyy}-${mm}`;
+        const earliest = Number(cluster.earliestTimestamp || cluster.timestamp);
+        const latest = Number(cluster.latestTimestamp || cluster.timestamp);
 
-        // Set message highlight target
-        setActiveSearchMessageId(result.representativeMessageId || result.id);
-
-        // 1. Move & center timeline on the search match timestamp
-        if (timelineRef.current && timelineRef.current.moveToTimestamp) {
-            timelineRef.current.moveToTimestamp(result.timestamp);
+        // Center and fit the timeline to the cluster time window with 10% breathing room
+        if (timelineRef.current) {
+            if (timelineRef.current.setWindow && earliest && latest) {
+                const span = latest - earliest;
+                const padding = Math.max(span * 0.15, 3600000); // at least 1 hour padding
+                timelineRef.current.setWindow(earliest - padding, latest + padding);
+            } else if (timelineRef.current.moveToTimestamp) {
+                timelineRef.current.moveToTimestamp(earliest);
+            }
         }
 
-        // 2. Jump timeline zoom & period states
-        setZoom("day");
-        setSelectedYearMonth(yearMonthStr);
-        setSelectedDay(dateStr);
+        // Set target highlight message to dominant representative message
+        setActiveSearchMessageId(cluster.representativeMessageId || cluster.id);
 
-        // 3. Select matching conversation
-        const foundConv = conversations.find(c => c.id === result.conversationId) || {
-            id: result.conversationId,
-            title: result.conversationTitle,
-            platform: result.platform
+        // Select the primary conversation and switch to Thread View
+        const foundConv = conversations.find(c => c.id === cluster.conversationId) || {
+            id: cluster.conversationId,
+            title: cluster.conversationTitle,
+            platform: cluster.platform
         };
         setActiveConversation(foundConv);
         setActiveRightTab("conversation");
 
-        // 4. Scroll to target message bubble
+        // Scroll to representative message
         setTimeout(() => {
-            const targetId = result.representativeMessageId || result.id;
+            const targetId = cluster.representativeMessageId || cluster.id;
             const el = document.getElementById(`msg-${targetId}`);
             if (el) {
                 el.scrollIntoView({ behavior: "smooth", block: "center" });
             }
         }, 400);
+    }
+
+    // Handles clicking an individual constituent source message inside an Event Cluster
+    function handleClusterMessageClick(msg) {
+        setStartDateStr("");
+        setEndDateStr("");
+
+        setActiveSearchMessageId(msg.id);
+
+        // 1. Move & center timeline on the exact message timestamp
+        if (timelineRef.current && timelineRef.current.moveToTimestamp) {
+            timelineRef.current.moveToTimestamp(msg.timestamp);
+        }
+
+        // 2. Select the specific conversation this message originated from
+        const foundConv = conversations.find(c => c.id === msg.conversationId) || {
+            id: msg.conversationId,
+            title: msg.conversationTitle || "Conversation",
+            platform: msg.platform || "SMS"
+        };
+        setActiveConversation(foundConv);
+        setActiveRightTab("conversation");
+
+        // 3. Scroll to target message bubble in existing Thread View
+        setTimeout(() => {
+            const el = document.getElementById(`msg-${msg.id}`);
+            if (el) {
+                el.scrollIntoView({ behavior: "smooth", block: "center" });
+            }
+        }, 350);
     }
 
     /*==============================================
@@ -1570,6 +1606,160 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                                 ) : searchResults.length > 0 ? (
                                     searchResults.map(result => {
                                         const isPinned = pinnedConversationIds.includes(result.conversationId);
+                                        const isEventCluster = result.type === "event_cluster" || (result.messages && result.messages.length > 0);
+                                        const isExpanded = expandedClusterIds.includes(result.id || result.clusterId);
+
+                                        if (isEventCluster) {
+                                            const constituentMessages = result.messages || [];
+                                            const participantsList = result.participants || [];
+                                            const conversationsList = result.conversations || [];
+
+                                            return (
+                                                <div 
+                                                    key={result.id || result.clusterId || `${result.conversationId}-${result.timestamp}`} 
+                                                    className="search-result-card event-cluster-card"
+                                                    draggable="true"
+                                                    onDragStart={(e) => {
+                                                        e.dataTransfer.setData("application/json", JSON.stringify({ type: "searchResult", result: result }));
+                                                        e.dataTransfer.setData("text/plain", result.conversationId);
+                                                    }}
+                                                >
+                                                    {/* Header Ribbon & Badges */}
+                                                    <div className="search-card-header">
+                                                        <span className="cluster-tag-ribbon">
+                                                            <span>✦ EVENT CLUSTER</span>
+                                                        </span>
+                                                        <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                                                            {result.clusterConfidence && (
+                                                                <span className={`confidence-badge ${result.clusterConfidence.toLowerCase()}`} title="Cluster Confidence">
+                                                                    {result.clusterConfidence} conf
+                                                                </span>
+                                                            )}
+                                                            <span className={`relevance-badge ${result.relevance.toLowerCase()}`}>
+                                                                {result.relevance}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Title & Forensic Date Range */}
+                                                    <h4 className="search-card-title" style={{ fontSize: "0.95rem", color: "var(--accent)" }}>
+                                                        {result.title || result.conversationTitle}
+                                                    </h4>
+                                                    <div className="search-card-date" style={{ color: "var(--text-light)", marginBottom: "6px" }}>
+                                                        📅 {result.timeSpan?.dateString || result.dateString}
+                                                    </div>
+
+                                                    {/* Forensic Metadata Chips */}
+                                                    <div className="cluster-meta-chips">
+                                                        <span className="cluster-chip">
+                                                            💬 <strong>{constituentMessages.length}</strong> {constituentMessages.length === 1 ? 'Message' : 'Messages'}
+                                                        </span>
+                                                        {conversationsList.length > 0 && (
+                                                            <span className="cluster-chip">
+                                                                🧵 <strong>{conversationsList.length}</strong> {conversationsList.length === 1 ? 'Thread' : 'Threads'}
+                                                            </span>
+                                                        )}
+                                                        {participantsList.length > 0 && (
+                                                            <span className="cluster-chip" title={participantsList.join(", ")}>
+                                                                👥 <strong>{participantsList.length}</strong> {participantsList.length === 1 ? 'Person' : 'People'}
+                                                            </span>
+                                                        )}
+                                                    </div>
+
+                                                    {/* Reason / Analysis summary */}
+                                                    <p className="search-card-reason" style={{ marginBottom: "10px" }}>
+                                                        {result.summaryReason || result.reason}
+                                                    </p>
+
+                                                    {/* Chronological Source Messages Reconstruction Box */}
+                                                    <div className="cluster-reconstruction-box">
+                                                        <div className="cluster-reconstruction-header">
+                                                            <span>Reconstructed Chronology</span>
+                                                            <button 
+                                                                className="cluster-toggle-btn"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    handleToggleClusterExpand(result.id || result.clusterId);
+                                                                }}
+                                                            >
+                                                                {isExpanded ? "Collapse ▲" : `View All ${constituentMessages.length} Messages ▼`}
+                                                            </button>
+                                                        </div>
+
+                                                        <div className="cluster-messages-timeline">
+                                                            {(isExpanded ? constituentMessages : constituentMessages.slice(0, 2)).map((m) => (
+                                                                <div 
+                                                                    key={m.id} 
+                                                                    className="cluster-message-item"
+                                                                    onClick={() => handleClusterMessageClick(m)}
+                                                                    title="Click to jump timeline & view message in thread"
+                                                                >
+                                                                    <div className="cluster-msg-meta-row">
+                                                                        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                                                                            <span className="cluster-msg-sender">
+                                                                                {m.direction === "sent" ? "Me" : m.sender}
+                                                                            </span>
+                                                                            {m.conversationTitle && (
+                                                                                <span className="cluster-thread-badge" title={`Thread: ${m.conversationTitle}`}>
+                                                                                    {m.conversationTitle}
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+                                                                        <span className="cluster-msg-time">
+                                                                            {new Date(Number(m.timestamp)).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "UTC" })}
+                                                                        </span>
+                                                                    </div>
+                                                                    <div className="cluster-msg-body">{m.body}</div>
+                                                                    {m.matchReason && (
+                                                                        <div className="cluster-match-reason">
+                                                                            ⚓ {m.matchReason}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            ))}
+                                                            {!isExpanded && constituentMessages.length > 2 && (
+                                                                <div 
+                                                                    style={{ fontSize: "0.72rem", color: "var(--accent)", textAlign: "center", cursor: "pointer", padding: "4px 0" }}
+                                                                    onClick={() => handleToggleClusterExpand(result.id || result.clusterId)}
+                                                                >
+                                                                    + {constituentMessages.length - 2} more chronologically ordered messages
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Actions: View on Timeline & Link */}
+                                                    <div className="search-card-actions">
+                                                        <button 
+                                                            className="search-card-btn view-btn"
+                                                            onClick={() => handleClusterClick(result)}
+                                                            title="Center timeline on this event cluster window"
+                                                        >
+                                                            [NAVIGATE TIMELINE]
+                                                        </button>
+                                                        <button 
+                                                            className="search-card-btn add-btn"
+                                                            onClick={() => {
+                                                                if (isArchive) {
+                                                                    if (isPinned) {
+                                                                        handleUnpinConversation(result.conversationId);
+                                                                    } else {
+                                                                        handlePinConversation(result.conversationId);
+                                                                    }
+                                                                } else {
+                                                                    handleLinkSearchResultAsSegment(result);
+                                                                }
+                                                            }}
+                                                            style={{ color: isPinned ? "var(--danger)" : "var(--accent)" }}
+                                                        >
+                                                            {isArchive ? (isPinned ? "[REMOVE]" : "[ADD TO THREADLINE]") : "[LINK TO TIMELINE]"}
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            );
+                                        }
+
+                                        // Fallback legacy individual search result card
                                         return (
                                             <div 
                                                 key={`${result.conversationId}-${result.timestamp}`} 
@@ -1591,7 +1781,7 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                                                 
                                                 {/* Context Window (before & after matched text) */}
                                                 <div className="search-card-context-window">
-                                                    {result.contextWindow.map((msg) => (
+                                                    {result.contextWindow && result.contextWindow.map((msg) => (
                                                         <div 
                                                             key={msg.id} 
                                                             className={`context-message-bubble ${msg.contextRole}`}
