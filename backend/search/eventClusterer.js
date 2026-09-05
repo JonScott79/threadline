@@ -77,6 +77,83 @@ class EventClusterer {
             }
         }
 
+        // --- PHASE 1.5: CONSERVATIVE CONTEXTUAL EVENT EXPANSION ---
+        // When a high-confidence cluster core is found, inspect immediate temporal neighbors (±30 minutes)
+        // in the SAME conversation to recover relevant sequential context (e.g. confirmations, follow-ups)
+        // without leaking unrelated chatter.
+        if (db) {
+            for (const cluster of rawClusters) {
+                // Determine highest score in the cluster
+                const maxScore = Math.max(...cluster.items.map(item => item.score));
+                if (maxScore < 80) continue; // Only expand high-confidence clusters
+
+                const existingMsgIds = new Set(cluster.items.map(item => item.message.id));
+                const candidatesToAdd = [];
+
+                for (const item of cluster.items) {
+                    const m = item.message;
+                    const contextWindowMs = 60 * 60 * 1000; // Bounded 60-minute window for adjacent sequence context
+                    const minTime = m.timestamp - contextWindowMs;
+                    const maxTime = m.timestamp + contextWindowMs;
+
+                    const neighbors = db.query(
+                        `SELECT m.id, 
+                                m.conversation_id AS conversationId, 
+                                c.title AS conversationTitle, 
+                                m.sender, 
+                                m.recipient, 
+                                m.timestamp, 
+                                m.body, 
+                                m.direction, 
+                                m.platform,
+                                m.metadata
+                         FROM messages m
+                         JOIN conversations c ON m.conversation_id = c.id
+                         WHERE m.conversation_id = ? 
+                           AND m.timestamp >= ? 
+                           AND m.timestamp <= ? 
+                           AND m.id != ?
+                         ORDER BY m.timestamp ASC`,
+                        [m.conversationId, minTime, maxTime, m.id]
+                    );
+
+                    for (const neighbor of neighbors) {
+                        if (existingMsgIds.has(neighbor.id)) continue;
+
+                        // Check supporting evidence for contextual message:
+                        // 1. Check for shared concept or query keyword / verb inflection
+                        const neighborCandidate = { message: neighbor, score: 0, matchReasons: [] };
+                        const fit = this.calculateEvidenceFit(neighborCandidate, cluster, intent);
+
+                        // 2. Check for sequence/reply relationship or conversational continuity markers
+                        // e.g., words indicating agreement/confirmation/continuity: yeah, totally, sure, ok, okay, thanks, sounds good, canceled, confirmed
+                        const neighborBody = (neighbor.body || "").toLowerCase();
+                        const hasContinuityMarker = /\b(yeah|totally|sure|ok|okay|yes|yep|thanks|thank you|sounds good|canceled|cancelled|agreed|confirmed|safe|safety|deal|will do)\b/i.test(neighborBody);
+
+                        if (fit >= 0.35 || (hasContinuityMarker && Math.abs(neighbor.timestamp - m.timestamp) <= 60 * 60 * 1000)) {
+                            existingMsgIds.add(neighbor.id);
+                            candidatesToAdd.push({
+                                message: neighbor,
+                                score: Math.round(item.score * 0.6), // Subordinate contextual score
+                                matchReasons: ["Conversation context (adjacent sequence)"]
+                            });
+                        }
+                    }
+                }
+
+                if (candidatesToAdd.length > 0) {
+                    candidatesToAdd.forEach(cand => {
+                        cluster.items.push(cand);
+                        cluster.earliestTimestamp = Math.min(cluster.earliestTimestamp, cand.message.timestamp);
+                        cluster.latestTimestamp = Math.max(cluster.latestTimestamp, cand.message.timestamp);
+                        if (!cluster.participants.includes(cand.message.sender)) {
+                            cluster.participants.push(cand.message.sender);
+                        }
+                    });
+                }
+            }
+        }
+
         // --- PHASE 2: FORMAT EVENT CLUSTERS WITH FORENSIC PROVENANCE ---
         const eventClusters = rawClusters.map((cluster, clusterIdx) => {
             // Sort constituent items by score to find representative message
@@ -254,12 +331,23 @@ class EventClusterer {
 
         const conceptSynonyms = {
             visitation: ["visit", "schedule", "custody", "child", "children", "overnight", "sleepover"],
-            transportation: ["transportation", "ride", "drive", "car", "pick up", "picking up", "drop off", "dropping off", "uber", "lyft", "traffic", "flight", "airport"],
+            transportation: ["transportation", "ride", "drive", "car", "pick up", "picking up", "drop off", "dropping off", "uber", "lyft", "traffic", "flight", "airport", "rideshare", "ride-share", "driving", "truck", "wheels"],
             refused: ["refuse", "cancel", "deny", "not tonight", "withheld", "denied"],
             shopping: ["shop", "store", "buy", "mall", "grocery", "groceries", "bought", "purchased", "market"],
-            concert: ["concert", "band", "music", "ticket", "tickets", "stage", "venue", "live"],
+            concert: ["concert", "band", "music", "ticket", "tickets", "stage", "venue", "live", "gig", "performance", "passes", "set"],
             argument: ["argue", "argument", "fight", "dispute", "screaming", "angry", "yelling", "shouted", "mad", "upset", "shouting"],
             camping: ["camp", "camping", "tent", "outside", "nature", "woods", "forest", "gear", "sleeping bag"]
+        };
+
+        const verbInflections = {
+            call: ["call", "called", "calling", "calls"],
+            pick: ["pick", "picked", "picking", "picks"],
+            talk: ["talk", "talked", "talking", "talks"],
+            decide: ["decide", "decided", "deciding", "decides"],
+            cancel: ["cancel", "canceled", "cancelled", "canceling", "cancelling", "cancels"],
+            meet: ["meet", "met", "meeting", "meets"],
+            go: ["go", "went", "going", "goes", "gone"],
+            plan: ["plan", "planned", "planning", "plans"]
         };
 
         if (intent.concepts && intent.concepts.length > 0) {
@@ -289,11 +377,23 @@ class EventClusterer {
         let hasSharedKeyword = false;
         if (intent.keywords && intent.keywords.length > 0) {
             for (const kw of intent.keywords) {
-                if (bodyLower.includes(kw.toLowerCase())) {
-                    hasSharedKeyword = true;
-                    fitScore += 0.25;
-                    break;
+                let variants = [kw.toLowerCase()];
+                for (const [stem, varList] of Object.entries(verbInflections)) {
+                    if (stem === kw.toLowerCase() || varList.includes(kw.toLowerCase())) {
+                        variants = varList;
+                        break;
+                    }
                 }
+
+                for (const v of variants) {
+                    const rxV = new RegExp(`\\b${v}\\b`, "i");
+                    if (rxV.test(bodyLower)) {
+                        hasSharedKeyword = true;
+                        fitScore += 0.25;
+                        break;
+                    }
+                }
+                if (hasSharedKeyword) break;
             }
         }
 
@@ -317,10 +417,18 @@ class EventClusterer {
             fitScore += 0.15;
         }
 
-        // 5. Temporal proximity bonus (continuous decay over 7 days)
-        if (minDistanceMs <= 7 * dayMs) {
-            const proximityBonus = 0.20 * (1 - (minDistanceMs / (7 * dayMs)));
-            fitScore += proximityBonus;
+        // 6. Calendar month / year match
+        let hasCalendarMatch = false;
+        if (intent.month || intent.year) {
+            const mDate = new Date(msgTime);
+            if (intent.month && mDate.getUTCMonth() + 1 === intent.month) {
+                fitScore += 0.35;
+                hasCalendarMatch = true;
+            }
+            if (intent.year && mDate.getUTCFullYear() === intent.year) {
+                fitScore += 0.20;
+                hasCalendarMatch = true;
+            }
         }
 
         // Conservative guard:
@@ -329,7 +437,8 @@ class EventClusterer {
         // - Shared concept
         // - OR shared query keyword within active temporal proximity (<= 7 days)
         // - OR same conversation continuity
-        const hasCrossThreadEvidence = hasSharedConcept || (hasSharedKeyword && minDistanceMs <= 7 * dayMs);
+        // - OR explicit calendar window match (e.g. pure temporal queries within requested month)
+        const hasCrossThreadEvidence = hasSharedConcept || (hasSharedKeyword && minDistanceMs <= 7 * dayMs) || (hasCalendarMatch && minDistanceMs <= 7 * dayMs);
         if (!hasCrossThreadEvidence && !cluster.conversationIds.includes(m.conversationId)) {
             return 0.0;
         }

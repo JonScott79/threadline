@@ -15,12 +15,24 @@ class SearchEngine {
         // Concept and topic mapping synonyms for semantic expansion (purged of generic terms like 'no', 'time', 'date')
         this.conceptSynonyms = {
             visitation: ["visit", "schedule", "custody", "child", "children", "overnight", "sleepover"],
-            transportation: ["transportation", "ride", "drive", "car", "pick up", "picking up", "drop off", "dropping off", "uber", "lyft", "traffic", "flight", "airport"],
+            transportation: ["transportation", "ride", "drive", "car", "pick up", "picking up", "drop off", "dropping off", "uber", "lyft", "traffic", "flight", "airport", "rideshare", "ride-share", "driving", "truck", "wheels"],
             refused: ["refuse", "cancel", "deny", "not tonight", "withheld", "denied"],
             shopping: ["shop", "store", "buy", "mall", "grocery", "groceries", "bought", "purchased", "market"],
-            concert: ["concert", "band", "music", "ticket", "tickets", "stage", "venue", "live"],
+            concert: ["concert", "band", "music", "ticket", "tickets", "stage", "venue", "live", "gig", "performance", "passes", "set"],
             argument: ["argue", "argument", "fight", "dispute", "screaming", "angry", "yelling", "shouted", "mad", "upset", "shouting"],
             camping: ["camp", "camping", "tent", "outside", "nature", "woods", "forest", "gear", "sleeping bag"]
+        };
+
+        // Explicit, conservative English verb inflection dictionary
+        this.verbInflections = {
+            call: ["call", "called", "calling", "calls"],
+            pick: ["pick", "picked", "picking", "picks"],
+            talk: ["talk", "talked", "talking", "talks"],
+            decide: ["decide", "decided", "deciding", "decides"],
+            cancel: ["cancel", "canceled", "cancelled", "canceling", "cancelling", "cancels"],
+            meet: ["meet", "met", "meeting", "meets"],
+            go: ["go", "went", "going", "goes", "gone"],
+            plan: ["plan", "planned", "planning", "plans"]
         };
 
         // Month indexing for mapping text terms in UTC operations
@@ -97,19 +109,7 @@ class SearchEngine {
             });
         }
 
-        // 3. Extract location anchors (e.g. "in Florida", "to Boston")
-        const locRegex = /\b(?:in|at|to|from)\s+([a-zA-Z]+)\b/gi;
-        let locMatch;
-        while ((locMatch = locRegex.exec(cleanedQuery)) !== null) {
-            const potentialLoc = locMatch[1].toLowerCase();
-            const fillers = ["the", "a", "an", "this", "that", "my", "our", "your"];
-            if (!fillers.includes(potentialLoc)) {
-                info.location = potentialLoc;
-                cleanedQuery = cleanedQuery.replace(locMatch[0], "");
-            }
-        }
-
-        // 4. Extract month markers
+        // 3. Extract month markers
         for (const [name, num] of Object.entries(this.months)) {
             const rx = new RegExp(`\\b${name}\\b`, "i");
             if (rx.test(cleanedQuery)) {
@@ -119,11 +119,23 @@ class SearchEngine {
             }
         }
 
-        // 5. Extract year digits
+        // 4. Extract year digits
         const yearMatch = cleanedQuery.match(/\b(20\d{2}|19\d{2})\b/);
         if (yearMatch) {
             info.year = parseInt(yearMatch[1], 10);
             cleanedQuery = cleanedQuery.replace(yearMatch[0], "");
+        }
+
+        // 5. Extract location anchors (e.g. "in Florida", "to Boston")
+        const locRegex = /\b(?:in|at|to|from)\s+([a-zA-Z]+)\b/gi;
+        let locMatch;
+        while ((locMatch = locRegex.exec(cleanedQuery)) !== null) {
+            const potentialLoc = locMatch[1].toLowerCase();
+            const fillers = ["the", "a", "an", "this", "that", "my", "our", "your"];
+            if (!fillers.includes(potentialLoc)) {
+                info.location = potentialLoc;
+                cleanedQuery = cleanedQuery.replace(locMatch[0], "");
+            }
         }
 
         // 6. Extract relative indicators ("after the concert", "before the argument", "the next day after the concert")
@@ -158,25 +170,38 @@ class SearchEngine {
 
         // 8. Extract remaining keywords (ignoring conversational fillers and question prompts)
         const fillers = new Set([
-            "that", "time", "we", "went", "in", "when", "me", "the", "conversation", "conversations",
-            "about", "going", "where", "i", "told", "him", "her", "she", "he", "they", "them", "us",
-            "couldn't", "make", "it", "what", "did", "talk", "talks", "talking", "talked", "to", "had",
+            "that", "time", "we", "in", "when", "me", "the", "conversation", "conversations",
+            "about", "where", "i", "told", "him", "her", "she", "he", "they", "them", "us",
+            "couldn't", "make", "it", "what", "did", "to", "had",
             "our", "a", "an", "for", "with", "around", "of", "and", "or", "on", "was", "were", "said",
             "say", "saying", "would", "could", "should", "find", "show", "tell", "get", "figuring",
             "out", "all", "both", "who", "whom", "whose", "why", "how", "been", "there", "their", "is",
-            "are", "am", "be", "this", "these", "those"
+            "are", "am", "be", "this", "these", "those", "from"
         ]);
         cleanedQuery
             .replace(/[^\w\s]/g, "")
             .split(/\s+/)
             .forEach(term => {
                 const cleanTerm = term.trim().toLowerCase();
-                if (cleanTerm.length > 2 && !fillers.has(cleanTerm)) {
+                if (cleanTerm.length > 1 && !fillers.has(cleanTerm)) {
                     info.keywords.push(cleanTerm);
                 }
             });
 
         return info;
+    }
+
+    /**
+     * Get verb variants/inflections for a given term if it matches known verb stems or inflected forms.
+     */
+    getVerbVariants(term) {
+        const lower = (term || "").toLowerCase();
+        for (const [stem, variants] of Object.entries(this.verbInflections)) {
+            if (stem === lower || variants.includes(lower)) {
+                return variants;
+            }
+        }
+        return [lower];
     }
 
     /**
@@ -324,7 +349,7 @@ class SearchEngine {
         let candidateSql = "";
         const candidateParams = [];
 
-        // Filter out general retrieval terms to allow broad structural queries (e.g., "everything with Sarah")
+        // Filter out general retrieval terms to allow broad structural queries (e.g., "everything with Sarah", "messages from August")
         const retrieveAllWords = new Set(["everything", "all", "messages", "chats", "texts", "conversations", "records", "entries", "show", "find", "get", "list"]);
         const searchKeywords = intent.keywords.filter(kw => !retrieveAllWords.has(kw));
 
@@ -333,23 +358,47 @@ class SearchEngine {
         intent.quotedPhrases.forEach(qp => {
             ftsTerms.push(`"${qp}"`);
         });
+
+        // Helper to format FTS token safely
+        const formatFtsTerm = (term) => {
+            const clean = term.trim();
+            if (!clean) return null;
+            if (clean.includes(" ") || clean.includes("-")) {
+                return `"${clean}"`;
+            }
+            return `${clean}*`;
+        };
+
+        // Add search keywords and their verb inflection variants
         searchKeywords.forEach(kw => {
-            ftsTerms.push(`${kw}*`);
+            const variants = this.getVerbVariants(kw);
+            variants.forEach(v => {
+                const formatted = formatFtsTerm(v);
+                if (formatted && !ftsTerms.includes(formatted)) ftsTerms.push(formatted);
+            });
         });
 
         // Add matching synonyms if concepts are parsed
         intent.concepts.forEach(concept => {
             const synonyms = this.conceptSynonyms[concept] || [];
             synonyms.forEach(syn => {
-                ftsTerms.push(`${syn}*`);
+                const formatted = formatFtsTerm(syn);
+                if (formatted && !ftsTerms.includes(formatted)) ftsTerms.push(formatted);
             });
         });
+
+        const hasTemporalConstraint = Boolean(timeFilterSql);
 
         if (ftsTerms.length > 0) {
             const ftsExpression = ftsTerms.join(" OR ");
             candidateSql = ` AND m.id IN (SELECT message_id FROM messages_fts WHERE body MATCH ?) `;
             candidateParams.push(ftsExpression);
+        } else if (!hasTemporalConstraint && intent.people.length === 0 && !intent.location) {
+            // No terms, no temporal constraint, no people/location: nothing to search
+            return [];
         }
+        // If ftsTerms is empty but hasTemporalConstraint or intent.people/location is present,
+        // we bypass FTS constraint and retrieve candidates directly using structural filters!
 
         // Build constraint for messages based on global archive or custom workspace segments
         const clauses = [];
@@ -408,12 +457,25 @@ class SearchEngine {
                 }
             });
 
-            // 2. Token whole-word matching (distinguish substrings)
+            // 2. Token whole-word matching (distinguish substrings and verb inflections)
             intent.keywords.forEach(kw => {
-                const rxWord = new RegExp(`\\b${escapeRegExp(kw)}\\b`, "i");
-                if (rxWord.test(bodyLower)) {
-                    score += 40; // Whole-word match
-                    matchReasons.push(`Keyword match: ${kw}`);
+                const variants = this.getVerbVariants(kw);
+                let matchedVariant = null;
+                for (const v of variants) {
+                    const rxVariant = new RegExp(`\\b${escapeRegExp(v)}\\b`, "i");
+                    if (rxVariant.test(bodyLower)) {
+                        matchedVariant = v;
+                        break;
+                    }
+                }
+
+                if (matchedVariant) {
+                    score += 40; // Whole-word match (or inflection match)
+                    if (matchedVariant === kw) {
+                        matchReasons.push(`Keyword match: ${kw}`);
+                    } else {
+                        matchReasons.push(`Verb inflection match: ${kw} (${matchedVariant})`);
+                    }
                 } else if (bodyLower.includes(kw)) {
                     score += 5;  // Substring match
                     matchReasons.push(`Partial keyword match: ${kw}`);
