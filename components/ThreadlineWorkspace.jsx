@@ -1881,44 +1881,80 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                                                         </div>
 
                                                         <div className="cluster-messages-timeline">
-                                                            {(isExpanded ? constituentMessages : constituentMessages.slice(0, 2)).map((m) => (
-                                                                <div 
-                                                                    key={m.id} 
-                                                                    className="cluster-message-item"
-                                                                    onClick={() => handleClusterMessageClick(m)}
-                                                                    title="Click to jump timeline & view message in thread"
-                                                                >
-                                                                    <div className="cluster-msg-meta-row">
-                                                                        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                                                                            <span className="cluster-msg-sender">
-                                                                                {m.direction === "sent" ? "Me" : m.sender}
-                                                                            </span>
-                                                                            {m.conversationTitle && (
-                                                                                <span className="cluster-thread-badge" title={`Thread: ${m.conversationTitle}`}>
-                                                                                    {m.conversationTitle}
-                                                                                </span>
-                                                                            )}
-                                                                        </div>
-                                                                        <span className="cluster-msg-time">
-                                                                             {formatFullTimestamp(m.timestamp)}
-                                                                         </span>
-                                                                    </div>
-                                                                    <div className="cluster-msg-body">{m.body}</div>
-                                                                    {m.matchReason && (
-                                                                        <div className="cluster-match-reason">
-                                                                            ⚓ {m.matchReason}
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-                                                            ))}
-                                                            {!isExpanded && constituentMessages.length > 2 && (
-                                                                <div 
-                                                                    style={{ fontSize: "0.72rem", color: "var(--accent)", textAlign: "center", cursor: "pointer", padding: "4px 0" }}
-                                                                    onClick={() => handleToggleClusterExpand(result.id || result.clusterId)}
-                                                                >
-                                                                    + {constituentMessages.length - 2} more chronologically ordered messages
-                                                                </div>
-                                                            )}
+                                                            {(() => {
+                                                                let previewMessages = constituentMessages;
+                                                                if (!isExpanded && constituentMessages.length > 2) {
+                                                                    // Find the anchor/representative message index to center the preview around
+                                                                    let anchorIdx = -1;
+                                                                    if (result.representativeMessageId) {
+                                                                        anchorIdx = constituentMessages.findIndex(m => m.id === result.representativeMessageId);
+                                                                    }
+                                                                    if (anchorIdx === -1) {
+                                                                        // Fallback to highest scored message in cluster
+                                                                        let maxSc = -1;
+                                                                        constituentMessages.forEach((m, idx) => {
+                                                                            if ((m.score || 0) > maxSc) {
+                                                                                maxSc = m.score || 0;
+                                                                                anchorIdx = idx;
+                                                                            }
+                                                                        });
+                                                                    }
+                                                                    if (anchorIdx !== -1) {
+                                                                        if (anchorIdx + 1 < constituentMessages.length) {
+                                                                            previewMessages = [constituentMessages[anchorIdx], constituentMessages[anchorIdx + 1]];
+                                                                        } else if (anchorIdx - 1 >= 0) {
+                                                                            previewMessages = [constituentMessages[anchorIdx - 1], constituentMessages[anchorIdx]];
+                                                                        } else {
+                                                                            previewMessages = constituentMessages.slice(0, 2);
+                                                                        }
+                                                                    } else {
+                                                                        previewMessages = constituentMessages.slice(0, 2);
+                                                                    }
+                                                                }
+
+                                                                return (
+                                                                    <>
+                                                                        {previewMessages.map((m) => (
+                                                                            <div 
+                                                                                key={m.id} 
+                                                                                className="cluster-message-item"
+                                                                                onClick={() => handleClusterMessageClick(m)}
+                                                                                title="Click to jump timeline & view message in thread"
+                                                                            >
+                                                                                <div className="cluster-msg-meta-row">
+                                                                                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                                                                                        <span className="cluster-msg-sender">
+                                                                                            {m.direction === "sent" ? "Me" : m.sender}
+                                                                                        </span>
+                                                                                        {m.conversationTitle && (
+                                                                                            <span className="cluster-thread-badge" title={`Thread: ${m.conversationTitle}`}>
+                                                                                                {m.conversationTitle}
+                                                                                            </span>
+                                                                                        )}
+                                                                                    </div>
+                                                                                    <span className="cluster-msg-time">
+                                                                                         {formatFullTimestamp(m.timestamp)}
+                                                                                     </span>
+                                                                                </div>
+                                                                                <div className="cluster-msg-body">{m.body}</div>
+                                                                                {m.matchReason && (
+                                                                                    <div className="cluster-match-reason">
+                                                                                        ⚓ {m.matchReason}
+                                                                                    </div>
+                                                                                )}
+                                                                            </div>
+                                                                        ))}
+                                                                        {!isExpanded && constituentMessages.length > previewMessages.length && (
+                                                                            <div 
+                                                                                style={{ fontSize: "0.72rem", color: "var(--accent)", textAlign: "center", cursor: "pointer", padding: "4px 0" }}
+                                                                                onClick={() => handleToggleClusterExpand(result.id || result.clusterId)}
+                                                                            >
+                                                                                + {constituentMessages.length - previewMessages.length} more chronologically ordered messages
+                                                                            </div>
+                                                                        )}
+                                                                    </>
+                                                                );
+                                                            })()}
                                                         </div>
                                                     </div>
 
@@ -2074,17 +2110,23 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                                     </div>
                                     
                                     {dayEvents.map(e => (
-                                        <div key={e.id} className="day-event-row">
+                                        <div 
+                                            key={e.id} 
+                                            className="day-event-row"
+                                            onClick={() => handleTimelineMessageSelect(e)}
+                                            style={{ cursor: "pointer" }}
+                                            title="Click to view message in thread"
+                                        >
                                             <div className="day-event-time">
                                                 {formatTime(e.timestamp)}
                                             </div>
                                             <div className="day-event-body">
                                                 <div className="day-event-title-line">
                                                     <span className="day-event-title">{e.title}</span>
-                                                    <span className="day-event-platform">SMS</span>
+                                                    <span className="day-event-platform">{e.platform || "SMS"}</span>
                                                 </div>
                                                 <div className="day-event-text">
-                                                    {e.description}
+                                                    {e.body || e.description}
                                                 </div>
                                             </div>
                                         </div>

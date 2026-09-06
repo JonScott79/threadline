@@ -310,8 +310,28 @@ class EventClusterer {
             };
         });
 
-        // Return clusters ordered by relevance score descending
-        return eventClusters.sort((a, b) => b.relevanceScore - a.relevanceScore);
+        // Return clusters ordered by relevance score descending.
+        // For equal max scores, prioritize clusters with higher multi-keyword match density,
+        // higher average score, and tighter temporal/message focus.
+        return eventClusters.sort((a, b) => {
+            if (b.relevanceScore !== a.relevanceScore) {
+                return b.relevanceScore - a.relevanceScore;
+            }
+            // Count messages matching multiple keywords (score >= 180)
+            const aMultiCount = a.messages.filter(m => m.score >= 180).length;
+            const bMultiCount = b.messages.filter(m => m.score >= 180).length;
+            if (bMultiCount !== aMultiCount) {
+                return bMultiCount - aMultiCount;
+            }
+            // Secondary tie-breaker: average score across cluster messages
+            const aAvg = a.messages.reduce((sum, m) => sum + m.score, 0) / (a.messages.length || 1);
+            const bAvg = b.messages.reduce((sum, m) => sum + m.score, 0) / (b.messages.length || 1);
+            if (Math.abs(bAvg - aAvg) > 0.01) {
+                return bAvg - aAvg;
+            }
+            // Tertiary tie-breaker: prefer more focused clusters (fewer diluted messages)
+            return a.messages.length - b.messages.length;
+        });
     }
 
     /**
@@ -388,6 +408,7 @@ class EventClusterer {
             }
         }
 
+        let matchedKwCount = 0;
         let hasSharedKeyword = false;
         if (intent.keywords && intent.keywords.length > 0) {
             for (const kw of intent.keywords) {
@@ -402,12 +423,21 @@ class EventClusterer {
                 for (const v of variants) {
                     const rxV = new RegExp(`\\b${v}\\b`, "i");
                     if (rxV.test(bodyLower)) {
+                        matchedKwCount++;
                         hasSharedKeyword = true;
-                        fitScore += 0.25;
                         break;
                     }
                 }
-                if (hasSharedKeyword) break;
+            }
+
+            if (hasSharedKeyword) {
+                // For multi-word queries, award proportional fit based on matched query keywords
+                if (intent.keywords.length > 1) {
+                    const matchRatio = matchedKwCount / intent.keywords.length;
+                    fitScore += 0.15 + (matchRatio * 0.20);
+                } else {
+                    fitScore += 0.25;
+                }
             }
         }
 
@@ -449,16 +479,23 @@ class EventClusterer {
         // Do NOT create an Event Cluster merely because people know each other or messages occurred near the same time.
         // There must be meaningful shared evidence:
         // - Shared concept
-        // - OR shared query keyword within active temporal proximity (<= 7 days)
+        // - OR shared query keyword within active temporal proximity
+        //   * For multi-word queries where candidate only matches 1 keyword: require closer temporal window (<= 2 days)
+        //     to prevent distant incidental single-keyword hits from chaining across weeks.
+        //   * For full/strong keyword matches or single-keyword queries: allow <= 7 days.
         // - OR explicit calendar window match (e.g. pure temporal queries within requested month)
-        // - For same-conversation continuity, if there is no shared concept or calendar match, require temporal proximity (<= 7 days)
+        // - For same-conversation continuity, if there is no shared concept or calendar match, require temporal proximity
         //   to prevent distant single-keyword hits from chaining across weeks or months.
-        const hasCrossThreadEvidence = hasSharedConcept || (hasSharedKeyword && minDistanceMs <= 7 * dayMs) || (hasCalendarMatch && minDistanceMs <= 7 * dayMs);
+        const allowedKwWindowMs = (intent.keywords && intent.keywords.length > 1 && matchedKwCount === 1)
+            ? (2 * dayMs)
+            : (7 * dayMs);
+
+        const hasCrossThreadEvidence = hasSharedConcept || (hasSharedKeyword && minDistanceMs <= allowedKwWindowMs) || (hasCalendarMatch && minDistanceMs <= 7 * dayMs);
         if (!hasCrossThreadEvidence) {
             if (!cluster.conversationIds.includes(m.conversationId)) {
                 return 0.0;
             }
-            if (minDistanceMs > 7 * dayMs) {
+            if (minDistanceMs > allowedKwWindowMs) {
                 return 0.0;
             }
         }
