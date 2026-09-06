@@ -449,11 +449,17 @@ router.get("/:id/days/:dateString", (request, response) => {
         let filterSql = "";
         const params = [];
         
-        // Build constraint for events
+        // Build constraint for events (supporting both archives and custom workspace segments)
         const clauses = [];
         threadlineIds.forEach(id => {
-            clauses.push(" t.threadline_id = ? ");
-            params.push(id);
+            if (id.startsWith("archive_")) {
+                clauses.push(" t.threadline_id = ? ");
+                params.push(id);
+            } else {
+                const archiveId = `archive_${request.uid}`;
+                clauses.push(` (t.threadline_id = ? OR (t.threadline_id = ? AND m.id IN (SELECT ssm.message_id FROM saved_segment_messages ssm JOIN threadline_segments ts ON ssm.saved_segment_id = ts.saved_segment_id WHERE ts.threadline_id = ?))) `);
+                params.push(id, archiveId, id);
+            }
         });
         const constraint = ` ( ${clauses.join(" OR ")} ) `;
         
@@ -466,9 +472,21 @@ router.get("/:id/days/:dateString", (request, response) => {
 
         // Query timeline events matching the UTC day
         const sql = `
-            SELECT t.id, t.timestamp, t.type, t.source_id AS sourceId, t.title, t.description, t.sender, t.metadata
+            SELECT t.id,
+                   t.timestamp,
+                   t.type,
+                   t.source_id AS sourceId,
+                   t.title,
+                   t.description,
+                   t.sender,
+                   t.metadata,
+                   m.conversation_id AS conversationId,
+                   m.body,
+                   m.platform,
+                   c.title AS conversationTitle
             FROM timeline_events t
             LEFT JOIN messages m ON t.source_id = m.id
+            LEFT JOIN conversations c ON m.conversation_id = c.id
             WHERE ${constraint} AND strftime('%Y-%m-%d', datetime(t.timestamp / 1000, 'unixepoch')) = ? ${filterSql}
             ORDER BY t.timestamp ASC;
         `;

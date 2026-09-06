@@ -196,12 +196,18 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
     }
 
     // Viewer (Right Pane) States
-    const [activeRightTab, setActiveRightTab] = useState("day"); // 'day' | 'conversation'
+    const [activeRightTab, setActiveRightTab] = useState("day"); // 'day' | 'conversation' | 'temporal'
     const [activeConversation, setActiveConversation] = useState(null);
     const [messages, setMessages] = useState([]);
     const [messagesLoading, setMessagesLoading] = useState(false);
     const [dayEvents, setDayEvents] = useState([]);
     const [dayEventsLoading, setDayEventsLoading] = useState(false);
+
+    // Temporal Selection States
+    const [temporalRange, setTemporalRange] = useState(null); // { start: number, end: number }
+    const [temporalMessages, setTemporalMessages] = useState([]);
+    const [temporalMessagesLoading, setTemporalMessagesLoading] = useState(false);
+    const [temporalSummary, setTemporalSummary] = useState(null);
 
     // Refs for auto scrolling and timeline imperative control
     const messagesEndRef = useRef(null);
@@ -229,6 +235,9 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
         setZoom("year");
         setSelectedYearMonth(null);
         setSelectedDay(null);
+        setTemporalRange(null);
+        setTemporalMessages([]);
+        setTemporalSummary(null);
         setActiveConversation(null);
         setMessages([]);
         setDayEvents([]);
@@ -679,6 +688,52 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
         fetchDayEvents();
     }, [selectedDay, threadline.id, pinnedConversationIds, uid]);
 
+    // Load cross-conversation chronological messages when a temporalRange is selected
+    useEffect(() => {
+        if (!temporalRange || !temporalRange.start || !temporalRange.end) {
+            setTemporalMessages([]);
+            setTemporalSummary(null);
+            return;
+        }
+
+        async function fetchTemporalMessages() {
+            setTemporalMessagesLoading(true);
+            try {
+                const params = {
+                    start: temporalRange.start,
+                    end: temporalRange.end
+                };
+                if (visibleConversationIds.length > 0 && visibleConversationIds.length < conversations.length) {
+                    params.conversations = visibleConversationIds.join(",");
+                } else if (visibleConversationIds.length === 0) {
+                    params.conversations = "none_selected";
+                }
+                if (threadline.isCompare && threadline.ids) {
+                    params.ids = threadline.ids.join(",");
+                }
+
+                const response = await axios.get(
+                    `${API_BASE_URL}/threadlines/${threadline.id}/timeline/messages`,
+                    {
+                        params,
+                        headers: { "x-user-uid": uid }
+                    }
+                );
+
+                if (response.data && response.data.status === "success") {
+                    setTemporalMessages(response.data.messages || []);
+                    setTemporalSummary(response.data.summary || null);
+                }
+            } catch (err) {
+                console.error("Failed to load temporal messages:", err);
+            } finally {
+                setTemporalMessagesLoading(false);
+            }
+        }
+
+        fetchTemporalMessages();
+    }, [temporalRange, threadline.id, visibleConversationIds, uid]);
+
     // Execute keyword search (constrains search to selectedDay, start/end date range, and pinned comparison threads if set)
     useEffect(() => {
         if (!searchQuery.trim()) {
@@ -831,22 +886,30 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
     function handleTimelineMessageSelect(event) {
         if (!event) return;
         const msgId = event.sourceId || event.id;
+        const convId = event.conversationId;
         
-        // Register explicit target message scroll & highlight intent
+        // 1. Register explicit target message scroll & highlight intent
         targetScrollMessageIdRef.current = msgId;
         skipScrollToBottomRef.current = true;
         setActiveSearchMessageId(msgId);
 
-        // Find or create conversation object
-        const foundConv = conversations.find(c => c.id === event.conversationId) || {
-            id: event.conversationId,
+        // 2. Activate/reveal this conversation layer if hidden
+        if (convId) {
+            setVisibleConversationIds(prev =>
+                prev.includes(convId) ? prev : [...prev, convId]
+            );
+        }
+
+        // 3. Find or create conversation object and switch to Thread View
+        const foundConv = conversations.find(c => c.id === convId) || {
+            id: convId,
             title: event.conversationTitle || "Conversation",
             platform: event.platform || "SMS"
         };
         setActiveConversation(foundConv);
         setActiveRightTab("conversation");
 
-        // Immediate check if element is already mounted in DOM
+        // 4. Immediate check if element is already mounted in DOM
         const el = document.getElementById(`msg-${msgId}`);
         if (el) {
             el.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -1249,6 +1312,19 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                     onUploadClick={() => setShowImportOverlay(true)}
                     onSelectMessage={handleTimelineMessageSelect}
                     onSelectSearchResult={handleSearchResultClick}
+                    temporalRange={temporalRange}
+                    onSelectTemporalRange={(range) => {
+                        setTemporalRange(range);
+                        setActiveRightTab("temporal");
+                    }}
+                    onClearTemporalRange={() => {
+                        setTemporalRange(null);
+                        setTemporalMessages([]);
+                        setTemporalSummary(null);
+                        if (activeRightTab === "temporal") {
+                            setActiveRightTab(activeConversation ? "conversation" : "day");
+                        }
+                    }}
                 />
             </div>
 
@@ -2095,6 +2171,17 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                         >
                             Thread View
                         </button>
+                        <button 
+                            className={`pane-tab-btn ${activeRightTab === "temporal" ? "active" : ""}`}
+                            onClick={() => temporalRange && setActiveRightTab("temporal")}
+                            disabled={!temporalRange}
+                            style={{ 
+                                opacity: temporalRange ? 1 : 0.4,
+                                color: activeRightTab === "temporal" ? "var(--accent)" : undefined
+                            }}
+                        >
+                            Temporal Window {temporalSummary ? `(${temporalSummary.count})` : (temporalRange ? "•" : "")}
+                        </button>
                     </div>
 
                     <div className="viewer-body-scroll">
@@ -2357,6 +2444,163 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                                     <div ref={messagesEndRef} />
                                 </>
                             )
+                        ) : activeRightTab === "temporal" && temporalRange ? (
+                            /* Temporal Window: Cross-conversation chronological evidence view */
+                            <div className="temporal-window-view">
+                                <div className="temporal-window-banner" style={{
+                                    padding: "16px",
+                                    marginBottom: "16px",
+                                    background: "rgba(63, 216, 255, 0.05)",
+                                    border: "1px solid rgba(63, 216, 255, 0.25)",
+                                    borderRadius: "6px"
+                                }}>
+                                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                                        <div>
+                                            <div style={{
+                                                fontSize: "0.72rem",
+                                                fontFamily: "var(--font-mono)",
+                                                letterSpacing: "1.5px",
+                                                color: "var(--accent)",
+                                                textTransform: "uppercase",
+                                                marginBottom: "4px"
+                                            }}>
+                                                SELECTED PERIOD
+                                            </div>
+                                            <h3 style={{ margin: "0 0 8px 0", fontSize: "1.1rem", color: "var(--text)" }}>
+                                                {new Date(temporalRange.start).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })} — {new Date(temporalRange.end).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}
+                                            </h3>
+                                            <div style={{
+                                                fontSize: "0.85rem",
+                                                color: "var(--text-light)",
+                                                display: "flex",
+                                                gap: "12px",
+                                                flexWrap: "wrap"
+                                            }}>
+                                                <span>💬 <strong>{temporalSummary?.count ?? temporalMessages.length}</strong> messages</span>
+                                                <span>•</span>
+                                                <span>🧵 <strong>{temporalSummary?.conversationCount ?? new Set(temporalMessages.map(m => m.conversationId)).size}</strong> conversations</span>
+                                                <span>•</span>
+                                                <span>👥 <strong>{temporalSummary?.participantCount ?? new Set(temporalMessages.map(m => m.sender).filter(Boolean)).size}</strong> people</span>
+                                            </div>
+                                        </div>
+                                        <button
+                                            className="button-link"
+                                            onClick={() => {
+                                                setTemporalRange(null);
+                                                setTemporalMessages([]);
+                                                setTemporalSummary(null);
+                                                setActiveRightTab(activeConversation ? "conversation" : "day");
+                                            }}
+                                            style={{
+                                                color: "var(--text-muted)",
+                                                border: "1px solid var(--border)",
+                                                padding: "4px 10px",
+                                                borderRadius: "4px",
+                                                fontSize: "0.78rem"
+                                            }}
+                                        >
+                                            ✕ CLEAR SELECTION
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {temporalMessagesLoading ? (
+                                    <div className="pane-loading-indicator">LOADING COMMUNICATIONS IN INTERVAL...</div>
+                                ) : temporalMessages.length > 0 ? (
+                                    <div className="temporal-messages-list" style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                                        {temporalMessages.map((m, idx) => {
+                                            const prevMsg = idx > 0 ? temporalMessages[idx - 1] : null;
+                                            const isCrossConvBoundary = !prevMsg || prevMsg.conversationId !== m.conversationId;
+                                            const convTitle = m.conversationTitle || "Thread";
+                                            const isMe = m.direction === "sent";
+
+                                            return (
+                                                <div key={m.id || idx}>
+                                                    {isCrossConvBoundary && (
+                                                        <div style={{
+                                                            margin: idx === 0 ? "0 0 10px 0" : "16px 0 10px 0",
+                                                            display: "flex",
+                                                            alignItems: "center",
+                                                            gap: "8px"
+                                                        }}>
+                                                            <div style={{ height: "1px", flex: 1, background: "rgba(63, 216, 255, 0.2)" }} />
+                                                            <span style={{
+                                                                fontSize: "0.72rem",
+                                                                fontFamily: "var(--font-mono)",
+                                                                color: "var(--accent)",
+                                                                background: "rgba(63, 216, 255, 0.1)",
+                                                                padding: "2px 8px",
+                                                                borderRadius: "3px",
+                                                                border: "1px solid rgba(63, 216, 255, 0.25)"
+                                                            }}>
+                                                                🧵 {convTitle} ({m.platform || "SMS"})
+                                                            </span>
+                                                            <div style={{ height: "1px", flex: 1, background: "rgba(63, 216, 255, 0.2)" }} />
+                                                        </div>
+                                                    )}
+
+                                                    <div 
+                                                        id={`temporal-msg-${m.id}`}
+                                                        className={`message-row ${activeSearchMessageId === m.id ? "highlighted" : ""}`}
+                                                        style={{
+                                                            padding: "10px 14px",
+                                                            background: "rgba(255, 255, 255, 0.02)",
+                                                            border: "1px solid var(--border)",
+                                                            borderRadius: "6px"
+                                                        }}
+                                                    >
+                                                        <div className="message-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                                                            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                                                                <span className={`message-sender ${m.direction}`} style={{ fontWeight: 600 }}>
+                                                                    {isMe ? "Me" : (m.sender || "Them")}
+                                                                </span>
+                                                                <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                                                                    to {m.recipient || (isMe ? "them" : "me")}
+                                                                </span>
+                                                            </div>
+                                                            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                                                                <span className="message-time" style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+                                                                    {formatFullTimestamp(m.timestamp)}
+                                                                </span>
+                                                                <button
+                                                                    className="button-link"
+                                                                    onClick={() => {
+                                                                        const targetMsg = {
+                                                                            id: m.id,
+                                                                            sourceId: m.id,
+                                                                            conversationId: m.conversationId,
+                                                                            conversationTitle: m.conversationTitle,
+                                                                            platform: m.platform
+                                                                        };
+                                                                        handleTimelineMessageSelect(targetMsg);
+                                                                    }}
+                                                                    title="Open and highlight this message in Thread View"
+                                                                    style={{
+                                                                        color: "var(--accent)",
+                                                                        fontSize: "0.72rem",
+                                                                        padding: "2px 6px",
+                                                                        border: "1px solid rgba(63, 216, 255, 0.3)",
+                                                                        borderRadius: "3px"
+                                                                    }}
+                                                                >
+                                                                    [VIEW IN THREAD]
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                        <div className="message-body" style={{ fontSize: "0.9rem", color: "var(--text-light)", lineHeight: "1.4", wordBreak: "break-word" }}>
+                                                            {m.body}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                ) : (
+                                    <div className="viewer-empty" style={{ padding: "40px 20px", textAlign: "center", color: "var(--text-muted)" }}>
+                                        NO COMMUNICATIONS RECORDED WITHIN THIS TEMPORAL WINDOW.
+                                    </div>
+                                )}
+                            </div>
                         ) : (
                             /* Default empty workspace screen */
                             isArchive ? (

@@ -59,7 +59,10 @@ const Timeline = forwardRef(function Timeline({
     refreshKey = 0,
     onUploadClick = null,
     onSelectMessage = null,
-    onSelectSearchResult = null
+    onSelectSearchResult = null,
+    temporalRange = null,
+    onSelectTemporalRange = null,
+    onClearTemporalRange = null
 }, ref) {
     /*==============================================
                         STATE
@@ -79,6 +82,13 @@ const Timeline = forwardRef(function Timeline({
     const itemsRef = useRef(null);
     const fetchTimerRef = useRef(null);
     const isInitializedRef = useRef(false);
+
+    // Stable refs for event handlers to avoid stale closures in vis-timeline listeners
+    const handleItemClickRef = useRef();
+    const onSelectMessageRef = useRef(onSelectMessage);
+    onSelectMessageRef.current = onSelectMessage;
+    const onSelectTemporalRangeRef = useRef(onSelectTemporalRange);
+    onSelectTemporalRangeRef.current = onSelectTemporalRange;
 
     // Suppress rangechanged events during programmatic moves
     const suppressRangeRef = useRef(false);
@@ -177,14 +187,15 @@ const Timeline = forwardRef(function Timeline({
         timeline.on("select", (props) => {
             if (props.items && props.items.length > 0) {
                 const itemId = props.items[0];
+                if (itemId === "temporal-selection-bg") return;
                 const item = items.get(itemId);
                 if (item) {
                     if (item.isEvent && item.eventData) {
-                        if (onSelectMessage) {
-                            onSelectMessage(item.eventData);
+                        if (onSelectMessageRef.current) {
+                            onSelectMessageRef.current(item.eventData);
                         }
                     } else if (item.bucketData) {
-                        handleItemClick(item.bucketData, item.hasSearchMatch);
+                        handleItemClickRef.current?.(item.bucketData, item.hasSearchMatch);
                     }
                 }
             }
@@ -325,6 +336,16 @@ const Timeline = forwardRef(function Timeline({
             });
 
             itemsRef.current.clear();
+            if (temporalRange && temporalRange.start && temporalRange.end) {
+                eventItems.unshift({
+                    id: "temporal-selection-bg",
+                    start: new Date(temporalRange.start),
+                    end: new Date(temporalRange.end),
+                    type: "background",
+                    className: "tl-temporal-selection-window",
+                    title: `Selected Period: ${new Date(temporalRange.start).toLocaleString()} - ${new Date(temporalRange.end).toLocaleString()}`
+                });
+            }
             itemsRef.current.add(eventItems);
             return;
         }
@@ -371,32 +392,53 @@ const Timeline = forwardRef(function Timeline({
 
         // Clear and update DataSet (efficient: vis-timeline diffs internally)
         itemsRef.current.clear();
+        
+        // If there is an active temporalRange, add a background range item for visual highlight
+        if (temporalRange && temporalRange.start && temporalRange.end) {
+            newItems.unshift({
+                id: "temporal-selection-bg",
+                start: new Date(temporalRange.start),
+                end: new Date(temporalRange.end),
+                type: "background",
+                className: "tl-temporal-selection-window",
+                title: `Selected Period: ${new Date(temporalRange.start).toLocaleString()} - ${new Date(temporalRange.end).toLocaleString()}`
+            });
+        }
+
         itemsRef.current.add(newItems);
     }
 
-    // Re-render items if searchMatches, selectedDay, or selectedYearMonth change without refetching
+    // Re-render items if searchMatches, selectedDay, selectedYearMonth, or temporalRange change without refetching
     useEffect(() => {
         if (isIndividualEventsRef.current && currentEventsRef.current.length > 0) {
             updateTimelineItems([], currentZoomRef.current, true, currentEventsRef.current);
         } else if (currentBucketsRef.current.length > 0) {
             updateTimelineItems(currentBucketsRef.current, currentZoomRef.current, false, []);
         }
-    }, [searchMatches, selectedDay, selectedYearMonth]);
+    }, [searchMatches, selectedDay, selectedYearMonth, temporalRange]);
 
     /*==============================================
                     INTERACTION HANDLERS
     ==============================================*/
 
     function handleItemClick(bucket, hasSearchMatch = false) {
-        const zoom = serverZoom;
+        const zoom = currentZoomRef.current || serverZoom;
         const period = bucket.period;
 
-        // If bucket has search match or is clicked on higher levels, zoom in
-        if (zoom === "day") {
-            onSelectDay(period);
+        const { start: bStart, end: bEnd } = bucketToDateRange(period, zoom);
+        if (onSelectTemporalRangeRef.current && bStart && bEnd) {
+            onSelectTemporalRangeRef.current({
+                start: bStart.getTime(),
+                end: bEnd.getTime()
+            });
+        }
+
+        // If bucket is at day zoom or bucket period matches YYYY-MM-DD
+        if (zoom === "day" || /^\d{4}-\d{2}-\d{2}$/.test(period)) {
+            if (onSelectDay) onSelectDay(period);
         } else if (zoom === "hour" || zoom === "minute" || zoom === "second") {
             const dayPart = period.substring(0, 10);
-            onSelectDay(dayPart);
+            if (onSelectDay) onSelectDay(dayPart);
         } else {
             // For year/month/week: zoom into the bucket's time range
             if (bucket.minTimestamp && bucket.maxTimestamp && timelineRef.current) {
@@ -414,6 +456,7 @@ const Timeline = forwardRef(function Timeline({
             }
         }
     }
+    handleItemClickRef.current = handleItemClick;
 
     function handleFitAll() {
         if (dataEarliest != null && dataLatest != null && timelineRef.current) {
@@ -468,6 +511,13 @@ const Timeline = forwardRef(function Timeline({
         },
         fitAll() {
             handleFitAll();
+        },
+        getWindow() {
+            if (timelineRef.current) {
+                const win = timelineRef.current.getWindow();
+                return { start: win.start.getTime(), end: win.end.getTime() };
+            }
+            return null;
         }
     }));
 
@@ -520,6 +570,46 @@ const Timeline = forwardRef(function Timeline({
                         <>
                             <span className="breadcrumb-separator">/</span>
                             <span className="breadcrumb-day">{selectedDay}</span>
+                        </>
+                    )}
+                    {temporalRange && temporalRange.start && temporalRange.end && (
+                        <>
+                            <span className="breadcrumb-separator">/</span>
+                            <span 
+                                className="breadcrumb-day" 
+                                style={{ 
+                                    color: "var(--accent)", 
+                                    background: "rgba(63, 216, 255, 0.12)", 
+                                    padding: "2px 8px", 
+                                    borderRadius: "4px",
+                                    border: "1px solid rgba(63, 216, 255, 0.3)",
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: "6px"
+                                }}
+                            >
+                                ⏱ {new Date(temporalRange.start).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })} — {new Date(temporalRange.end).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                                {onClearTemporalRange && (
+                                    <button 
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            onClearTemporalRange();
+                                        }}
+                                        title="Clear Temporal Range Selection"
+                                        style={{
+                                            background: "none",
+                                            border: "none",
+                                            color: "var(--text-muted)",
+                                            cursor: "pointer",
+                                            padding: "0 2px",
+                                            fontSize: "0.85rem",
+                                            lineHeight: 1
+                                        }}
+                                    >
+                                        ✕
+                                    </button>
+                                )}
+                            </span>
                         </>
                     )}
                 </div>

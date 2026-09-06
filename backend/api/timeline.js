@@ -326,6 +326,119 @@ router.get("/", (request, response) => {
     }
 });
 
+/**
+ * GET /api/threadlines/:id/timeline/messages
+ * Retrieves all chronological messages across conversations within a temporal range.
+ * Supports:
+ *   - start: unix timestamp ms (inclusive: >= start)
+ *   - end: unix timestamp ms (inclusive: <= end)
+ *   - conversations: comma-separated list of conversation IDs (for layer filtering)
+ *   - ids: comma-separated list of threadline IDs (for multi/compare)
+ */
+router.get("/messages", (request, response) => {
+    try {
+        const { threadlineIds, error } = resolveThreadlineIds(request);
+        if (error) {
+            return response.status(threadlineIds.length === 0 && error.includes("Access") ? 403 : 400).json({
+                status: "error",
+                message: error
+            });
+        }
+
+        const start = request.query.start ? Number(request.query.start) : null;
+        const end = request.query.end ? Number(request.query.end) : null;
+        const conversationsParam = request.query.conversations;
+
+        // Build message-level constraint across threadlineIds
+        const scopeClauses = [];
+        const queryParams = [];
+
+        threadlineIds.forEach(id => {
+            if (id.startsWith("archive_")) {
+                scopeClauses.push(" m.threadline_id = ? ");
+                queryParams.push(id);
+            } else {
+                const archiveId = `archive_${request.uid}`;
+                scopeClauses.push(` (m.threadline_id = ? OR (m.threadline_id = ? AND m.id IN (SELECT ssm.message_id FROM saved_segment_messages ssm JOIN threadline_segments ts ON ssm.saved_segment_id = ts.saved_segment_id WHERE ts.threadline_id = ?))) `);
+                queryParams.push(id, archiveId, id);
+            }
+        });
+
+        const scopeClause = `( ${scopeClauses.join(" OR ")} )`;
+        let filterSql = "";
+
+        if (start != null && !isNaN(start)) {
+            filterSql += " AND m.timestamp >= ? ";
+            queryParams.push(start);
+        }
+        if (end != null && !isNaN(end)) {
+            filterSql += " AND m.timestamp <= ? ";
+            queryParams.push(end);
+        }
+
+        if (conversationsParam) {
+            const convIds = conversationsParam.split(",").filter(Boolean);
+            if (convIds.length > 0) {
+                filterSql += ` AND m.conversation_id IN (${convIds.map(() => '?').join(',')}) `;
+                queryParams.push(...convIds);
+            }
+        }
+
+        const sql = `
+            SELECT m.id,
+                   m.conversation_id AS conversationId,
+                   c.title AS conversationTitle,
+                   m.sender,
+                   m.recipient,
+                   m.timestamp,
+                   m.body,
+                   m.attachments,
+                   m.direction,
+                   m.platform,
+                   m.metadata
+            FROM messages m
+            JOIN conversations c ON m.conversation_id = c.id
+            WHERE ${scopeClause} ${filterSql}
+            ORDER BY m.timestamp ASC
+            LIMIT 1000;
+        `;
+
+        const messages = db.query(sql, queryParams);
+
+        const formatted = messages.map(m => ({
+            ...m,
+            attachments: typeof m.attachments === "string" ? JSON.parse(m.attachments || "[]") : (m.attachments || []),
+            metadata: typeof m.metadata === "string" ? JSON.parse(m.metadata || "{}") : (m.metadata || {})
+        }));
+
+        // Compute summary metadata
+        const distinctConvs = new Set(formatted.map(m => m.conversationId));
+        const distinctParticipants = new Set();
+        formatted.forEach(m => {
+            if (m.sender && m.direction !== "sent") distinctParticipants.add(m.sender);
+            if (m.recipient && m.direction === "sent") distinctParticipants.add(m.recipient);
+        });
+
+        response.json({
+            status: "success",
+            messages: formatted,
+            summary: {
+                count: formatted.length,
+                conversationCount: distinctConvs.size,
+                participantCount: distinctParticipants.size,
+                start,
+                end
+            }
+        });
+    } catch (error) {
+        console.error("Timeline messages retrieval failed:", error);
+        response.status(500).json({
+            status: "error",
+            message: error.message
+        });
+    }
+});
+
 // =====================================
 // Exports
 // =====================================

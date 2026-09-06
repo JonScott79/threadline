@@ -1021,6 +1021,16 @@
     width: 1px !important;
 }
 
+/* Vis-timeline Temporal Selection Window Background Highlight */
+.vis-item.vis-background.tl-temporal-selection-window {
+    background: rgba(63, 216, 255, 0.15) !important;
+    border-left: 2px solid var(--accent) !important;
+    border-right: 2px solid var(--accent) !important;
+    box-sizing: border-box !important;
+    pointer-events: none !important;
+    z-index: 1 !important;
+}
+
 /* Tooltip (vis-timeline native) */
 .vis-tooltip {
     background: var(--panel-light) !important;
