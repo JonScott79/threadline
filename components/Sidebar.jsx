@@ -3,11 +3,12 @@
 
     Primary navigation panel.
     Displays user session metadata, workspace triggers, the list of active
-    threadline workspaces, and session logout controls.
+    threadline workspaces, case file import/export, and session logout controls.
 
     Responsibilities:
     - Render premium Lanzar Threadline branding.
     - Provide "+ New Threadline" action.
+    - Provide "📥 Open .tl Case" action for standalone portable case archives.
     - Display and manage "Your Threadlines" list with delete and edit triggers.
     - Handle local mode session logouts.
 */
@@ -17,9 +18,11 @@
 // =====================================
 
 import { useState } from "react";
+import axios from "axios";
 import { useAuth } from "../auth/AuthProvider";
 import { auth } from "../auth/firebase";
 import { signOut } from "firebase/auth";
+import { API_BASE_URL } from "../src/apiConfig";
 import DeleteThreadlineModal from "./DeleteThreadlineModal";
 
 // =====================================
@@ -34,12 +37,14 @@ function Sidebar({
     onDelete,
     onRename,
     onShowHelp,
+    onCaseImported,
     archiveEmpty
 }){
     const [compareIds, setCompareIds] = useState([]);
     const [threadlineToDelete, setThreadlineToDelete] = useState(null);
     const [isDeleting, setIsDeleting] = useState(false);
     const [deleteError, setDeleteError] = useState(null);
+    const [isImportingCase, setIsImportingCase] = useState(false);
 
     // Custom rename inline/modal state
     const [editingThreadline, setEditingThreadline] = useState(null);
@@ -83,6 +88,36 @@ function Sidebar({
         setRenameValue("");
     }
 
+    async function handleImportCaseFile(e) {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        setIsImportingCase(true);
+        const formData = new FormData();
+        formData.append("casefile", file);
+        const uid = user?.uid || "local";
+        try {
+            const res = await axios.post(`${API_BASE_URL}/threadlines/casefile`, formData, {
+                headers: {
+                    "x-user-uid": uid,
+                    "Content-Type": "multipart/form-data"
+                }
+            });
+            if (res.data?.case) {
+                if (onCaseImported) {
+                    onCaseImported(res.data.case);
+                } else if (onSelect) {
+                    onSelect(res.data.case);
+                }
+            }
+        } catch (err) {
+            console.error("Failed to import .tl case file:", err);
+            alert("Failed to import case file: " + (err.response?.data?.message || err.message));
+        } finally {
+            setIsImportingCase(false);
+            e.target.value = "";
+        }
+    }
+
     return(
 
         <aside className="sidebar">
@@ -120,10 +155,25 @@ function Sidebar({
                     + New Threadline
                 </div>
 
+                <label
+                    className="nav-item"
+                    style={{ fontWeight: "600", cursor: isImportingCase ? "wait" : "pointer", display: "flex", alignItems: "center", color: "var(--accent)" }}
+                    title="Open or import a standalone portable .tl SQLite case file"
+                >
+                    {isImportingCase ? "⏳ Importing .tl Case..." : "📥 Open .tl Case"}
+                    <input
+                        type="file"
+                        accept=".tl"
+                        style={{ display: "none" }}
+                        onChange={handleImportCaseFile}
+                        disabled={isImportingCase}
+                    />
+                </label>
+
                 <div
                     className="nav-item"
                     onClick={onShowHelp}
-                    style={{ fontWeight: "600", color: "var(--accent)" }}
+                    style={{ fontWeight: "600", color: "var(--text-muted)" }}
                 >
                     📖 Help & Guide
                 </div>
@@ -159,37 +209,33 @@ function Sidebar({
                 </div>
 
                 {
-                    threadlines
-                        .filter(t => !(t.firestoreId || t.id || "").startsWith("archive_"))
-                        .map(threadline=>(
+                    threadlines.map((threadline)=>(
                         <div
                             key={threadline.firestoreId || threadline.id}
                             className={
-                                archiveEmpty ? "nav-item nav-item-threadline disabled" : 
-                                (threadline.firestoreId || threadline.id) === (currentThreadline?.firestoreId || currentThreadline?.id)
-                                    ? "nav-item active nav-item-threadline"
-                                    : "nav-item nav-item-threadline"
+                                (currentThreadline?.firestoreId === threadline.firestoreId || currentThreadline?.id === threadline.id)
+                                    ? "nav-item active"
+                                    : "nav-item"
                             }
-                            onClick={archiveEmpty ? () => alert("Please upload a backup file to your Communications Archive first to unlock custom workspaces.") : ()=>onSelect(threadline)}
-                            style={{ display: "flex", alignItems: "center", paddingLeft: "10px", opacity: archiveEmpty ? 0.4 : 1, cursor: archiveEmpty ? "not-allowed" : "pointer" }}
+                            onClick={()=>onSelect(threadline)}
+                            style={{ display: "flex", alignItems: "center", gap: "8px" }}
                         >
-                            <input 
+                            <input
                                 type="checkbox"
-                                disabled={archiveEmpty}
-                                checked={!archiveEmpty && compareIds.includes(threadline.firestoreId || threadline.id)}
-                                onClick={(e) => e.stopPropagation()} // Prevent selecting single row
+                                checked={compareIds.includes(threadline.firestoreId || threadline.id)}
                                 onChange={(e) => {
-                                    if (archiveEmpty) return;
-                                    const tid = threadline.firestoreId || threadline.id;
-                                    if (e.target.checked) {
-                                        setCompareIds(prev => [...prev, tid]);
-                                    } else {
-                                        setCompareIds(prev => prev.filter(id => id !== tid));
-                                    }
+                                    e.stopPropagation();
+                                    const id = threadline.firestoreId || threadline.id;
+                                    setCompareIds(prev => 
+                                        prev.includes(id) 
+                                            ? prev.filter(x => x !== id)
+                                            : [...prev, id]
+                                    );
                                 }}
-                                style={{ 
-                                    marginRight: "10px", 
-                                    cursor: archiveEmpty ? "not-allowed" : "pointer",
+                                onClick={(e) => e.stopPropagation()}
+                                title="Select to compare multiple Threadlines"
+                                style={{
+                                    cursor: "pointer",
                                     accentColor: "var(--accent)",
                                     width: "14px",
                                     height: "14px"

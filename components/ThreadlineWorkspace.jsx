@@ -135,6 +135,39 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
     const [renameConversationTarget, setRenameConversationTarget] = useState(null);
     const [renameConversationValue, setRenameConversationValue] = useState("");
 
+    const [isExportingCase, setIsExportingCase] = useState(false);
+
+    async function handleExportCaseFile() {
+        if (!threadline?.id) return;
+        setIsExportingCase(true);
+        try {
+            const currentUid = uid || 'local';
+            const response = await axios.get(
+                `${API_BASE_URL}/threadlines/${threadline.id}/casefile`,
+                {
+                    headers: { 'x-user-uid': currentUid },
+                    responseType: 'blob'
+                }
+            );
+
+            const blob = new Blob([response.data], { type: 'application/x-sqlite3' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            const sanitizedTitle = (threadline.title || 'case').replace(/[^a-zA-Z0-9_-]/g, '_');
+            a.download = `${sanitizedTitle}.tl`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+        } catch (error) {
+            console.error('Export case file failed:', error);
+            alert('Export case file failed: ' + (error.response?.data?.message || error.message));
+        } finally {
+            setIsExportingCase(false);
+        }
+    }
+
     async function handleExecuteExport() {
         if (!exportModalCluster) return;
         setIsExporting(true);
@@ -1170,6 +1203,26 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                 <div className="dashboard-stats">
                     <span>THREADS: <strong>{stats.conversationCount}</strong></span>
                     <span>EVENTS: <strong>{stats.messageCount}</strong></span>
+                    <button
+                        className="button-link"
+                        onClick={handleExportCaseFile}
+                        disabled={isExportingCase}
+                        title="Export entire case as a portable, tamper-evident .tl SQLite case file"
+                        style={{
+                            color: "var(--accent)",
+                            fontWeight: "700",
+                            fontSize: "0.75rem",
+                            textTransform: "uppercase",
+                            letterSpacing: "1px",
+                            border: "1px solid var(--accent)",
+                            padding: "4px 12px",
+                            borderRadius: "3px",
+                            cursor: isExportingCase ? "wait" : "pointer",
+                            marginLeft: "8px"
+                        }}
+                    >
+                        {isExportingCase ? "EXPORTING..." : "📦 EXPORT .TL"}
+                    </button>
                     <button
                         className="button-link"
                         onClick={() => setShowImportOverlay(true)}
@@ -2483,6 +2536,36 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                                                 <span>👥 <strong>{temporalSummary?.participantCount ?? new Set(temporalMessages.map(m => m.sender).filter(Boolean)).size}</strong> people</span>
                                             </div>
                                         </div>
+                                        <div style={{ display: "flex", gap: "8px" }}>
+                                            <button
+                                                className="button-link"
+                                                onClick={() => {
+                                                    const intervalCluster = {
+                                                        title: `Temporal Window (${new Date(temporalRange.start).toLocaleDateString()} – ${new Date(temporalRange.end).toLocaleDateString()})`,
+                                                        topic: "Temporal Interval Evidence",
+                                                        messages: temporalMessages,
+                                                        conversations: Array.from(new Set(temporalMessages.map(m => m.conversationTitle || m.conversationId))),
+                                                        timeSpan: {
+                                                            start: temporalRange.start,
+                                                            end: temporalRange.end,
+                                                            dateString: `${new Date(temporalRange.start).toLocaleDateString()} — ${new Date(temporalRange.end).toLocaleDateString()}`
+                                                        }
+                                                    };
+                                                    setExportModalCluster(intervalCluster);
+                                                    setExportCaseName("");
+                                                }}
+                                                style={{
+                                                    color: "var(--accent)",
+                                                    border: "1px solid var(--accent)",
+                                                    padding: "4px 10px",
+                                                    borderRadius: "4px",
+                                                    fontSize: "0.78rem",
+                                                    fontWeight: "700"
+                                                }}
+                                                title="Forensically export this time window as PDF or JSON evidence"
+                                            >
+                                                ⚖️ EXPORT EVIDENCE
+                                            </button>
                                         <button
                                             className="button-link"
                                             onClick={() => {
@@ -2501,6 +2584,7 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                                         >
                                             ✕ CLEAR SELECTION
                                         </button>
+                                        </div>
                                     </div>
                                 </div>
 
@@ -2596,8 +2680,13 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                                         })}
                                     </div>
                                 ) : (
-                                    <div className="viewer-empty" style={{ padding: "40px 20px", textAlign: "center", color: "var(--text-muted)" }}>
-                                        NO COMMUNICATIONS RECORDED WITHIN THIS TEMPORAL WINDOW.
+                                    <div className="viewer-empty" style={{ padding: "50px 20px", textAlign: "center" }}>
+                                        <div style={{ color: "var(--text)", fontWeight: 700, letterSpacing: "1px", marginBottom: "8px" }}>
+                                            NO COMMUNICATIONS FOUND
+                                        </div>
+                                        <div style={{ color: "var(--text-muted)", fontSize: "0.85rem", fontFamily: "var(--font-mono)" }}>
+                                            {new Date(temporalRange.start).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })} — {new Date(temporalRange.end).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}
+                                        </div>
                                     </div>
                                 )}
                             </div>

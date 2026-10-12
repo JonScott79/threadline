@@ -60,7 +60,7 @@ function App(){
 				} else {
 					setArchiveEmpty(true);
 				}
-			} catch (error) {
+			} catch (_error) {
 				setArchiveEmpty(true);
 			}
 		}
@@ -145,6 +145,13 @@ function App(){
 		<div className="application">
 
 			<Sidebar
+
+				onCaseImported={(importedCase) => {
+					setThreadlines(prev => [importedCase, ...prev.filter(t => (t.firestoreId || t.id) !== (importedCase.firestoreId || importedCase.id))]);
+					setCurrentThreadline(importedCase);
+					setCreatingThreadline(false);
+					setShowingHelp(false);
+				}}
 
 				threadlines={threadlines}
 

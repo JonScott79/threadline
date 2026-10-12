@@ -22,6 +22,20 @@ const express = require("express");
 const db = require("../database/database");
 const threadlineService = require("../services/threadlines");
 
+const fs = require("fs");
+const path = require("path");
+const multer = require("multer");
+const caseManager = require("../services/caseManager");
+
+const caseUploadDir = path.resolve(__dirname, "../uploads");
+if (!fs.existsSync(caseUploadDir)) fs.mkdirSync(caseUploadDir, { recursive: true });
+
+const caseUpload = multer({
+    dest: caseUploadDir,
+    limits: { fileSize: 500 * 1024 * 1024 }
+});
+
+
 // =====================================
 // Variables
 // =====================================
@@ -511,5 +525,58 @@ router.get("/:id/days/:dateString", (request, response) => {
 // =====================================
 // Exports
 // =====================================
+
+
+/**
+ * GET /api/threadlines/:id/casefile
+ * Exports and downloads a standalone portable .tl SQLite case file.
+ */
+router.get("/:id/casefile", (request, response) => {
+    try {
+        const threadlineId = request.params.id;
+        const result = caseManager.exportCaseToFile(threadlineId, request.uid);
+        
+        response.setHeader("Content-Type", "application/x-sqlite3");
+        response.setHeader("Content-Disposition", `attachment; filename="${result.filename}"`);
+        
+        const fileStream = fs.createReadStream(result.filePath);
+        fileStream.pipe(response);
+        fileStream.on("end", () => {
+            if (fs.existsSync(result.filePath)) {
+                try { fs.unlinkSync(result.filePath); } catch (e) {}
+            }
+        });
+    } catch (error) {
+        console.error("Export case file failed:", error);
+        response.status(error.statusCode || 500).json({ status: "error", message: error.message });
+    }
+});
+
+/**
+ * POST /api/threadlines/casefile
+ * Uploads and imports a standalone portable .tl SQLite case file into workspace.
+ */
+router.post("/casefile", caseUpload.single("casefile"), (request, response) => {
+    let uploadedPath = null;
+    try {
+        if (!request.file) {
+            return response.status(400).json({ status: "error", message: "No .tl case file uploaded." });
+        }
+        uploadedPath = request.file.path;
+        const imported = caseManager.importCaseFromFile(uploadedPath, request.uid);
+        response.json({
+            status: "success",
+            message: "Case file imported successfully.",
+            case: imported
+        });
+    } catch (error) {
+        console.error("Import case file failed:", error);
+        response.status(500).json({ status: "error", message: error.message });
+    } finally {
+        if (uploadedPath && fs.existsSync(uploadedPath)) {
+            try { fs.unlinkSync(uploadedPath); } catch (e) {}
+        }
+    }
+});
 
 module.exports = router;

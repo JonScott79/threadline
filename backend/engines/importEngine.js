@@ -4,6 +4,9 @@ const { parseSMSBackup } = require("../parsers/smsbackup");
 const { parseHTMLBackup } = require("../parsers/htmlbackup");
 const { parseMessengerJSON } = require("../parsers/messenger");
 const { parseLogFile } = require("../parsers/logbackup");
+const { parseWhatsAppChat } = require("../parsers/whatsapp");
+const { parseEmailFile } = require("../parsers/email");
+const { parseZipContainer } = require("../parsers/zip");
 
 const { buildConversations } = require("./conversationBuilder");
 
@@ -11,26 +14,28 @@ const Archive = require("../models/Archive");
 
 /*======================================================
                     PARSER REGISTRY
-/*======================================================*/
+======================================================*/
 
 const parsers = {
     "SMS Backup & Restore": parseSMSBackup,
     "HTML Conversation Export": parseHTMLBackup,
     "Facebook Messenger": parseMessengerJSON,
-    "Log / Plaintext": parseLogFile
+    "Log / Plaintext": parseLogFile,
+    "WhatsApp": parseWhatsAppChat,
+    "Email": parseEmailFile,
+    "ZIP Container": parseZipContainer
 };
 
 /*======================================================
                     PROCESS IMPORT
 ======================================================*/
 
-function processImport(filePath){
-
+function processImport(filePath) {
     const detection = detectFile(filePath);
 
     const parser = parsers[detection.type];
 
-    if(!parser){
+    if (!parser) {
         throw new Error(
             `Unsupported import type: ${detection.type}`
         );
@@ -75,7 +80,6 @@ function processImport(filePath){
     archive.conversationCount = conversations.length;
 
     return archive;
-
 }
 
 /*======================================================
@@ -83,7 +87,5 @@ function processImport(filePath){
 ======================================================*/
 
 module.exports = {
-
     processImport
-
 };

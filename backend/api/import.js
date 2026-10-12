@@ -6,6 +6,7 @@
 const express = require("express");
 const multer = require("multer");
 const path = require("path");
+const fs = require("fs");
 
 // Engine
 const { processImport } = require("../engines/importEngine");
@@ -23,28 +24,24 @@ const router = express.Router();
                         STORAGE
 ======================================================*/
 
+const uploadDir = path.resolve(__dirname, "../uploads");
+if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+}
+
 const storage = multer.diskStorage({
-
-    destination: "./uploads",
-
-    filename: (request, file, callback)=>{
-
-        callback(
-
-            null,
-
-            Date.now() + path.extname(file.originalname)
-
-        );
-
+    destination: (req, file, cb) => cb(null, uploadDir),
+    filename: (request, file, callback) => {
+        const uniqueSuffix = Date.now() + "_" + Math.random().toString(36).substring(2, 8);
+        callback(null, uniqueSuffix + path.extname(file.originalname));
     }
-
 });
 
 const upload = multer({
-
-    storage
-
+    storage,
+    limits: {
+        fileSize: 500 * 1024 * 1024 // 500 MB limit
+    }
 });
 
 /*======================================================
@@ -97,116 +94,87 @@ router.get("/", async (request, response) => {
                     FILE IMPORT
 ======================================================*/
 
-router.post(
-
-    "/",
-
-    upload.single("archive"),
-
-    async (request,response)=>{
-
-        try{
-
-	if(!request.file){
-
-		return response.status(400).json({
-
-			status:"error",
-
-			message:"No file uploaded."
-
-		});
-
-	}
-
-	console.log("==========================================");
-	console.log("IMPORT REQUEST");
-	console.log("File:", request.file.originalname);
-	console.log("UID:", request.uid);
-
-	if(!request.uid){
-
-		return response.status(401).json({
-
-			status:"error",
-
-			message:"Missing user id."
-
-		});
-
-	}
-
-	console.log("Running Import Engine...");
-
-	const archive = processImport(
-
-		request.file.path
-
-	);
-
-	console.log("Archive created.");
-	console.log("Messages:", archive.messageCount);
-	console.log("Conversations:", archive.conversationCount);
-
-	console.log("Ingesting into Workspace...");
-
-	const targetThreadlineId = request.body.threadlineId || null;
-
-	const result = await ingestArchive(
-
-		request.uid,
-
-		archive,
-
-		request.file.originalname,
-
-		request.file.size,
-
-		targetThreadlineId
-
-	);
-
-	console.log("Archive Ingested successfully.");
-	console.log("==========================================");
-
-	// Include detailed stats in returned archive response
-	archive.stats = result.stats;
-
-	response.json({
-
-		status:"success",
-
-		threadlineId: result.threadlineId,
-
-		archive
-
-	});
-
+router.post("/", upload.single("archive"), async (request, response) => {
+    let uploadedFilePath = null;
+    try {
+        if (!request.file) {
+            return response.status(400).json({
+                status: "error",
+                message: "No file uploaded."
+            });
         }
-        catch (error) {
 
-			console.error("");
-			console.error("==========================================");
-			console.error("IMPORT FAILED");
-			console.error("==========================================");
-			console.error(error);
-			console.error(error.stack);
-			console.error("==========================================");
-			console.error("");
+        uploadedFilePath = request.file.path;
 
-			response.status(500).json({
+        console.log("==========================================");
+        console.log("IMPORT REQUEST");
+        console.log("File:", request.file.originalname);
+        console.log("UID:", request.uid);
 
-				status: "error",
+        if (!request.uid) {
+            return response.status(401).json({
+                status: "error",
+                message: "Missing user id."
+            });
+        }
 
-				message: error.message
+        console.log("Running Import Engine...");
 
-			});
+        const archive = processImport(uploadedFilePath);
 
-		}
+        console.log("Archive created.");
+        console.log("Messages:", archive.messageCount);
+        console.log("Conversations:", archive.conversationCount);
 
+        console.log("Ingesting into Workspace...");
+
+        const targetThreadlineId = request.body.threadlineId || null;
+
+        const result = await ingestArchive(
+            request.uid,
+            archive,
+            request.file.originalname,
+            request.file.size,
+            targetThreadlineId
+        );
+
+        console.log("Archive Ingested successfully.");
+        console.log("==========================================");
+
+        archive.stats = result.stats;
+
+        response.json({
+            status: "success",
+            threadlineId: result.threadlineId,
+            archive
+        });
+
+    } catch (error) {
+        console.error("");
+        console.error("==========================================");
+        console.error("IMPORT FAILED");
+        console.error("==========================================");
+        console.error(error);
+        console.error(error.stack);
+        console.error("==========================================");
+        console.error("");
+
+        response.status(500).json({
+            status: "error",
+            message: error.message
+        });
+    } finally {
+        // Enforce cleanup: temporary files must not leak on disk
+        if (uploadedFilePath && fs.existsSync(uploadedFilePath)) {
+            try {
+                fs.unlinkSync(uploadedFilePath);
+                console.log("Cleaned up temporary upload file:", uploadedFilePath);
+            } catch (cleanupErr) {
+                console.warn("Failed to delete temp upload file:", cleanupErr.message);
+            }
+        }
     }
-
-);
+});
 
 /*======================================================
                         EXPORTS

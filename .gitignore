@@ -73,3 +73,9 @@ backend/database/*.db
 backend/database/*.db-shm
 backend/database/*.db-wal
 backend/database/test*.js
+
+# Case files and test DBs
+backend/tests/*.tl*
+uploads/
+*.tl-wal
+*.tl-shm

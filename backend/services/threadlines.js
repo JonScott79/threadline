@@ -74,15 +74,11 @@ async function ingestArchive(uid, archive, filename, file_size, targetThreadline
             ]
         );
 
-        const conversationMap = new Map(); // key: original_title -> id: UUID
-        const participantMap = new Map();  // key: address -> id: UUID
-
         // Create or get participant record for the user ("Me")
         let meId;
-        const existingMe = db.queryOne("SELECT id FROM participants WHERE threadline_id = ? AND phone_number = 'Me'", [threadlineId]);
+        const existingMe = db.queryOne("SELECT id FROM participants WHERE threadline_id = ? AND (phone_number = 'Me' OR name = 'Me')", [threadlineId]);
         if (existingMe) {
             meId = existingMe.id;
-            participantMap.set("Me", meId);
         } else {
             meId = crypto.randomUUID();
             db.run(
@@ -99,7 +95,6 @@ async function ingestArchive(uid, archive, filename, file_size, targetThreadline
                     JSON.stringify({})
                 ]
             );
-            participantMap.set("Me", meId);
         }
 
         let earliestTs = null;
@@ -135,40 +130,48 @@ async function ingestArchive(uid, archive, filename, file_size, targetThreadline
                     ]
                 );
             }
-            conversationMap.set(convTitle, convId);
 
-            // Check if participant exists
-            let partId;
-            const existingPart = db.queryOne(
-                `SELECT id FROM participants WHERE threadline_id = ? AND phone_number = ?`,
-                [threadlineId, convTitle]
-            );
+            // Collect and resolve participants for this conversation
+            const participantsToLink = new Set();
+            participantsToLink.add("Me");
 
-            if (existingPart) {
-                partId = existingPart.id;
-                participantMap.set(convTitle, partId);
+            if (conv.participants && Array.isArray(conv.participants)) {
+                conv.participants.forEach(p => participantsToLink.add(p));
             } else {
-                partId = crypto.randomUUID();
-                db.run(
-                    `INSERT INTO participants (id, threadline_id, name, phone_number, email, platform_identifiers, aliases, metadata)
-                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-                    [
-                        partId,
-                        threadlineId,
-                        conv.metadata?.contact || convTitle,
-                        convTitle,
-                        null,
-                        JSON.stringify([convTitle]),
-                        JSON.stringify([]),
-                        JSON.stringify({ contact_name: conv.metadata?.contact })
-                    ]
-                );
-                participantMap.set(convTitle, partId);
+                participantsToLink.add(convTitle);
             }
 
-            // Ensure conversation participants mapping exists
-            db.run(`INSERT OR IGNORE INTO conversation_participants (conversation_id, participant_id) VALUES (?, ?)`, [convId, partId]);
-            db.run(`INSERT OR IGNORE INTO conversation_participants (conversation_id, participant_id) VALUES (?, ?)`, [convId, meId]);
+            participantsToLink.forEach(pIdentifier => {
+                if (!pIdentifier) return;
+                let partId;
+                const existingPart = db.queryOne(
+                    `SELECT id FROM participants WHERE threadline_id = ? AND (phone_number = ? OR name = ?)`,
+                    [threadlineId, pIdentifier, pIdentifier]
+                );
+
+                if (existingPart) {
+                    partId = existingPart.id;
+                } else {
+                    partId = crypto.randomUUID();
+                    const displayName = pIdentifier === "Me" ? "Me" : (conv.metadata?.contact || pIdentifier);
+                    db.run(
+                        `INSERT INTO participants (id, threadline_id, name, phone_number, email, platform_identifiers, aliases, metadata)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                        [
+                            partId,
+                            threadlineId,
+                            displayName,
+                            pIdentifier,
+                            null,
+                            JSON.stringify([pIdentifier]),
+                            JSON.stringify([]),
+                            JSON.stringify({ contact_name: conv.metadata?.contact })
+                        ]
+                    );
+                }
+
+                db.run(`INSERT OR IGNORE INTO conversation_participants (conversation_id, participant_id) VALUES (?, ?)`, [convId, partId]);
+            });
 
             // Process messages within this conversation
             conv.messages.forEach(msg => {
@@ -176,15 +179,17 @@ async function ingestArchive(uid, archive, filename, file_size, targetThreadline
                 if (earliestTs === null || msgTimestamp < earliestTs) earliestTs = msgTimestamp;
                 if (latestTs === null || msgTimestamp > latestTs) latestTs = msgTimestamp;
 
+                const msgSender = msg.sender || (msg.direction === "sent" ? "Me" : convTitle);
+                const msgRecipient = msg.recipient || (msg.direction === "sent" ? convTitle : "Me");
+
                 // Check for duplicate messages (same conversation, timestamp, sender, and body)
                 const existingMsg = db.queryOne(
                     `SELECT id FROM messages WHERE conversation_id = ? AND timestamp = ? AND sender = ? AND body = ?`,
-                    [convId, msgTimestamp, msg.direction === "sent" ? "Me" : msg.sender, msg.body || ""]
+                    [convId, msgTimestamp, msgSender, msg.body || ""]
                 );
 
                 if (existingMsg) {
                     duplicateMessagesCount++;
-                    // Insert message imports source link
                     db.run(
                         `INSERT OR IGNORE INTO message_imports (message_id, import_id) VALUES (?, ?)`,
                         [existingMsg.id, importId]
@@ -192,7 +197,7 @@ async function ingestArchive(uid, archive, filename, file_size, targetThreadline
                 } else {
                     newMessagesCount++;
                     const msgId = msg.id || crypto.randomUUID();
-                    const senderName = msg.direction === "sent" ? "Me" : (msg.metadata?.contact || msg.sender);
+                    const senderDisplayName = msgSender === "Me" ? "Me" : (msg.metadata?.contact || msgSender);
 
                     db.run(
                         `INSERT INTO messages (id, conversation_id, threadline_id, sender, recipient, timestamp, body, attachments, platform, direction, metadata)
@@ -201,8 +206,8 @@ async function ingestArchive(uid, archive, filename, file_size, targetThreadline
                             msgId,
                             convId,
                             threadlineId,
-                            msg.direction === "sent" ? "Me" : msg.sender,
-                            msg.direction === "sent" ? msg.sender : "Me",
+                            msgSender,
+                            msgRecipient,
                             msgTimestamp,
                             msg.body || "",
                             JSON.stringify(msg.attachments || []),
@@ -221,9 +226,9 @@ async function ingestArchive(uid, archive, filename, file_size, targetThreadline
                             msgTimestamp,
                             "message",
                             msgId,
-                            `Message from ${senderName}`,
+                            `Message from ${senderDisplayName}`,
                             msg.body ? (msg.body.length > 60 ? msg.body.substring(0, 60) + "..." : msg.body) : "",
-                            msg.direction === "sent" ? "Me" : msg.sender,
+                            msgSender,
                             JSON.stringify({ direction: msg.direction, contact: msg.metadata?.contact })
                         ]
                     );
@@ -330,22 +335,14 @@ async function ingestArchive(uid, archive, filename, file_size, targetThreadline
 
 /**
  * Creates and persists a new Threadline archive inside a single transaction.
- * 
- * @param {string} uid - User identifier (for compatibility)
- * @param {object} archive - The parsed and normalized communication archive
- * @returns {Promise<string>} The generated threadline ID
  */
 async function createThreadline(uid, archive) {
-    // Wrapper around ingestArchive to preserve backward compatibility for old test scenarios
     const result = await ingestArchive(uid, archive, archive.source, 0);
     return result.threadlineId;
 }
 
 /**
  * Returns a list of all threadlines.
- * 
- * @param {string} uid - User identifier (for compatibility)
- * @returns {Promise<Array>} A list of threadline metadata objects
  */
 async function getThreadlines(uid) {
     try {
@@ -356,7 +353,6 @@ async function getThreadlines(uid) {
              ORDER BY updated_at DESC`,
             [uid]
         );
-        // Map to standard layout expected by frontend (e.g. using firestoreId for UI code compatibility)
         return rows.map(row => ({
             firestoreId: row.id,
             id: row.id,
@@ -376,10 +372,6 @@ async function getThreadlines(uid) {
 
 /**
  * Fetches a single threadline's metadata.
- * 
- * @param {string} uid - User identifier
- * @param {string} id - The threadline ID
- * @returns {Promise<object|null>} The threadline metadata or null if not found
  */
 async function getThreadline(uid, id) {
     try {
@@ -412,14 +404,9 @@ async function getThreadline(uid, id) {
 /**
  * Deletes a threadline. SQLite cascading deletes will remove all conversations,
  * messages, participants, and timeline events automatically.
- * 
- * @param {string} uid - User identifier
- * @param {string} id - The threadline ID
- * @returns {Promise<void>}
  */
 async function deleteThreadline(uid, id) {
     try {
-        // Enforce ownership check before deleting
         const existing = db.queryOne("SELECT id FROM threadlines WHERE id = ? AND owner_id = ?", [id, uid]);
         if (!existing) {
             throw new Error("Threadline not found or you are not the owner.");
@@ -431,10 +418,6 @@ async function deleteThreadline(uid, id) {
         throw error;
     }
 }
-
-// =====================================
-// Exports
-// =====================================
 
 module.exports = {
     createThreadline,

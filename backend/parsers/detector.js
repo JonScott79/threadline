@@ -1,19 +1,18 @@
-/*======================================================
-                        IMPORTS
-======================================================*/
+/*
+    detector.js
+
+    Forensic format detector for communication archives.
+    Inspects magic bytes, file extensions, and structural content signatures.
+*/
 
 const fs = require("fs");
 
-/*======================================================
-                    DETECT FILE
-======================================================*/
-
-function detectFile(filePath){
+function detectFile(filePath) {
     let fileSample = "";
+    let buffer;
     try {
-        // Read only the first 50KB of the file to perform detection safely
         const fd = fs.openSync(filePath, "r");
-        const buffer = Buffer.alloc(50 * 1024); // 50KB buffer
+        buffer = Buffer.alloc(50 * 1024); // 50KB buffer
         const bytesRead = fs.readSync(fd, buffer, 0, 50 * 1024, 0);
         fs.closeSync(fd);
         fileSample = buffer.toString("utf8", 0, bytesRead);
@@ -23,33 +22,38 @@ function detectFile(filePath){
     }
 
     /*------------------------------------------
-        SMS Backup & Restore
+        0. ZIP Container (Magic bytes PK\x03\x04)
     ------------------------------------------*/
-
-    if(
-
-        fileSample.includes("<smses") ||
-
-        fileSample.includes("<sms ") ||
-        
-        fileSample.includes("<mms ")
-
-    ){
-
-        return{
-
-            type:"SMS Backup & Restore",
-
-            confidence:100
-
+    if (buffer && buffer[0] === 0x50 && buffer[1] === 0x4B && buffer[2] === 0x03 && buffer[3] === 0x04) {
+        return {
+            type: "ZIP Container",
+            confidence: 100
         };
-
+    }
+    if (filePath.toLowerCase().endsWith(".zip")) {
+        return {
+            type: "ZIP Container",
+            confidence: 90
+        };
     }
 
     /*------------------------------------------
-        HTML Conversation Export
+        1. SMS Backup & Restore
     ------------------------------------------*/
+    if (
+        fileSample.includes("<smses") ||
+        fileSample.includes("<sms ") ||
+        fileSample.includes("<mms ")
+    ) {
+        return {
+            type: "SMS Backup & Restore",
+            confidence: 100
+        };
+    }
 
+    /*------------------------------------------
+        2. HTML Conversation Export
+    ------------------------------------------*/
     if (
         fileSample.includes("<h2>Conversation with:") ||
         (fileSample.includes("<th>Type</th>") && fileSample.includes("<th>Date</th>"))
@@ -61,9 +65,8 @@ function detectFile(filePath){
     }
 
     /*------------------------------------------
-        Facebook Messenger
+        3. Facebook Messenger
     ------------------------------------------*/
-
     if (
         fileSample.includes("\"participants\"") &&
         fileSample.includes("\"messages\"")
@@ -75,9 +78,40 @@ function detectFile(filePath){
     }
 
     /*------------------------------------------
-        Communication Log / Plaintext (.log / .txt)
+        4. WhatsApp Export
     ------------------------------------------*/
+    const hasWhatsAppPatterns = (
+        /\[\d{1,4}[-/.]\d{1,2}[-/.]\d{2,4},?\s+\d{1,2}:\d{2}/.test(fileSample) ||
+        /\d{1,4}[-/.]\d{1,2}[-/.]\d{2,4},?\s+\d{1,2}:\d{2}\s+-\s+/.test(fileSample)
+    );
+    const isWhatsAppName = /whatsapp|_chat\.txt/i.test(filePath);
 
+    if (hasWhatsAppPatterns || isWhatsAppName) {
+        return {
+            type: "WhatsApp",
+            confidence: hasWhatsAppPatterns ? 100 : 75
+        };
+    }
+
+    /*------------------------------------------
+        5. Email (.eml / .mbox)
+    ------------------------------------------*/
+    const hasEmailHeaders = (
+        /^From:\s+/m.test(fileSample) &&
+        (/^Date:\s+/m.test(fileSample) || /^Subject:\s+/m.test(fileSample))
+    );
+    const isEmailExt = filePath.toLowerCase().endsWith(".eml") || filePath.toLowerCase().endsWith(".mbox");
+
+    if (hasEmailHeaders || isEmailExt) {
+        return {
+            type: "Email",
+            confidence: hasEmailHeaders ? 100 : 80
+        };
+    }
+
+    /*------------------------------------------
+        6. Communication Log / Plaintext (.log / .txt)
+    ------------------------------------------*/
     const hasTimestampedLines = /(?:\[?\d{4}[-/.]\d{2}[-/.]\d{2}[ T]\d{2}:\d{2}|\[\d{10,13}\]|[A-Za-z]{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2})/.test(fileSample);
     const isTxtOrLog = filePath.endsWith(".log") || filePath.endsWith(".txt");
 
@@ -91,19 +125,12 @@ function detectFile(filePath){
     /*------------------------------------------
         Unknown
     ------------------------------------------*/
-
     return {
         type: "Unknown",
         confidence: 0
     };
 }
 
-/*======================================================
-                        EXPORTS
-======================================================*/
-
-module.exports={
-
+module.exports = {
     detectFile
-
 };

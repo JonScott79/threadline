@@ -79,17 +79,24 @@ function parseHTMLBackup(filePath) {
             .replace(/&nbsp;/g, " ")
             .trim();
 
+        const isSent = type.toLowerCase() === "sent";
+        const contactIdentifier = phoneNumber || name || cleanContact;
+
         messages.push(
             new Message({
                 platform: "SMS",
-                direction: type.toLowerCase() === "sent" ? "sent" : "received",
-                sender: phoneNumber || name || "Unknown",
-                recipient: "",
+                direction: isSent ? "sent" : "received",
+                sender: isSent ? "Me" : contactIdentifier,
+                recipient: isSent ? contactIdentifier : "Me",
                 timestamp,
                 body,
                 attachments,
                 metadata: {
                     contact: name,
+                    address: phoneNumber,
+                    counterparty: contactIdentifier,
+                    counterpartyName: name,
+                    participants: ["Me", contactIdentifier],
                     readableDate: cleanDate
                 }
             })

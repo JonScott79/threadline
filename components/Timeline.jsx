@@ -72,6 +72,12 @@ const Timeline = forwardRef(function Timeline({
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
 
+    const [rangeSelectMode, setRangeSelectMode] = useState(false);
+    const rangeSelectModeRef = useRef(false);
+    rangeSelectModeRef.current = rangeSelectMode;
+
+    const dragStartRef = useRef(null);
+
     // Metadata: full data span
     const [dataEarliest, setDataEarliest] = useState(null);
     const [dataLatest, setDataLatest] = useState(null);
@@ -175,6 +181,41 @@ const Timeline = forwardRef(function Timeline({
         timelineRef.current = timeline;
         isInitializedRef.current = true;
 
+        // Pointer down/up for exact timeline range dragging when in rangeSelectMode or shiftKey
+        const domContainer = containerRef.current;
+        function handlePointerDown(e) {
+            const isRangeMode = rangeSelectModeRef.current || e.shiftKey;
+            if (!isRangeMode) return;
+            const props = timeline.getEventProperties(e);
+            if (props && props.time) {
+                dragStartRef.current = props.time.getTime();
+            }
+        }
+
+        function handlePointerUp(e) {
+            if (!dragStartRef.current) return;
+            const startT = dragStartRef.current;
+            dragStartRef.current = null;
+            const props = timeline.getEventProperties(e);
+            if (props && props.time) {
+                const endT = props.time.getTime();
+                if (Math.abs(endT - startT) > 500) { // Minimum 500ms drag to differentiate from click
+                    const normalizedStart = Math.min(startT, endT);
+                    const normalizedEnd = Math.max(startT, endT);
+                    if (onSelectTemporalRangeRef.current) {
+                        onSelectTemporalRangeRef.current({
+                            start: normalizedStart,
+                            end: normalizedEnd
+                        });
+                    }
+                    setRangeSelectMode(false);
+                }
+            }
+        }
+
+        domContainer.addEventListener("pointerdown", handlePointerDown, { passive: true });
+        window.addEventListener("pointerup", handlePointerUp, { passive: true });
+
         // On range change → fetch new data
         timeline.on("rangechanged", (props) => {
             if (suppressRangeRef.current) return;
@@ -185,6 +226,9 @@ const Timeline = forwardRef(function Timeline({
 
         // On item select → drill down or select day or open message
         timeline.on("select", (props) => {
+            // If user is selecting a range, do not trigger item select navigation
+            if (rangeSelectModeRef.current) return;
+
             if (props.items && props.items.length > 0) {
                 const itemId = props.items[0];
                 if (itemId === "temporal-selection-bg") return;
@@ -206,6 +250,8 @@ const Timeline = forwardRef(function Timeline({
 
         // Cleanup
         return () => {
+            domContainer.removeEventListener("pointerdown", handlePointerDown);
+            window.removeEventListener("pointerup", handlePointerUp);
             if (timelineRef.current) {
                 timelineRef.current.destroy();
                 timelineRef.current = null;
@@ -425,15 +471,20 @@ const Timeline = forwardRef(function Timeline({
         const zoom = currentZoomRef.current || serverZoom;
         const period = bucket.period;
 
-        const { start: bStart, end: bEnd } = bucketToDateRange(period, zoom);
-        if (onSelectTemporalRangeRef.current && bStart && bEnd) {
-            onSelectTemporalRangeRef.current({
-                start: bStart.getTime(),
-                end: bEnd.getTime()
-            });
+        // If in range selection mode, use clicked bucket bounds as the range
+        if (rangeSelectModeRef.current) {
+            const { start: bStart, end: bEnd } = bucketToDateRange(period, zoom);
+            if (onSelectTemporalRangeRef.current && bStart && bEnd) {
+                onSelectTemporalRangeRef.current({
+                    start: bStart.getTime(),
+                    end: bEnd.getTime()
+                });
+                setRangeSelectMode(false);
+            }
+            return;
         }
 
-        // If bucket is at day zoom or bucket period matches YYYY-MM-DD
+        // Standard bucket click: preserve existing drill-down / day navigation
         if (zoom === "day" || /^\d{4}-\d{2}-\d{2}$/.test(period)) {
             if (onSelectDay) onSelectDay(period);
         } else if (zoom === "hour" || zoom === "minute" || zoom === "second") {
@@ -633,6 +684,19 @@ const Timeline = forwardRef(function Timeline({
                             ＋ UPLOAD LOG / ARCHIVE
                         </button>
                     )}
+                    <button 
+                        className={`button-link ${rangeSelectMode ? "active" : ""}`} 
+                        onClick={() => setRangeSelectMode(prev => !prev)} 
+                        title="Click to toggle drag-selection mode for a custom time range (or hold Shift while dragging)"
+                        style={{
+                            color: rangeSelectMode ? "#000" : "var(--accent)",
+                            background: rangeSelectMode ? "var(--accent)" : "transparent",
+                            borderColor: "var(--accent)",
+                            fontWeight: 700
+                        }}
+                    >
+                        {rangeSelectMode ? "✕ CANCEL DRAG RANGE" : "⏱ SELECT RANGE"}
+                    </button>
                     <span className="timeline-resolution-label">
                         Resolution: <strong>{displayZoom}</strong>
                     </span>
