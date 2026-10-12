@@ -777,13 +777,17 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
         const delayDebounce = setTimeout(async () => {
             setSearchLoading(true);
             try {
+                // Determine active time boundaries: timeline drag range takes precedence, then top-level date inputs
+                const effectiveStart = temporalRange?.start || (startTimestamp && endTimestamp && startTimestamp > endTimestamp ? undefined : startTimestamp);
+                const effectiveEnd = temporalRange?.end || (startTimestamp && endTimestamp && startTimestamp > endTimestamp ? undefined : endTimestamp);
+
                 const response = await axios.get(
                     `${API_BASE_URL}/threadlines/${threadline.id}/search`,
                     { 
                         params: { 
                             q: searchQuery,
-                            start: startTimestamp && endTimestamp && startTimestamp > endTimestamp ? undefined : startTimestamp,
-                            end: startTimestamp && endTimestamp && startTimestamp > endTimestamp ? undefined : endTimestamp,
+                            start: effectiveStart,
+                            end: effectiveEnd,
                             day: selectedDay,
                             conversations: pinnedConversationIds.join(","),
                             ids: threadline.isCompare ? threadline.ids.join(",") : undefined
@@ -804,7 +808,7 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
         }, 300); // 300ms debounce to prevent spamming backend
 
         return () => clearTimeout(delayDebounce);
-    }, [searchQuery, threadline.id, selectedDay, pinnedConversationIds, uid, startTimestamp, endTimestamp]);
+    }, [searchQuery, threadline.id, selectedDay, pinnedConversationIds, uid, startTimestamp, endTimestamp, temporalRange]);
 
     /*==============================================
                     EVENT HANDLERS
@@ -1506,6 +1510,25 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                             <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginTop: "4px", textAlign: "left" }}>
                                 {isArchive ? "Ask your communication history a question." : "Find relevant conversations in the Archive to plot here."}
                             </div>
+                            {temporalRange && (
+                                <div style={{ marginTop: "8px", padding: "6px 10px", background: "rgba(63,216,255,0.08)", border: "1px solid rgba(63,216,255,0.3)", borderRadius: "4px", display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "0.75rem" }}>
+                                    <span style={{ color: "var(--accent)" }}>
+                                        ⏱ Searching only in range: <strong>{new Date(temporalRange.start).toLocaleDateString()} — {new Date(temporalRange.end).toLocaleDateString()}</strong>
+                                    </span>
+                                    <button 
+                                        className="button-link" 
+                                        onClick={() => {
+                                            setTemporalRange(null);
+                                            setTemporalMessages([]);
+                                            setTemporalSummary(null);
+                                        }} 
+                                        style={{ color: "var(--text-light)", fontSize: "0.75rem", textDecoration: "underline" }}
+                                        title="Clear timeline range filter"
+                                    >
+                                        Clear Range
+                                    </button>
+                                </div>
+                            )}
                             {selectedDay && (
                                 <div style={{ marginTop: "8px", padding: "6px 10px", background: "rgba(63,216,255,0.06)", border: "1px solid rgba(63,216,255,0.2)", borderRadius: "4px", display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "0.75rem" }}>
                                     <span style={{ color: "var(--accent)" }}>Searching only in: <strong>{selectedDay}</strong></span>
