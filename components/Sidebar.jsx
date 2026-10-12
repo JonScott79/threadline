@@ -158,9 +158,9 @@ function Sidebar({
                 <label
                     className="nav-item"
                     style={{ fontWeight: "600", cursor: isImportingCase ? "wait" : "pointer", display: "flex", alignItems: "center", color: "var(--accent)" }}
-                    title="Open or import a standalone portable .tl SQLite case file"
+                    title="Open a saved Threadline case file from your computer"
                 >
-                    {isImportingCase ? "⏳ Importing .tl Case..." : "📥 Open .tl Case"}
+                    {isImportingCase ? "⏳ Opening Case..." : "📂 Open Saved Case"}
                     <input
                         type="file"
                         accept=".tl"

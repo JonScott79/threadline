@@ -1207,7 +1207,7 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                         className="button-link"
                         onClick={handleExportCaseFile}
                         disabled={isExportingCase}
-                        title="Export entire case as a portable, tamper-evident .tl SQLite case file"
+                        title="Save a portable copy of this complete case to your computer"
                         style={{
                             color: "var(--accent)",
                             fontWeight: "700",
@@ -1221,7 +1221,7 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                             marginLeft: "8px"
                         }}
                     >
-                        {isExportingCase ? "EXPORTING..." : "📦 EXPORT .TL"}
+                        {isExportingCase ? "SAVING CASE..." : "📦 EXPORT CASE"}
                     </button>
                     <button
                         className="button-link"
