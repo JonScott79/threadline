@@ -222,6 +222,232 @@ router.get("/:id/participants", (request, response) => {
     }
 });
 
+/**
+ * PUT /api/threadlines/:id/participants/:participantId
+ * Updates participant name, phone number, forensic role tag, aliases, and notes.
+ */
+router.put("/:id/participants/:participantId", (request, response) => {
+    try {
+        const { id, participantId } = request.params;
+        const { name, phoneNumber, role, aliases, notes } = request.body;
+
+        if (!name || !name.trim()) {
+            return response.status(400).json({ status: "error", message: "Name cannot be empty." });
+        }
+
+        // Verify ownership
+        const isArchive = id === `archive_${request.uid}`;
+        const row = db.queryOne("SELECT owner_id FROM threadlines WHERE id = ?", [id]);
+        if (!isArchive && (!row || row.owner_id !== request.uid)) {
+            return response.status(403).json({ status: "error", message: "Access denied." });
+        }
+
+        const existing = db.queryOne("SELECT * FROM participants WHERE id = ? AND threadline_id = ?", [participantId, id]);
+        if (!existing) {
+            return response.status(404).json({ status: "error", message: "Participant not found." });
+        }
+
+        const oldName = existing.name;
+        const oldPhone = existing.phone_number;
+        const newName = name.trim();
+        const newPhone = phoneNumber ? phoneNumber.trim() : oldPhone;
+
+        const currentMeta = JSON.parse(existing.metadata || "{}");
+        const updatedMeta = {
+            ...currentMeta,
+            role: role || currentMeta.role || null,
+            notes: notes !== undefined ? notes : currentMeta.notes,
+            taggedAt: new Date().toISOString(),
+            taggedBy: request.uid
+        };
+
+        const currentAliases = JSON.parse(existing.aliases || "[]");
+        const updatedAliases = Array.isArray(aliases) 
+            ? aliases 
+            : (aliases ? [aliases] : currentAliases);
+        if (oldName && oldName !== newName && !updatedAliases.includes(oldName)) {
+            updatedAliases.push(oldName);
+        }
+
+        db.run(
+            `UPDATE participants 
+             SET name = ?, phone_number = ?, aliases = ?, metadata = ?
+             WHERE id = ? AND threadline_id = ?`,
+            [
+                newName,
+                newPhone,
+                JSON.stringify(updatedAliases),
+                JSON.stringify(updatedMeta),
+                participantId,
+                id
+            ]
+        );
+
+        // Cascade forensic tag to conversations named after the old identifier
+        if (oldPhone) {
+            db.run(
+                `UPDATE conversations SET title = ? WHERE threadline_id = ? AND (title = ? OR title = ?)`,
+                [newName, id, oldPhone, `Conversation with ${oldPhone}`]
+            );
+        }
+        if (oldName && oldName !== newName) {
+            db.run(
+                `UPDATE conversations SET title = ? WHERE threadline_id = ? AND (title = ? OR title = ?)`,
+                [newName, id, oldName, `Conversation with ${oldName}`]
+            );
+        }
+
+        response.json({
+            status: "success",
+            message: "Participant tagged successfully.",
+            participant: {
+                id: participantId,
+                name: newName,
+                phoneNumber: newPhone,
+                aliases: updatedAliases,
+                metadata: updatedMeta
+            }
+        });
+    } catch (error) {
+        response.status(500).json({ status: "error", message: error.message });
+    }
+});
+
+/**
+ * POST /api/threadlines/:id/participants/tag
+ * Forensic tagging: assign a name, role, and notes to a phone number or raw identifier.
+ */
+router.post("/:id/participants/tag", (request, response) => {
+    try {
+        const { id } = request.params;
+        const { identifier, name, role, aliases, notes } = request.body;
+
+        if (!identifier || !name || !name.trim()) {
+            return response.status(400).json({ status: "error", message: "Identifier and Name are required." });
+        }
+
+        const isArchive = id === `archive_${request.uid}`;
+        const row = db.queryOne("SELECT owner_id FROM threadlines WHERE id = ?", [id]);
+        if (!isArchive && (!row || row.owner_id !== request.uid)) {
+            return response.status(403).json({ status: "error", message: "Access denied." });
+        }
+
+        const cleanIdent = identifier.trim();
+        const cleanName = name.trim();
+
+        // Check if participant exists with this identifier
+        let part = db.queryOne(
+            `SELECT * FROM participants 
+             WHERE threadline_id = ? AND (phone_number = ? OR name = ?)`,
+            [id, cleanIdent, cleanIdent]
+        );
+
+        let partId;
+        let updatedMeta;
+        let updatedAliases;
+
+        if (part) {
+            partId = part.id;
+            const currentMeta = JSON.parse(part.metadata || "{}");
+            updatedMeta = {
+                ...currentMeta,
+                role: role || currentMeta.role || null,
+                notes: notes !== undefined ? notes : currentMeta.notes,
+                taggedAt: new Date().toISOString(),
+                taggedBy: request.uid
+            };
+            const currentAliases = JSON.parse(part.aliases || "[]");
+            updatedAliases = Array.isArray(aliases) ? aliases : (aliases ? [aliases] : currentAliases);
+            if (cleanIdent !== cleanName && !updatedAliases.includes(cleanIdent)) {
+                updatedAliases.push(cleanIdent);
+            }
+
+            db.run(
+                `UPDATE participants 
+                 SET name = ?, aliases = ?, metadata = ?
+                 WHERE id = ? AND threadline_id = ?`,
+                [cleanName, JSON.stringify(updatedAliases), JSON.stringify(updatedMeta), partId, id]
+            );
+        } else {
+            partId = crypto.randomUUID();
+            updatedMeta = {
+                role: role || null,
+                notes: notes || null,
+                taggedAt: new Date().toISOString(),
+                taggedBy: request.uid
+            };
+            updatedAliases = [cleanIdent];
+            db.run(
+                `INSERT INTO participants (id, threadline_id, name, phone_number, email, platform_identifiers, aliases, metadata)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                [
+                    partId,
+                    id,
+                    cleanName,
+                    cleanIdent,
+                    null,
+                    JSON.stringify([cleanIdent]),
+                    JSON.stringify(updatedAliases),
+                    JSON.stringify(updatedMeta)
+                ]
+            );
+        }
+
+        // Cascade name to conversations titled with this phone number or identifier
+        db.run(
+            `UPDATE conversations SET title = ? WHERE threadline_id = ? AND (title = ? OR title = ?)`,
+            [cleanName, id, cleanIdent, `Conversation with ${cleanIdent}`]
+        );
+
+        response.json({
+            status: "success",
+            message: "Phone number / participant successfully tagged.",
+            participant: {
+                id: partId,
+                name: cleanName,
+                phoneNumber: cleanIdent,
+                aliases: updatedAliases,
+                metadata: updatedMeta
+            }
+        });
+    } catch (error) {
+        response.status(500).json({ status: "error", message: error.message });
+    }
+});
+
+/**
+ * PUT /api/threadlines/:id/conversations/:convId
+ * Renames a conversation thread.
+ */
+router.put("/:id/conversations/:convId", (request, response) => {
+    try {
+        const { id, convId } = request.params;
+        const { title } = request.body;
+
+        if (!title || !title.trim()) {
+            return response.status(400).json({ status: "error", message: "Conversation title cannot be empty." });
+        }
+
+        const isArchive = id === `archive_${request.uid}`;
+        const row = db.queryOne("SELECT owner_id FROM threadlines WHERE id = ?", [id]);
+        if (!isArchive && (!row || row.owner_id !== request.uid)) {
+            return response.status(403).json({ status: "error", message: "Access denied." });
+        }
+
+        db.run(
+            `UPDATE conversations SET title = ? WHERE id = ? AND threadline_id = ?`,
+            [title.trim(), convId, id]
+        );
+
+        response.json({
+            status: "success",
+            message: "Conversation renamed successfully."
+        });
+    } catch (error) {
+        response.status(500).json({ status: "error", message: error.message });
+    }
+});
+
 // Helper to constrain queries by threadline
 function buildMessageConstraint(threadlineIds, paramsArray) {
     const clauses = [];

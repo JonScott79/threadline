@@ -32,6 +32,7 @@ import ImportPreview from "./ImportPreview";
 import Timeline from "./Timeline";
 import DeleteThreadlineModal from "./DeleteThreadlineModal";
 import { uploadArchive } from "../js/imports/upload";
+import PersonTagModal from "./PersonTagModal";
 
 // =====================================
 // Constants
@@ -134,6 +135,135 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
     const [isDeletingSegment, setIsDeletingSegment] = useState(false);
     const [renameConversationTarget, setRenameConversationTarget] = useState(null);
     const [renameConversationValue, setRenameConversationValue] = useState("");
+
+    // Forensic Person & Phone Tagging Modal State
+    const [tagModalTarget, setTagModalTarget] = useState(null);
+    const [isSavingTag, setIsSavingTag] = useState(false);
+
+    // Lookup participant by sender string, phone number, name, or aliases
+    const getParticipantForSender = (senderOrPhone) => {
+        if (!senderOrPhone || !participants || participants.length === 0) return null;
+        const clean = senderOrPhone.trim().toLowerCase();
+        return participants.find(p => {
+            if (p.phoneNumber && p.phoneNumber.toLowerCase() === clean) return true;
+            if (p.name && p.name.toLowerCase() === clean) return true;
+            if (p.aliases) {
+                const aliasList = Array.isArray(p.aliases) ? p.aliases : (typeof p.aliases === "string" ? JSON.parse(p.aliases || "[]") : []);
+                if (aliasList.some(a => a && a.toLowerCase() === clean)) return true;
+            }
+            return false;
+        });
+    };
+
+    const getDisplayName = (senderOrPhone) => {
+        if (!senderOrPhone) return "Unknown";
+        const part = getParticipantForSender(senderOrPhone);
+        if (part && part.name) return part.name;
+        return senderOrPhone;
+    };
+
+    const getParticipantRoleBadge = (senderOrPhone) => {
+        const part = getParticipantForSender(senderOrPhone);
+        const meta = typeof part?.metadata === "string" ? JSON.parse(part.metadata || "{}") : (part?.metadata || {});
+        const role = meta.role;
+        if (!role) return null;
+
+        let badgeColor = "rgba(0, 208, 255, 0.15)";
+        let borderColor = "rgba(0, 208, 255, 0.4)";
+        let textColor = "#3fd8ff";
+
+        if (role === "Primary Suspect" || role === "Suspect") {
+            badgeColor = "rgba(255, 69, 58, 0.18)";
+            borderColor = "rgba(255, 69, 58, 0.6)";
+            textColor = "#ff453a";
+        } else if (role === "Person of Interest") {
+            badgeColor = "rgba(255, 149, 0, 0.18)";
+            borderColor = "rgba(255, 149, 0, 0.6)";
+            textColor = "#ff9500";
+        } else if (role === "Victim") {
+            badgeColor = "rgba(191, 90, 242, 0.18)";
+            borderColor = "rgba(191, 90, 242, 0.6)";
+            textColor = "#bf5aff";
+        } else if (role.includes("Officer") || role.includes("Law Enforcement")) {
+            badgeColor = "rgba(48, 209, 88, 0.18)";
+            borderColor = "rgba(48, 209, 88, 0.6)";
+            textColor = "#30d158";
+        }
+
+        return (
+            <span 
+                className="person-role-tag-badge"
+                style={{
+                    fontSize: "0.68rem",
+                    padding: "1px 6px",
+                    borderRadius: "4px",
+                    background: badgeColor,
+                    border: `1px solid ${borderColor}`,
+                    color: textColor,
+                    fontWeight: "700",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.5px"
+                }}
+            >
+                {role}
+            </span>
+        );
+    };
+
+    const handleOpenTagForSender = (senderOrPhone) => {
+        if (!senderOrPhone || senderOrPhone === "Me" || senderOrPhone === "You") return;
+        const existing = getParticipantForSender(senderOrPhone);
+        if (existing) {
+            setTagModalTarget(existing);
+        } else {
+            setTagModalTarget({
+                phoneNumber: senderOrPhone,
+                name: senderOrPhone
+            });
+        }
+    };
+
+    const handleSaveParticipantTag = async (tagData) => {
+        setIsSavingTag(true);
+        try {
+            const { participantId, identifier, name, role, aliases, notes } = tagData;
+            let response;
+            if (participantId) {
+                response = await axios.put(
+                    `${API_BASE_URL}/threadlines/${threadline.id}/participants/${participantId}`,
+                    { name, role, aliases, notes },
+                    { headers: { "x-user-uid": uid } }
+                );
+            } else {
+                response = await axios.post(
+                    `${API_BASE_URL}/threadlines/${threadline.id}/participants/tag`,
+                    { identifier, name, role, aliases, notes },
+                    { headers: { "x-user-uid": uid } }
+                );
+            }
+
+            if (response.data && response.data.status === "success") {
+                setTagModalTarget(null);
+                await fetchParticipants();
+                await fetchConversations();
+                if (activeConversation) {
+                    const refreshedConvs = await axios.get(`${API_BASE_URL}/threadlines/${threadline.id}/conversations`, {
+                        headers: { "x-user-uid": uid }
+                    });
+                    if (refreshedConvs.data?.conversations) {
+                        const matched = refreshedConvs.data.conversations.find(c => c.id === activeConversation.id);
+                        if (matched) setActiveConversation(matched);
+                    }
+                }
+            }
+        } catch (err) {
+            console.error("Failed to save participant tag:", err);
+            alert(err.response?.data?.message || "Failed to save participant tag.");
+        } finally {
+            setIsSavingTag(false);
+        }
+    };
+
 
     const [isExportingCase, setIsExportingCase] = useState(false);
 
@@ -1492,14 +1622,12 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                         >
                             Threads
                         </button>
-                        {isArchive && (
-                            <button 
-                                className={`pane-tab-btn ${activeTab === "people" ? "active" : ""}`}
-                                onClick={() => setActiveTab("people")}
-                            >
-                                People
-                            </button>
-                        )}
+                        <button 
+                            className={`pane-tab-btn ${activeTab === "people" ? "active" : ""}`}
+                            onClick={() => setActiveTab("people")}
+                        >
+                            People {participants.length > 0 && `(${participants.length})`}
+                        </button>
                         <button 
                             className={`pane-tab-btn ${activeTab === "search" ? "active" : ""}`}
                             onClick={() => setActiveTab("search")}
@@ -1614,27 +1742,153 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                                     <div className="pane-loading-indicator" style={{ color: "var(--text-muted)" }}>NO IMPORTS LOGGED</div>
                                 )}
                             </div>
-                        ) : activeTab === "people" && isArchive ? (
+                        ) : activeTab === "people" ? (
                             participantsLoading ? (
                                 <div className="pane-loading-indicator">LOADING PEOPLE...</div>
-                            ) : participants.length > 0 ? (
-                                <div style={{ display: "flex", flexDirection: "column", gap: "8px", padding: "10px 4px" }}>
-                                    {participants.map(part => (
-                                        <div key={part.id} className="preview-card" style={{ background: "rgba(255, 255, 255, 0.02)", border: "1px solid var(--border)", padding: "10px", borderRadius: "6px", textAlign: "left", display: "flex", alignItems: "center", gap: "10px" }}>
-                                            <div style={{ fontSize: "1.3rem" }}>👤</div>
-                                            <div>
-                                                <strong style={{ display: "block", fontSize: "0.85rem", color: "var(--text-light)" }}>{part.name}</strong>
-                                                <span style={{ fontSize: "0.7rem", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
-                                                    {part.phoneNumber || part.email || "No Identifier"}
-                                                </span>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
                             ) : (
-                                <div className="pane-loading-indicator" style={{ color: "var(--text-muted)" }}>NO PARTICIPANTS FOUND</div>
+                                <div style={{ display: "flex", flexDirection: "column", gap: "10px", padding: "10px 4px" }}>
+                                    {/* Action Header for Police Officers & Investigators */}
+                                    <div style={{
+                                        display: "flex",
+                                        justifyContent: "space-between",
+                                        alignItems: "center",
+                                        padding: "10px 12px",
+                                        borderRadius: "8px",
+                                        background: "linear-gradient(135deg, rgba(0, 208, 255, 0.08) 0%, rgba(255, 149, 0, 0.05) 100%)",
+                                        border: "1px solid rgba(0, 208, 255, 0.25)"
+                                    }}>
+                                        <div>
+                                            <span style={{ fontSize: "0.8rem", fontWeight: "800", color: "#3fd8ff", letterSpacing: "0.8px", textTransform: "uppercase" }}>
+                                                Identified Subjects ({participants.length})
+                                            </span>
+                                            <p style={{ margin: "2px 0 0 0", fontSize: "0.72rem", color: "var(--text-muted)" }}>
+                                                Tag phone numbers with verified identities & legal roles.
+                                            </p>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            className="search-card-btn view-btn"
+                                            onClick={() => setTagModalTarget({ phoneNumber: "", name: "" })}
+                                            style={{
+                                                padding: "6px 12px",
+                                                fontSize: "0.76rem",
+                                                fontWeight: "700",
+                                                display: "flex",
+                                                alignItems: "center",
+                                                gap: "4px"
+                                            }}
+                                            title="Manually enter and tag a new phone number or person"
+                                        >
+                                            + Tag Person / Phone
+                                        </button>
+                                    </div>
+
+                                    {participants.length > 0 ? (
+                                        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                                            {participants.map(part => {
+                                                const meta = typeof part.metadata === "string" ? JSON.parse(part.metadata || "{}") : (part.metadata || {});
+                                                const role = meta.role;
+                                                const notes = meta.notes;
+                                                const aliases = Array.isArray(part.aliases) 
+                                                    ? part.aliases 
+                                                    : (typeof part.aliases === "string" ? JSON.parse(part.aliases || "[]") : []);
+
+                                                return (
+                                                    <div 
+                                                        key={part.id} 
+                                                        className="preview-card" 
+                                                        style={{ 
+                                                            background: "rgba(255, 255, 255, 0.02)", 
+                                                            border: "1px solid var(--border)", 
+                                                            padding: "12px", 
+                                                            borderRadius: "8px", 
+                                                            textAlign: "left",
+                                                            display: "flex",
+                                                            justifyContent: "space-between",
+                                                            alignItems: "flex-start",
+                                                            gap: "10px"
+                                                        }}
+                                                    >
+                                                        <div style={{ display: "flex", gap: "10px", alignItems: "flex-start", flex: 1, minWidth: 0 }}>
+                                                            <div style={{ 
+                                                                width: "36px", 
+                                                                height: "36px", 
+                                                                borderRadius: "8px", 
+                                                                background: "rgba(0, 208, 255, 0.1)", 
+                                                                border: "1px solid rgba(0, 208, 255, 0.3)", 
+                                                                display: "flex", 
+                                                                alignItems: "center", 
+                                                                justifyContent: "center",
+                                                                fontSize: "1.1rem",
+                                                                flexShrink: 0
+                                                            }}>
+                                                                👤
+                                                            </div>
+                                                            <div style={{ flex: 1, minWidth: 0 }}>
+                                                                <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", marginBottom: "3px" }}>
+                                                                    <strong style={{ fontSize: "0.9rem", color: "var(--text-light)" }}>
+                                                                        {part.name}
+                                                                    </strong>
+                                                                    {role && getParticipantRoleBadge(part.phoneNumber || part.name)}
+                                                                </div>
+
+                                                                <div style={{ fontSize: "0.75rem", color: "var(--accent)", fontFamily: "var(--font-mono)", marginBottom: "4px" }}>
+                                                                    📱 {part.phoneNumber || part.email || "No Identifier"}
+                                                                </div>
+
+                                                                {aliases.length > 0 && (
+                                                                    <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginBottom: "3px" }}>
+                                                                        Aliases: <span style={{ color: "var(--text-light)" }}>{aliases.join(", ")}</span>
+                                                                    </div>
+                                                                )}
+
+                                                                {notes && (
+                                                                    <div style={{ 
+                                                                        fontSize: "0.72rem", 
+                                                                        color: "var(--text-muted)", 
+                                                                        background: "rgba(0,0,0,0.3)", 
+                                                                        padding: "4px 8px", 
+                                                                        borderRadius: "4px",
+                                                                        borderLeft: "2px solid var(--accent)",
+                                                                        marginTop: "4px"
+                                                                    }}>
+                                                                        {notes}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+
+                                                        <button
+                                                            className="button-link"
+                                                            onClick={() => setTagModalTarget(part)}
+                                                            style={{
+                                                                color: "var(--accent)",
+                                                                border: "1px solid rgba(0, 208, 255, 0.4)",
+                                                                padding: "4px 8px",
+                                                                borderRadius: "5px",
+                                                                fontSize: "0.75rem",
+                                                                fontWeight: "700",
+                                                                cursor: "pointer",
+                                                                background: "rgba(0, 208, 255, 0.06)",
+                                                                whiteSpace: "nowrap"
+                                                            }}
+                                                            title="Tag or edit name, role, and notes for this person"
+                                                        >
+                                                            🏷️ Tag / Edit
+                                                        </button>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    ) : (
+                                        <div className="pane-loading-indicator" style={{ color: "var(--text-muted)", padding: "20px" }}>
+                                            NO PARTICIPANTS TAGGED YET. CLICK "+ TAG PERSON / PHONE" ABOVE TO IDENTIFY NUMBERS.
+                                        </div>
+                                    )}
+                                </div>
                             )
-                        ) : activeTab === "segments" && !isArchive ? (
+                        ) : activeTab === "segments"
+ && !isArchive ? (
                             <div style={{ display: "flex", flexDirection: "column", gap: "16px", padding: "10px 4px" }}>
                                 <div>
                                     <h4 style={{ margin: "0 0 8px 0", fontSize: "0.85rem", color: "var(--success)", letterSpacing: "1px", textTransform: "uppercase" }}>Linked Segments ({linkedSegments.length})</h4>
@@ -2317,8 +2571,9 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                                 <>
                                     <div className="viewer-title-info" style={{ marginBottom: "12px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                                         <div>
-                                            <h3 style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                                                {activeConversation.title}
+                                            <h3 style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                                                <span>{activeConversation.title}</span>
+                                                {getParticipantRoleBadge(activeConversation.title)}
                                                 <button
                                                     onClick={() => {
                                                         setRenameConversationTarget(activeConversation);
@@ -2329,7 +2584,24 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                                                 >
                                                     ✏️
                                                 </button>
+                                                <button
+                                                    onClick={() => handleOpenTagForSender(activeConversation.title)}
+                                                    title="Tag subject identity, name, role, and notes for this phone number"
+                                                    style={{ 
+                                                        background: "rgba(0, 208, 255, 0.1)", 
+                                                        border: "1px solid rgba(0, 208, 255, 0.35)", 
+                                                        color: "var(--accent)", 
+                                                        cursor: "pointer", 
+                                                        fontSize: "0.75rem", 
+                                                        padding: "2px 8px", 
+                                                        borderRadius: "4px",
+                                                        fontWeight: "600"
+                                                    }}
+                                                >
+                                                    🏷️ Tag Subject
+                                                </button>
                                             </h3>
+
                                             <p>
                                                 SMS Thread ({messages.length} messages
                                                 {showFullConversation ? " - Complete History" : " - Filtered View"})
@@ -2407,8 +2679,26 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                                                     />
                                                 )}
                                                 <span className={`message-sender ${m.direction}`}>
-                                                    {m.direction === "sent" ? "Me" : (m.metadata?.contact || m.sender)}
+                                                    {m.direction === "sent" ? "Me" : getDisplayName(m.metadata?.contact || m.sender)}
                                                 </span>
+                                                {m.direction !== "sent" && getParticipantRoleBadge(m.metadata?.contact || m.sender)}
+                                                {m.direction !== "sent" && (
+                                                    <button
+                                                        onClick={() => handleOpenTagForSender(m.metadata?.contact || m.sender)}
+                                                        title="Tag or edit name / role for this phone number"
+                                                        style={{
+                                                            background: "none",
+                                                            border: "none",
+                                                            cursor: "pointer",
+                                                            fontSize: "0.85rem",
+                                                            padding: "0 4px",
+                                                            opacity: 0.7
+                                                        }}
+                                                    >
+                                                        🏷️
+                                                    </button>
+                                                )}
+
                                                 <span className="message-time">
                                                     {formatFullTimestamp(m.timestamp)}
                                                 </span>
@@ -2670,8 +2960,26 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                                                         <div className="message-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
                                                             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                                                                 <span className={`message-sender ${m.direction}`} style={{ fontWeight: 600 }}>
-                                                                    {isMe ? "Me" : (m.sender || "Them")}
+                                                                    {isMe ? "Me" : getDisplayName(m.sender || "Them")}
                                                                 </span>
+                                                                {!isMe && getParticipantRoleBadge(m.sender)}
+                                                                {!isMe && (
+                                                                    <button
+                                                                        onClick={() => handleOpenTagForSender(m.sender)}
+                                                                        title="Tag or edit name / role for this phone number"
+                                                                        style={{
+                                                                            background: "none",
+                                                                            border: "none",
+                                                                            cursor: "pointer",
+                                                                            fontSize: "0.82rem",
+                                                                            padding: "0 2px",
+                                                                            opacity: 0.7
+                                                                        }}
+                                                                    >
+                                                                        🏷️
+                                                                    </button>
+                                                                )}
+
                                                                 <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
                                                                     to {m.recipient || (isMe ? "them" : "me")}
                                                                 </span>
@@ -3041,6 +3349,15 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                     </div>
                 </div>
             )}
+
+            {/* Forensic Person & Phone Tagging Modal */}
+            <PersonTagModal
+                isOpen={Boolean(tagModalTarget)}
+                participant={tagModalTarget}
+                onSave={handleSaveParticipantTag}
+                onClose={() => setTagModalTarget(null)}
+                isSaving={isSavingTag}
+            />
         </div>
     );
 }
