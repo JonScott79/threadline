@@ -2,11 +2,12 @@
     DateTimePromptModal.jsx
 
     Threadline Temporal Verification & Prompt Modal.
-    Prompts the user with an interactive calendar date picker and time/timezone
-    dropdowns when uploaded archives or pasted chats lack standardized timestamps.
+    Styled with the full Lanzar Brand Logo Aesthetic:
+    Deep Space Navy, Orbit Sky Glow, Rocket Orange Flames, Starlight Gold,
+    and Cockpit Bezel Instrumentation.
 */
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { formatCanonicalISO } from "../js/utilities/temporalVerifier";
 
 function DateTimePromptModal({ isOpen, metadata, onConfirm, onCancel }) {
@@ -126,15 +127,25 @@ function DateTimePromptModal({ isOpen, metadata, onConfirm, onCancel }) {
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    fontSize: "0.82rem",
-                    fontFamily: "var(--font-mono, monospace)",
-                    fontWeight: isSelected ? "700" : "500",
-                    borderRadius: "6px",
-                    border: isSelected ? "1px solid var(--accent, #3FD8FF)" : isToday ? "1px solid var(--warning, #F7C94B)" : "1px solid transparent",
-                    background: isSelected ? "var(--accent, #3FD8FF)" : isToday ? "rgba(247,201,75,0.12)" : "rgba(255,255,255,0.02)",
-                    color: isSelected ? "#0B1016" : "var(--text, #F2F7FB)",
+                    fontSize: "0.85rem",
+                    fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
+                    fontWeight: isSelected ? "800" : "500",
+                    borderRadius: "7px",
+                    border: isSelected ? "1px solid #ffffff" : isToday ? "1px solid #E2B84D" : "1px solid transparent",
+                    background: isSelected 
+                        ? "linear-gradient(135deg, #FF8A63 0%, #F46B45 100%)" 
+                        : isToday 
+                        ? "rgba(226, 184, 77, 0.15)" 
+                        : "rgba(255, 255, 255, 0.03)",
+                    color: isSelected ? "#ffffff" : isToday ? "#FFE587" : "#F8FAFC",
                     cursor: "pointer",
-                    transition: "all 0.15s ease"
+                    boxShadow: isSelected 
+                        ? "0 0 16px rgba(244, 107, 69, 0.7), inset 0 1px 1px rgba(255, 255, 255, 0.4)" 
+                        : isToday 
+                        ? "0 0 10px rgba(226, 184, 77, 0.3)" 
+                        : "none",
+                    transform: isSelected ? "scale(1.06)" : "scale(1)",
+                    transition: "all 0.16s cubic-bezier(0.16, 1, 0.3, 1)"
                 }}
             >
                 {d}
@@ -157,8 +168,9 @@ function DateTimePromptModal({ isOpen, metadata, onConfirm, onCancel }) {
             style={{
                 position: "fixed",
                 inset: 0,
-                background: "rgba(5, 9, 14, 0.85)",
-                backdropFilter: "blur(8px)",
+                background: "radial-gradient(circle at 50% 30%, rgba(16, 42, 67, 0.88) 0%, rgba(10, 24, 38, 0.96) 100%)",
+                backdropFilter: "blur(10px)",
+                WebkitBackdropFilter: "blur(10px)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -169,126 +181,148 @@ function DateTimePromptModal({ isOpen, metadata, onConfirm, onCancel }) {
             <div 
                 style={{
                     width: "100%",
-                    maxWidth: "580px",
-                    background: "var(--panel, #141D26)",
-                    border: "2px solid var(--border, #243445)",
-                    borderRadius: "12px",
-                    boxShadow: "0 25px 60px rgba(0, 0, 0, 0.8), 0 0 25px rgba(63, 216, 255, 0.15)",
-                    color: "var(--text, #F2F7FB)",
+                    maxWidth: "620px",
+                    background: "linear-gradient(180deg, #102A43 0%, #0A1826 100%)",
+                    border: "2px solid #20596E",
+                    borderRadius: "14px",
+                    boxShadow: 
+                        "0 25px 60px -10px rgba(0, 0, 0, 0.85), 0 0 35px rgba(56, 189, 248, 0.25), inset 0 1px 1px rgba(255, 255, 255, 0.18)",
+                    color: "#F8FAFC",
                     display: "flex",
                     flexDirection: "column",
-                    overflow: "hidden"
+                    overflow: "hidden",
+                    position: "relative"
                 }}
             >
-                {/* Header */}
+                {/* Decorative Cockpit Corner Screws */}
+                <div style={screwStyle("tl")} />
+                <div style={screwStyle("tr")} />
+                <div style={screwStyle("bl")} />
+                <div style={screwStyle("br")} />
+
+                {/* Outer Orbit Ellipse Watermark */}
                 <div 
                     style={{
-                        padding: "18px 22px 14px",
-                        background: "rgba(16, 24, 32, 0.8)",
-                        borderBottom: "1px solid var(--border, #243445)"
+                        position: "absolute",
+                        top: "-50px",
+                        right: "-50px",
+                        width: "220px",
+                        height: "220px",
+                        borderRadius: "50%",
+                        border: "1.5px dashed rgba(74, 151, 179, 0.35)",
+                        pointerEvents: "none",
+                        transform: "rotate(-25deg)"
+                    }} 
+                />
+
+                {/* Header Deck */}
+                <div 
+                    style={{
+                        padding: "20px 26px 16px",
+                        background: "linear-gradient(180deg, rgba(42, 114, 143, 0.35) 0%, rgba(16, 42, 67, 0.2) 100%)",
+                        borderBottom: "2px solid #20596E",
+                        position: "relative"
                     }}
                 >
                     <span 
                         style={{
-                            display: "inline-block",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "6px",
                             fontSize: "0.72rem",
-                            fontFamily: "var(--font-mono, monospace)",
+                            fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
                             fontWeight: "700",
-                            letterSpacing: "1px",
+                            letterSpacing: "1.2px",
                             textTransform: "uppercase",
-                            padding: "3px 8px",
+                            padding: "4px 10px",
                             borderRadius: "4px",
-                            background: "rgba(247, 201, 75, 0.14)",
-                            border: "1px solid var(--warning, #F7C94B)",
-                            color: "var(--warning, #F7C94B)",
+                            background: "rgba(226, 184, 77, 0.14)",
+                            border: "1px solid #E2B84D",
+                            color: "#FFE587",
+                            boxShadow: "0 0 14px rgba(226, 184, 77, 0.3)",
                             marginBottom: "8px"
                         }}
                     >
-                        ✦ CHRONOLOGICAL INTEGRITY CHECK
+                        ✦ THREADLINE TEMPORAL GATE ✦
                     </span>
-                    <h3 style={{ margin: 0, fontSize: "1.2rem", fontWeight: "700", letterSpacing: "0.5px", display: "flex", alignItems: "center", gap: "8px" }}>
-                        <span>📅</span> TIMESTAMP VERIFICATION REQUIRED
+                    <h3 style={{ margin: 0, fontSize: "1.3rem", fontWeight: "800", letterSpacing: "0.5px", display: "flex", alignItems: "center", gap: "10px", color: "#FFFFFF", textShadow: "0 2px 10px rgba(0, 0, 0, 0.5)" }}>
+                        <span style={{ color: "#F46B45", filter: "drop-shadow(0 0 8px rgba(244, 107, 69, 0.65))" }}>🚀</span> 
+                        TIMESTAMP VERIFICATION REQUIRED
                     </h3>
-                    <p style={{ margin: "4px 0 0", fontSize: "0.82rem", color: "var(--text-muted, #748191)", lineHeight: "1.4" }}>
-                        Threadline organizes messages into chronological timelines. This upload lacks valid date and time context. Specify the baseline timestamp below.
+                    <p style={{ margin: "5px 0 0", fontSize: "0.84rem", color: "#CBD5E1", lineHeight: "1.45" }}>
+                        Threadline analyzes chronological timelines. This submission lacks verified dates and times. Specify the temporal baseline below.
                     </p>
                 </div>
 
                 {/* Target Information Banner */}
                 <div 
                     style={{
-                        background: "rgba(11, 16, 22, 0.9)",
-                        borderLeft: "3px solid var(--accent, #3FD8FF)",
-                        padding: "10px 16px",
-                        margin: "14px 22px 4px",
-                        borderRadius: "0 6px 6px 0",
+                        background: "rgba(8, 18, 28, 0.9)",
+                        borderLeft: "4px solid #F46B45",
+                        borderRight: "1px dashed #2A728F",
+                        padding: "10px 18px",
+                        margin: "14px 24px 4px",
+                        borderRadius: "0 8px 8px 0",
                         display: "flex",
                         justifyContent: "space-between",
                         alignItems: "center",
-                        fontSize: "0.8rem",
-                        fontFamily: "var(--font-mono, monospace)"
+                        fontSize: "0.82rem",
+                        fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
+                        boxShadow: "inset 0 1px 4px rgba(0, 0, 0, 0.6)"
                     }}
                 >
-                    <span style={{ color: "var(--accent, #3FD8FF)", fontWeight: "600" }}>
-                        {metadata?.sourceName || "SOURCE CONTENT"}
+                    <span style={{ color: "#38BDF8", fontWeight: "700", letterSpacing: "0.5px", display: "flex", alignItems: "center", gap: "6px" }}>
+                        <span>✦</span> {metadata?.sourceName || "SOURCE CONTENT"}
                     </span>
-                    <span style={{ color: "var(--warning, #F7C94B)", fontSize: "0.75rem" }}>
+                    <span style={{ color: "#E2B84D", fontWeight: "600", fontSize: "0.78rem" }}>
                         {metadata?.reason || "No timestamps detected"}
                     </span>
                 </div>
 
                 {/* Body Deck */}
-                <div style={{ padding: "14px 22px", display: "flex", flexDirection: "column", gap: "16px", maxHeight: "68vh", overflowY: "auto" }}>
+                <div style={{ padding: "14px 24px", display: "flex", flexDirection: "column", gap: "16px", maxHeight: "68vh", overflowY: "auto" }}>
                     {/* Custom Calendar Grid */}
                     <div 
                         style={{
-                            background: "rgba(16, 24, 32, 0.6)",
-                            border: "1px solid var(--border, #243445)",
-                            borderRadius: "8px",
-                            padding: "14px"
+                            background: "#142132",
+                            border: "1.5px solid #20596E",
+                            borderRadius: "10px",
+                            padding: "14px",
+                            boxShadow: "inset 0 2px 8px rgba(0, 0, 0, 0.45)"
                         }}
                     >
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", borderBottom: "1px solid rgba(42, 114, 143, 0.35)", paddingBottom: "8px" }}>
                             <button
                                 type="button"
                                 onClick={handlePrevMonth}
-                                style={{
-                                    background: "rgba(255,255,255,0.05)",
-                                    border: "1px solid var(--border, #243445)",
-                                    color: "var(--text)",
-                                    borderRadius: "6px",
-                                    width: "28px",
-                                    height: "28px",
-                                    cursor: "pointer",
-                                    fontWeight: "700"
-                                }}
+                                style={navBtnStyle}
                             >
                                 «
                             </button>
-                            <span style={{ fontFamily: "var(--font-mono, monospace)", fontSize: "0.95rem", fontWeight: "700", color: "var(--accent, #3FD8FF)", letterSpacing: "1px" }}>
+                            <span 
+                                style={{ 
+                                    fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)", 
+                                    fontSize: "1.05rem", 
+                                    fontWeight: "800", 
+                                    color: "#38BDF8", 
+                                    letterSpacing: "1px",
+                                    textShadow: "0 0 12px rgba(56, 189, 248, 0.5)"
+                                }}
+                            >
                                 {monthNames[selectedMonth]} {selectedYear}
                             </span>
                             <button
                                 type="button"
                                 onClick={handleNextMonth}
-                                style={{
-                                    background: "rgba(255,255,255,0.05)",
-                                    border: "1px solid var(--border, #243445)",
-                                    color: "var(--text)",
-                                    borderRadius: "6px",
-                                    width: "28px",
-                                    height: "28px",
-                                    cursor: "pointer",
-                                    fontWeight: "700"
-                                }}
+                                style={navBtnStyle}
                             >
                                 »
                             </button>
                         </div>
 
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "4px", textAlign: "center" }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "5px", textAlign: "center" }}>
                             {["SU", "MO", "TU", "WE", "TH", "FR", "SA"].map(d => (
-                                <div key={d} style={{ fontFamily: "var(--font-mono, monospace)", fontSize: "0.7rem", color: "var(--text-muted, #748191)", fontWeight: "600", paddingBottom: "6px" }}>
+                                <div key={d} style={{ fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)", fontSize: "0.72rem", color: "#4A97B3", fontWeight: "700", paddingBottom: "6px", letterSpacing: "1px" }}>
                                     {d}
                                 </div>
                             ))}
@@ -299,10 +333,10 @@ function DateTimePromptModal({ isOpen, metadata, onConfirm, onCancel }) {
                     {/* Time & Timezone Dropdowns */}
                     <div style={{ display: "grid", gridTemplateColumns: "1.15fr 0.85fr", gap: "14px" }}>
                         <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                            <label style={{ fontSize: "0.72rem", fontFamily: "var(--font-mono, monospace)", color: "var(--text-muted, #748191)", textTransform: "uppercase", letterSpacing: "1px" }}>
+                            <label style={labelStyle}>
                                 Time of Event (HH:MM:SS)
                             </label>
-                            <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
                                 <select 
                                     value={hour} 
                                     onChange={(e) => setHour(e.target.value)}
@@ -312,7 +346,7 @@ function DateTimePromptModal({ isOpen, metadata, onConfirm, onCancel }) {
                                         <option key={h} value={h}>{h}</option>
                                     ))}
                                 </select>
-                                <span style={{ color: "var(--text-muted)", fontWeight: "700" }}>:</span>
+                                <span style={{ color: "#E2B84D", fontWeight: "900", fontFamily: "monospace", fontSize: "1rem" }}>:</span>
                                 <select 
                                     value={minute} 
                                     onChange={(e) => setMinute(e.target.value)}
@@ -322,7 +356,7 @@ function DateTimePromptModal({ isOpen, metadata, onConfirm, onCancel }) {
                                         <option key={m} value={m}>{m}</option>
                                     ))}
                                 </select>
-                                <span style={{ color: "var(--text-muted)", fontWeight: "700" }}>:</span>
+                                <span style={{ color: "#E2B84D", fontWeight: "900", fontFamily: "monospace", fontSize: "1rem" }}>:</span>
                                 <select 
                                     value={second} 
                                     onChange={(e) => setSecond(e.target.value)}
@@ -344,7 +378,7 @@ function DateTimePromptModal({ isOpen, metadata, onConfirm, onCancel }) {
                         </div>
 
                         <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                            <label style={{ fontSize: "0.72rem", fontFamily: "var(--font-mono, monospace)", color: "var(--text-muted, #748191)", textTransform: "uppercase", letterSpacing: "1px" }}>
+                            <label style={labelStyle}>
                                 Standardized Timezone
                             </label>
                             <select 
@@ -359,30 +393,30 @@ function DateTimePromptModal({ isOpen, metadata, onConfirm, onCancel }) {
                         </div>
                     </div>
 
-                    {/* Presets Bar */}
+                    {/* Presets Bar with Glowing Neon Chips */}
                     <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                        <label style={{ fontSize: "0.72rem", fontFamily: "var(--font-mono, monospace)", color: "var(--text-muted, #748191)", textTransform: "uppercase", letterSpacing: "1px" }}>
+                        <label style={labelStyle}>
                             Rapid Presets
                         </label>
                         <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
                             <button
                                 type="button"
                                 onClick={handlePresetNow}
-                                style={presetChipStyle}
+                                style={presetFlameStyle}
                             >
                                 ⚡ CURRENT TIME (NOW)
                             </button>
                             <button
                                 type="button"
                                 onClick={handlePresetStartOfDay}
-                                style={presetChipStyle}
+                                style={presetGoldStyle}
                             >
                                 🌅 START OF DAY (00:00)
                             </button>
                             <button
                                 type="button"
                                 onClick={handlePresetEndOfDay}
-                                style={presetChipStyle}
+                                style={presetSkyStyle}
                             >
                                 🌃 END OF DAY (23:59)
                             </button>
@@ -392,9 +426,9 @@ function DateTimePromptModal({ isOpen, metadata, onConfirm, onCancel }) {
                     {/* Batch Scope Option */}
                     <div 
                         style={{
-                            background: "rgba(16, 24, 32, 0.4)",
-                            border: "1px dashed var(--border, #243445)",
-                            borderRadius: "6px",
+                            background: "rgba(10, 24, 38, 0.8)",
+                            border: "1px dashed #20596E",
+                            borderRadius: "8px",
                             padding: "10px 14px",
                             display: "flex",
                             justifyContent: "space-between",
@@ -402,32 +436,52 @@ function DateTimePromptModal({ isOpen, metadata, onConfirm, onCancel }) {
                         }}
                     >
                         <div>
-                            <div style={{ fontSize: "0.82rem", fontWeight: "600" }}>Apply to entire conversation batch</div>
-                            <div style={{ fontSize: "0.72rem", color: "var(--text-muted, #748191)" }}>Establishes uniform baseline timestamp for all untimed messages</div>
+                            <div style={{ fontSize: "0.84rem", fontWeight: "700", color: "#F8FAFC" }}>
+                                Apply timestamp to entire conversation payload
+                            </div>
+                            <div style={{ fontSize: "0.72rem", color: "#94A3B8", fontFamily: "monospace" }}>
+                                Enforces uniform temporal indexing across all messages in this archive
+                            </div>
                         </div>
                         <input
                             type="checkbox"
                             checked={applyToAll}
                             onChange={(e) => setApplyToAll(e.target.checked)}
-                            style={{ width: "18px", height: "18px", accentColor: "var(--accent, #3FD8FF)", cursor: "pointer" }}
+                            style={{ 
+                                width: "19px", 
+                                height: "19px", 
+                                accentColor: "#F46B45", 
+                                cursor: "pointer" 
+                            }}
                         />
                     </div>
 
-                    {/* Live Canonical Preview */}
+                    {/* Live Canonical ISO Readout */}
                     <div 
                         style={{
-                            background: "rgba(11, 16, 22, 0.9)",
-                            border: "1px solid var(--border, #243445)",
-                            borderRadius: "6px",
-                            padding: "10px 14px",
+                            background: "#08121C",
+                            border: "1.5px solid #20596E",
+                            borderRadius: "8px",
+                            padding: "11px 16px",
                             display: "flex",
                             justifyContent: "space-between",
                             alignItems: "center",
-                            fontFamily: "var(--font-mono, monospace)"
+                            fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
+                            boxShadow: "inset 0 2px 6px rgba(0, 0, 0, 0.6)"
                         }}
                     >
-                        <span style={{ fontSize: "0.72rem", color: "var(--text-muted, #748191)" }}>CANONICAL ISO-8601 OUTPUT:</span>
-                        <span style={{ fontSize: "0.85rem", color: "var(--accent, #3FD8FF)", fontWeight: "700" }}>
+                        <span style={{ fontSize: "0.72rem", color: "#E2B84D", fontWeight: "700", letterSpacing: "1px" }}>
+                            CANONICAL ISO-8601 OUTPUT:
+                        </span>
+                        <span 
+                            style={{ 
+                                fontSize: "0.92rem", 
+                                color: "#38BDF8", 
+                                fontWeight: "800",
+                                textShadow: "0 0 10px rgba(56, 189, 248, 0.5)",
+                                letterSpacing: "0.5px"
+                            }}
+                        >
                             {canonicalIso}
                         </span>
                     </div>
@@ -436,26 +490,29 @@ function DateTimePromptModal({ isOpen, metadata, onConfirm, onCancel }) {
                 {/* Footer Actions */}
                 <div 
                     style={{
-                        padding: "14px 22px",
-                        background: "rgba(16, 24, 32, 0.9)",
-                        borderTop: "1px solid var(--border, #243445)",
+                        padding: "16px 24px 18px",
+                        background: "rgba(10, 24, 38, 0.96)",
+                        borderTop: "2px solid #20596E",
                         display: "flex",
                         justifyContent: "flex-end",
-                        gap: "10px"
+                        gap: "12px"
                     }}
                 >
                     <button
                         type="button"
                         onClick={onCancel}
                         style={{
-                            padding: "9px 18px",
+                            padding: "10px 20px",
                             fontSize: "0.82rem",
-                            fontWeight: "600",
+                            fontWeight: "700",
+                            fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
+                            letterSpacing: "0.5px",
                             background: "transparent",
-                            border: "1px solid var(--border, #243445)",
-                            color: "var(--text-muted, #748191)",
-                            borderRadius: "6px",
-                            cursor: "pointer"
+                            border: "1.5px solid #20596E",
+                            color: "#94A3B8",
+                            borderRadius: "8px",
+                            cursor: "pointer",
+                            transition: "all 0.18s ease"
                         }}
                     >
                         DISCARD / CANCEL
@@ -464,15 +521,19 @@ function DateTimePromptModal({ isOpen, metadata, onConfirm, onCancel }) {
                         type="button"
                         onClick={handleConfirm}
                         style={{
-                            padding: "9px 22px",
-                            fontSize: "0.82rem",
-                            fontWeight: "700",
-                            background: "var(--accent, #3FD8FF)",
+                            padding: "10px 26px",
+                            fontSize: "0.85rem",
+                            fontWeight: "800",
+                            fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
+                            letterSpacing: "0.8px",
+                            background: "linear-gradient(135deg, #FF8A63 0%, #F46B45 50%, #D95737 100%)",
                             border: "none",
-                            color: "#0B1016",
-                            borderRadius: "6px",
+                            color: "#FFFFFF",
+                            borderRadius: "8px",
                             cursor: "pointer",
-                            boxShadow: "0 0 15px rgba(63, 216, 255, 0.3)"
+                            boxShadow: "0 4px 18px rgba(244, 107, 69, 0.55), 0 0 25px rgba(244, 107, 69, 0.3)",
+                            textShadow: "0 1px 2px rgba(0, 0, 0, 0.4)",
+                            transition: "all 0.2s cubic-bezier(0.16, 1, 0.3, 1)"
                         }}
                     >
                         APPLY &amp; IMPORT
@@ -483,31 +544,106 @@ function DateTimePromptModal({ isOpen, metadata, onConfirm, onCancel }) {
     );
 }
 
-const selectStyle = {
-    flex: 1,
-    background: "#0B1016",
-    border: "1px solid var(--border, #243445)",
-    color: "var(--text, #F2F7FB)",
-    fontFamily: "var(--font-mono, monospace)",
-    fontSize: "0.85rem",
-    fontWeight: "600",
-    padding: "6px 4px",
-    borderRadius: "6px",
-    outline: "none",
-    cursor: "pointer"
+// Decorative metallic screw style helper
+function screwStyle(pos) {
+    const isTop = pos.startsWith("t");
+    const isLeft = pos.endsWith("l");
+    return {
+        position: "absolute",
+        top: isTop ? "9px" : "auto",
+        bottom: !isTop ? "9px" : "auto",
+        left: isLeft ? "9px" : "auto",
+        right: !isLeft ? "9px" : "auto",
+        width: "10px",
+        height: "10px",
+        borderRadius: "50%",
+        background: "radial-gradient(circle at 35% 35%, #4F6E96, #23374E)",
+        border: "1px solid #142132",
+        boxShadow: "inset 0 1px 1px rgba(255, 255, 255, 0.3), 0 1px 2px rgba(0, 0, 0, 0.5)",
+        zIndex: 5,
+        pointerEvents: "none"
+    };
+}
+
+const labelStyle = {
+    fontSize: "0.74rem",
+    fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
+    fontWeight: "700",
+    color: "#4A97B3",
+    textTransform: "uppercase",
+    letterSpacing: "1px"
 };
 
-const presetChipStyle = {
-    background: "rgba(63, 216, 255, 0.08)",
-    border: "1px solid rgba(63, 216, 255, 0.25)",
-    color: "var(--accent, #3FD8FF)",
-    fontFamily: "var(--font-mono, monospace)",
-    fontSize: "0.72rem",
-    fontWeight: "600",
-    padding: "4px 10px",
-    borderRadius: "14px",
+const navBtnStyle = {
+    background: "linear-gradient(180deg, #1B3957, #13273E)",
+    border: "1px solid #2A728F",
+    color: "#F8FAFC",
+    borderRadius: "6px",
+    width: "32px",
+    height: "32px",
     cursor: "pointer",
-    transition: "all 0.15s ease"
+    fontWeight: "800",
+    fontSize: "0.95rem",
+    boxShadow: "0 2px 5px rgba(0, 0, 0, 0.3)",
+    transition: "all 0.18s ease"
+};
+
+const selectStyle = {
+    flex: 1,
+    background: "#0A1826",
+    border: "1.5px solid #20596E",
+    color: "#F8FAFC",
+    fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
+    fontSize: "0.9rem",
+    fontWeight: "700",
+    padding: "7px 5px",
+    borderRadius: "7px",
+    outline: "none",
+    cursor: "pointer",
+    boxShadow: "inset 0 1px 4px rgba(0, 0, 0, 0.5)",
+    transition: "border-color 0.2s, box-shadow 0.2s"
+};
+
+const presetFlameStyle = {
+    background: "rgba(244, 107, 69, 0.15)",
+    border: "1px solid #F46B45",
+    color: "#FF8A63",
+    fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
+    fontSize: "0.75rem",
+    fontWeight: "700",
+    padding: "5px 12px",
+    borderRadius: "16px",
+    cursor: "pointer",
+    boxShadow: "0 0 12px rgba(244, 107, 69, 0.35)",
+    transition: "all 0.18s ease"
+};
+
+const presetGoldStyle = {
+    background: "rgba(226, 184, 77, 0.12)",
+    border: "1px solid #E2B84D",
+    color: "#FFE587",
+    fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
+    fontSize: "0.75rem",
+    fontWeight: "700",
+    padding: "5px 12px",
+    borderRadius: "16px",
+    cursor: "pointer",
+    boxShadow: "0 0 10px rgba(226, 184, 77, 0.25)",
+    transition: "all 0.18s ease"
+};
+
+const presetSkyStyle = {
+    background: "rgba(56, 189, 248, 0.12)",
+    border: "1px solid #38BDF8",
+    color: "#38BDF8",
+    fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
+    fontSize: "0.75rem",
+    fontWeight: "700",
+    padding: "5px 12px",
+    borderRadius: "16px",
+    cursor: "pointer",
+    boxShadow: "0 0 10px rgba(56, 189, 248, 0.25)",
+    transition: "all 0.18s ease"
 };
 
 export default DateTimePromptModal;

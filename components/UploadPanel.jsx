@@ -366,41 +366,45 @@ function UploadPanel({ setImportResult, threadlineId }) {
                     type="button"
                     onClick={() => setMode("file")}
                     style={{
-                        padding: "8px 18px",
+                        padding: "8px 20px",
                         fontSize: "0.85rem",
-                        fontWeight: "600",
-                        borderRadius: "6px",
-                        border: mode === "file" ? "1px solid var(--accent)" : "1px solid var(--border)",
-                        background: mode === "file" ? "rgba(63,216,255,0.12)" : "transparent",
-                        color: mode === "file" ? "var(--accent)" : "var(--text-muted)",
+                        fontWeight: "700",
+                        borderRadius: "8px",
+                        border: mode === "file" ? "1.5px solid #38BDF8" : "1px solid var(--border)",
+                        background: mode === "file" ? "rgba(56, 189, 248, 0.16)" : "transparent",
+                        color: mode === "file" ? "#38BDF8" : "var(--text-muted)",
+                        boxShadow: mode === "file" ? "0 0 16px rgba(56, 189, 248, 0.35)" : "none",
                         cursor: "pointer",
                         display: "flex",
                         alignItems: "center",
                         gap: "8px",
-                        transition: "all 0.2s ease"
+                        transition: "all 0.2s cubic-bezier(0.16, 1, 0.3, 1)"
                     }}
                 >
-                    <span>📁</span> Upload File / Archive
+                    <span style={{ filter: mode === "file" ? "drop-shadow(0 0 6px rgba(56, 189, 248, 0.6))" : "none" }}>📁</span> 
+                    Upload File / Archive
                 </button>
                 <button
                     type="button"
                     onClick={() => setMode("paste")}
                     style={{
-                        padding: "8px 18px",
+                        padding: "8px 20px",
                         fontSize: "0.85rem",
-                        fontWeight: "600",
-                        borderRadius: "6px",
-                        border: mode === "paste" ? "1px solid var(--accent)" : "1px solid var(--border)",
-                        background: mode === "paste" ? "rgba(63,216,255,0.12)" : "transparent",
-                        color: mode === "paste" ? "var(--accent)" : "var(--text-muted)",
+                        fontWeight: "700",
+                        borderRadius: "8px",
+                        border: mode === "paste" ? "1.5px solid #F46B45" : "1px solid var(--border)",
+                        background: mode === "paste" ? "rgba(244, 107, 69, 0.16)" : "transparent",
+                        color: mode === "paste" ? "#FF8A63" : "var(--text-muted)",
+                        boxShadow: mode === "paste" ? "0 0 16px rgba(244, 107, 69, 0.35)" : "none",
                         cursor: "pointer",
                         display: "flex",
                         alignItems: "center",
                         gap: "8px",
-                        transition: "all 0.2s ease"
+                        transition: "all 0.2s cubic-bezier(0.16, 1, 0.3, 1)"
                     }}
                 >
-                    <span>📋</span> Paste Chat / Text Snippet
+                    <span style={{ filter: mode === "paste" ? "drop-shadow(0 0 6px rgba(244, 107, 69, 0.6))" : "none" }}>📋</span> 
+                    Paste Chat / Text Snippet
                 </button>
             </div>
 
@@ -421,12 +425,31 @@ function UploadPanel({ setImportResult, threadlineId }) {
                         onDragEnter={handleDragEnter}
                         onDragLeave={handleDragLeave}
                         onDrop={handleDrop}
-                        style={{ minHeight: "240px", border: "none" }}
+                        style={{ 
+                            minHeight: "250px", 
+                            border: dragOver ? "2px dashed #F46B45" : "2px dashed #20596E",
+                            borderRadius: "10px",
+                            margin: "16px",
+                            background: dragOver ? "rgba(244, 107, 69, 0.1)" : "rgba(16, 42, 67, 0.35)",
+                            boxShadow: dragOver 
+                                ? "0 0 30px rgba(244, 107, 69, 0.4), inset 0 0 15px rgba(244, 107, 69, 0.2)" 
+                                : "0 0 20px rgba(56, 189, 248, 0.08)",
+                            cursor: "pointer",
+                            transition: "all 0.22s ease",
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            padding: "24px"
+                        }}
                     >
-                        <h3 style={{ letterSpacing: "1px", textTransform: "uppercase" }}>
-                            {dragOver ? "DROP ARCHIVE FILE HERE" : "CLICK TO SELECT FILE OR DROP IT HERE"}
+                        <div style={{ fontSize: "2.4rem", marginBottom: "8px", filter: dragOver ? "drop-shadow(0 0 12px rgba(244, 107, 69, 0.6))" : "drop-shadow(0 0 10px rgba(56, 189, 248, 0.4))" }}>
+                            {dragOver ? "🚀" : "🛸"}
+                        </div>
+                        <h3 style={{ letterSpacing: "1.2px", textTransform: "uppercase", color: dragOver ? "#FF8A63" : "#F8FAFC", textShadow: dragOver ? "0 0 12px rgba(244, 107, 69, 0.5)" : "none" }}>
+                            {dragOver ? "DROP ARCHIVE FILE TO ENGAGE" : "CLICK TO SELECT FILE OR DROP IT HERE"}
                         </h3>
-                        <p style={{ maxWidth: "600px", textAlign: "center", fontSize: "0.85rem", lineHeight: "1.5" }}>
+                        <p style={{ maxWidth: "600px", textAlign: "center", fontSize: "0.85rem", lineHeight: "1.5", color: "#94A3B8", marginTop: "6px" }}>
                             Supports XML, HTML exports, JSON (Messenger / Signal), WhatsApp (.txt / .zip), Email (.eml / .mbox), PDF documents, and Screenshots (.png / .jpg).
                         </p>
                     </div>
@@ -434,19 +457,20 @@ function UploadPanel({ setImportResult, threadlineId }) {
             ) : (
                 <div className="paste-area" style={{ padding: "24px", display: "flex", flexDirection: "column", gap: "16px" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <label style={{ fontSize: "0.8rem", fontWeight: "600", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "1px" }}>
-                            Paste Chat Transcript or Messages
+                        <label style={{ fontSize: "0.8rem", fontWeight: "700", color: "#38BDF8", textTransform: "uppercase", letterSpacing: "1px", display: "flex", alignItems: "center", gap: "6px" }}>
+                            <span>✦</span> Paste Chat Transcript or Messages
                         </label>
                         {detectedType && (
                             <span 
                                 style={{ 
                                     fontSize: "0.75rem", 
-                                    padding: "3px 10px", 
-                                    borderRadius: "12px", 
-                                    background: "rgba(63,216,255,0.15)", 
-                                    color: "var(--accent)", 
-                                    border: "1px solid rgba(63,216,255,0.3)", 
-                                    fontWeight: "600" 
+                                    padding: "4px 12px", 
+                                    borderRadius: "14px", 
+                                    background: "rgba(244, 107, 69, 0.16)", 
+                                    color: "#FF8A63", 
+                                    border: "1px solid #F46B45", 
+                                    boxShadow: "0 0 12px rgba(244, 107, 69, 0.3)",
+                                    fontWeight: "700" 
                                 }}
                             >
                                 Format: {detectedType}
@@ -463,15 +487,17 @@ function UploadPanel({ setImportResult, threadlineId }) {
                         rows={8}
                         style={{
                             width: "100%",
-                            background: "var(--background)",
-                            border: "1px solid var(--border)",
-                            borderRadius: "6px",
+                            background: "#0A1826",
+                            border: "1.5px solid #20596E",
+                            borderRadius: "8px",
                             padding: "14px",
-                            color: "var(--text)",
-                            fontFamily: "var(--font-mono)",
+                            color: "#F8FAFC",
+                            fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
                             fontSize: "0.85rem",
                             lineHeight: "1.5",
-                            resize: "vertical"
+                            resize: "vertical",
+                            outline: "none",
+                            boxShadow: "inset 0 1px 4px rgba(0, 0, 0, 0.6)"
                         }}
                     />
                     <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
@@ -483,12 +509,13 @@ function UploadPanel({ setImportResult, threadlineId }) {
                             style={{
                                 flex: 1,
                                 minWidth: "220px",
-                                background: "var(--background)",
-                                border: "1px solid var(--border)",
-                                borderRadius: "6px",
+                                background: "#0A1826",
+                                border: "1.5px solid #20596E",
+                                borderRadius: "8px",
                                 padding: "10px 14px",
-                                color: "var(--text)",
-                                fontSize: "0.85rem"
+                                color: "#F8FAFC",
+                                fontSize: "0.85rem",
+                                outline: "none"
                             }}
                         />
                         <button
@@ -497,11 +524,21 @@ function UploadPanel({ setImportResult, threadlineId }) {
                             disabled={!pastedText.trim()}
                             onClick={handleProcessPaste}
                             style={{
-                                padding: "10px 24px",
-                                fontWeight: "600",
+                                padding: "11px 26px",
+                                fontWeight: "800",
                                 fontSize: "0.85rem",
+                                letterSpacing: "0.6px",
+                                background: "linear-gradient(135deg, #FF8A63 0%, #F46B45 50%, #D95737 100%)",
+                                border: "none",
+                                color: "#FFFFFF",
+                                borderRadius: "8px",
                                 cursor: pastedText.trim() ? "pointer" : "not-allowed",
-                                opacity: pastedText.trim() ? 1 : 0.5
+                                opacity: pastedText.trim() ? 1 : 0.45,
+                                boxShadow: pastedText.trim() 
+                                    ? "0 4px 18px rgba(244, 107, 69, 0.55), 0 0 25px rgba(244, 107, 69, 0.3)" 
+                                    : "none",
+                                textShadow: "0 1px 2px rgba(0, 0, 0, 0.4)",
+                                transition: "all 0.2s cubic-bezier(0.16, 1, 0.3, 1)"
                             }}
                         >
                             IMPORT PASTED CHAT
