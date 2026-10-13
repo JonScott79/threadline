@@ -38,7 +38,9 @@ function Sidebar({
     onRename,
     onShowHelp,
     onCaseImported,
-    archiveEmpty
+    archiveEmpty,
+    isOpenMobile = false,
+    onCloseMobile
 }){
     const [compareIds, setCompareIds] = useState([]);
     const [threadlineToDelete, setThreadlineToDelete] = useState(null);
@@ -120,7 +122,17 @@ function Sidebar({
 
     return(
 
-        <aside className="sidebar">
+        <aside className={`sidebar ${isOpenMobile ? "mobile-open" : ""}`}>
+            {onCloseMobile && (
+                <button
+                    type="button"
+                    className="sidebar-close-btn"
+                    onClick={onCloseMobile}
+                    aria-label="Close menu"
+                >
+                    ✕
+                </button>
+            )}
 
             <div className="sidebar-header">
                 
@@ -191,7 +203,7 @@ function Sidebar({
 
                 <div
                     className="nav-item"
-                    onClick={onShowHelp}
+                    onClick={() => { onShowHelp(); if (onCloseMobile) onCloseMobile(); }}
                     style={{ fontWeight: "600", color: "var(--text-muted)" }}
                 >
                     📘 Help Center

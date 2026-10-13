@@ -20,9 +20,9 @@ function HelpSection({ onBack }) {
     const [activeTab, setActiveTab] = useState("workflow");
 
     return (
-        <div className="help-section-view" style={{ width: "100%", maxWidth: "1500px", margin: "0 auto", padding: "36px 40px 60px 40px", boxSizing: "border-box", display: "flex", flexDirection: "column" }}>
+        <div className="help-section-view" style={{ width: "100%", maxWidth: "1500px", margin: "0 auto", padding: "clamp(18px, 3vw, 36px) clamp(16px, 3vw, 40px) 60px clamp(16px, 3vw, 40px)", boxSizing: "border-box", display: "flex", flexDirection: "column" }}>
             {/* Header */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "28px", borderBottom: "1px solid var(--border)", paddingBottom: "20px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px", borderBottom: "1px solid var(--border)", paddingBottom: "18px", flexWrap: "wrap", gap: "12px" }}>
                 <div>
                     <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "6px" }}>
                         <span style={{ fontSize: "1.6rem" }}>🛡️</span>
@@ -85,7 +85,7 @@ function HelpSection({ onBack }) {
             </section>
 
             {/* Navigation Tabs */}
-            <div style={{ display: "flex", gap: "10px", marginBottom: "22px", borderBottom: "1px solid var(--border)", paddingBottom: "12px" }}>
+            <div style={{ display: "flex", gap: "8px", marginBottom: "22px", borderBottom: "1px solid var(--border)", paddingBottom: "12px", flexWrap: "wrap" }}>
                 <button
                     type="button"
                     onClick={() => setActiveTab("workflow")}

@@ -34,6 +34,7 @@ function App(){
 	const [showingHelp, setShowingHelp] = useState(false);
 
 	const [archiveEmpty, setArchiveEmpty] = useState(true);
+	const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
     /*==============================================
                         AUTH
@@ -144,7 +145,49 @@ function App(){
 
 		<div className="application">
 
+			{/* Mobile Header Bar */}
+			<header className="mobile-header">
+				<button 
+					type="button" 
+					className="mobile-header-btn" 
+					onClick={() => setMobileSidebarOpen(prev => !prev)}
+					aria-label="Toggle navigation menu"
+				>
+					<span style={{ fontSize: "1.2rem", lineHeight: 1 }}>☰</span>
+					<span style={{ fontSize: "0.75rem", fontWeight: "700", letterSpacing: "1px" }}>MENU</span>
+				</button>
+				<div className="mobile-header-title">
+					<span style={{ color: "var(--accent)", fontWeight: "800", letterSpacing: "1.5px", fontSize: "0.9rem" }}>
+						▲ THREADLINE
+					</span>
+				</div>
+				<button 
+					type="button" 
+					className="mobile-header-btn" 
+					onClick={() => {
+						setShowingHelp(true);
+						setCurrentThreadline(null);
+						setCreatingThreadline(false);
+						setMobileSidebarOpen(false);
+					}}
+					title="Investigative Help Center"
+				>
+					<span>📘</span>
+					<span style={{ fontSize: "0.75rem", fontWeight: "600" }}>HELP</span>
+				</button>
+			</header>
+
+			{/* Backdrop for off-canvas drawer on mobile */}
+			{mobileSidebarOpen && (
+				<div 
+					className="sidebar-backdrop" 
+					onClick={() => setMobileSidebarOpen(false)}
+				/>
+			)}
+
 			<Sidebar
+				isOpenMobile={mobileSidebarOpen}
+				onCloseMobile={() => setMobileSidebarOpen(false)}
 
 				onCaseImported={(importedCase) => {
 					setThreadlines(prev => [importedCase, ...prev.filter(t => (t.firestoreId || t.id) !== (importedCase.firestoreId || importedCase.id))]);

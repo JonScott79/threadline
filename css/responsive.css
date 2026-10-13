@@ -1,19 +1,367 @@
-@media(max-width:1200px){
+/*==================================================
+    THREADLINE
+    RESPONSIVE DESIGN SYSTEM
+    Optimized for Laptops, Tablets, and All Mobile Devices
+==================================================*/
 
-    :root{
-
-        --sidebar-width:260px;
-
-    }
-
+:root {
+    --sidebar-width: 300px;
 }
 
-@media(max-width:900px){
+/* Default state on desktop */
+.mobile-header {
+    display: none;
+}
 
-    :root{
+.sidebar-backdrop {
+    display: none;
+}
 
-        --sidebar-width:0px;
+.sidebar-close-btn {
+    display: none;
+}
 
+/*==================================================
+    LAPTOP & REDUCED-HEIGHT SCREENS
+    (Resolves vertical cutoff when height <= 820px)
+==================================================*/
+@media (max-height: 820px) {
+    .sidebar {
+        padding: 20px 22px;
     }
 
+    .sidebar-header {
+        margin-bottom: 18px;
+    }
+
+    .sidebar-user {
+        margin-bottom: 18px;
+        padding-bottom: 14px;
+    }
+
+    .sidebar-divider {
+        margin: 12px 0;
+    }
+
+    .sidebar-section {
+        margin: 12px 0 8px;
+    }
+
+    .nav-item {
+        padding: 9px 0;
+    }
+
+    .sidebar-signout {
+        margin-top: 16px;
+        padding: 9px;
+    }
+
+    .welcome {
+        padding: 20px 16px 40px 16px;
+    }
+
+    .welcome > .panel.hero {
+        padding: 24px 20px;
+    }
+
+    .hero h1 {
+        font-size: clamp(2rem, 5vw, 3.2rem);
+    }
+
+    .hero h2 {
+        font-size: 1.1rem;
+        margin-top: 6px;
+    }
+
+    .hero p {
+        margin-top: 10px;
+        font-size: 0.85rem;
+    }
+
+    .hero .buttons {
+        margin-top: 18px;
+        gap: 8px;
+    }
+
+    .dashboard-header {
+        padding-bottom: 8px;
+    }
+
+    .dashboard-header h2 {
+        font-size: 1.25rem;
+    }
+
+    .time-filter-row {
+        padding: 6px 16px;
+        font-size: 0.8rem;
+    }
+}
+
+/*==================================================
+    TABLETS & COMPACT LAPTOPS (<= 1100px)
+==================================================*/
+@media (max-width: 1100px) {
+    :root {
+        --sidebar-width: 260px;
+    }
+
+    .sidebar {
+        padding: 24px 18px;
+    }
+
+    .explorer-pane {
+        width: 270px;
+    }
+
+    .date-picker-input {
+        width: 140px;
+        font-size: 0.78rem;
+        padding: 5px 8px;
+    }
+}
+
+/*==================================================
+    MOBILE DEVICES & SMALL TABLETS (<= 900px)
+==================================================*/
+@media (max-width: 900px) {
+    :root {
+        --sidebar-width: 0px;
+    }
+
+    /* 1-column mobile application grid */
+    .application {
+        display: grid !important;
+        grid-template-columns: 1fr !important;
+        grid-template-rows: 52px minmax(0, 1fr) auto !important;
+        height: 100dvh !important;
+        max-height: 100dvh !important;
+        width: 100% !important;
+        overflow: hidden !important;
+        position: relative !important;
+    }
+
+    /* Mobile Header Bar */
+    .mobile-header {
+        display: flex !important;
+        align-items: center;
+        justify-content: space-between;
+        height: 52px;
+        padding: 0 16px;
+        background: rgba(20, 29, 38, 0.98);
+        border-bottom: 1px solid var(--border);
+        z-index: 100;
+        grid-column: 1 !important;
+        grid-row: 1 !important;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+    }
+
+    .mobile-header-btn {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid var(--border);
+        color: var(--text-light);
+        padding: 6px 12px;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: var(--transition);
+    }
+
+    .mobile-header-btn:hover,
+    .mobile-header-btn:active {
+        border-color: var(--accent);
+        color: var(--accent);
+        background: rgba(63, 216, 255, 0.08);
+    }
+
+    .mobile-header-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    /* Slide-out Off-Canvas Drawer */
+    .sidebar {
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        bottom: 0 !important;
+        width: 300px !important;
+        max-width: 85vw !important;
+        height: 100dvh !important;
+        z-index: 1000 !important;
+        background: var(--panel) !important;
+        border-right: 1px solid var(--border) !important;
+        box-shadow: 6px 0 30px rgba(0, 0, 0, 0.8) !important;
+        transform: translateX(-100%) !important;
+        transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1) !important;
+        padding: 24px 20px !important;
+    }
+
+    .sidebar.mobile-open {
+        transform: translateX(0) !important;
+    }
+
+    .sidebar-backdrop {
+        display: block !important;
+        position: fixed !important;
+        inset: 0 !important;
+        background: rgba(0, 0, 0, 0.72) !important;
+        backdrop-filter: blur(3px) !important;
+        -webkit-backdrop-filter: blur(3px) !important;
+        z-index: 999 !important;
+    }
+
+    .sidebar-close-btn {
+        display: block !important;
+        position: absolute;
+        top: 14px;
+        right: 14px;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid var(--border);
+        color: var(--text-muted);
+        font-size: 1.1rem;
+        cursor: pointer;
+        padding: 4px 10px;
+        border-radius: 4px;
+        transition: var(--transition);
+    }
+
+    .sidebar-close-btn:hover,
+    .sidebar-close-btn:active {
+        color: var(--danger);
+        border-color: var(--danger);
+    }
+
+    /* Workspace takes Row 2 */
+    .workspace {
+        grid-column: 1 !important;
+        grid-row: 2 !important;
+        height: 100% !important;
+        max-height: 100% !important;
+        width: 100% !important;
+        padding: 14px !important;
+        box-sizing: border-box !important;
+    }
+
+    .workspace.dashboard-active,
+    .workspace.help-active {
+        height: 100% !important;
+        max-height: 100% !important;
+        padding: 0 !important;
+    }
+
+    /* Status Bar takes Row 3 */
+    .statusbar {
+        grid-column: 1 !important;
+        grid-row: 3 !important;
+        height: 38px !important;
+        padding: 0 16px !important;
+        font-size: 0.75rem !important;
+    }
+
+    /* Dashboard Header stacking */
+    .dashboard-header {
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        gap: 10px !important;
+        padding-bottom: 10px !important;
+    }
+
+    .dashboard-header .threadline-actions {
+        width: 100% !important;
+        display: flex !important;
+        flex-wrap: wrap !important;
+        gap: 6px !important;
+    }
+
+    .dashboard-header .threadline-actions .button {
+        flex: 1 1 auto !important;
+        padding: 8px 12px !important;
+        font-size: 0.72rem !important;
+        text-align: center !important;
+    }
+
+    /* Time filter stacking */
+    .time-filter-row {
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        gap: 10px !important;
+        padding: 10px 14px !important;
+    }
+
+    .date-range-container {
+        width: 100% !important;
+        flex-wrap: wrap !important;
+        gap: 8px !important;
+    }
+
+    /* Workbench Split: Stack Explorer above Viewer on mobile */
+    .dashboard-content-split {
+        flex-direction: column !important;
+        overflow-y: auto !important;
+        border-radius: 6px !important;
+    }
+
+    .explorer-pane {
+        width: 100% !important;
+        max-height: 360px !important;
+        border-right: none !important;
+        border-bottom: 1px solid var(--border) !important;
+        flex-shrink: 0 !important;
+    }
+
+    .viewer-pane {
+        width: 100% !important;
+        min-height: 400px !important;
+        flex: 1 !important;
+    }
+
+    .pane-tabs {
+        overflow-x: auto !important;
+        flex-wrap: nowrap !important;
+        -webkit-overflow-scrolling: touch !important;
+        scrollbar-width: thin !important;
+    }
+
+    .pane-tab {
+        flex-shrink: 0 !important;
+        padding: 10px 14px !important;
+        font-size: 0.76rem !important;
+    }
+}
+
+/*==================================================
+    SMALL PHONES (<= 520px)
+==================================================*/
+@media (max-width: 520px) {
+    .application {
+        grid-template-rows: 50px minmax(0, 1fr) !important;
+    }
+
+    .statusbar {
+        display: none !important; /* Hide statusbar on very small screens to maximize forensic viewing */
+    }
+
+    .hero h1 {
+        font-size: clamp(2rem, 8vw, 2.6rem) !important;
+    }
+
+    .hero .buttons .button {
+        width: 100% !important;
+    }
+
+    .help-section-view {
+        padding: 14px 12px 40px !important;
+    }
+
+    .preview-card {
+        padding: 16px !important;
+    }
+
+    .upload-mode-toggle button {
+        padding: 6px 12px !important;
+        font-size: 0.78rem !important;
+    }
 }
