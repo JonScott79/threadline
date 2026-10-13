@@ -1,13 +1,20 @@
-﻿/*
+/*
     UploadPanel.jsx
 
     Primary user upload and ingestion interface.
     Supports both file drag-and-drop/browsing and direct text/chat snippet pasting.
+    Integrated with Temporal Verification Gate to ensure valid chronological timestamps.
 */
 
 import { useState, useRef } from "react";
 import { uploadArchive, pasteArchiveText } from "../js/imports/upload";
 import { useAuth } from "../auth/AuthProvider";
+import DateTimePromptModal from "./DateTimePromptModal";
+import { 
+    inspectTemporalText, 
+    inspectTemporalFile, 
+    injectTimestampToText 
+} from "../js/utilities/temporalVerifier";
 
 function UploadPanel({ setImportResult, threadlineId }) {
     /*==============================================
@@ -23,6 +30,11 @@ function UploadPanel({ setImportResult, threadlineId }) {
     const [pasteTitle, setPasteTitle] = useState("");
     const [detectedType, setDetectedType] = useState(null);
     const fileInputRef = useRef(null);
+
+    // Temporal Verification Modal State
+    const [modalOpen, setModalOpen] = useState(false);
+    const [modalMetadata, setModalMetadata] = useState(null);
+    const [pendingAction, setPendingAction] = useState(null); // { type: 'file' | 'paste', payload: any, title?: string }
 
     /*==============================================
                         VALIDATION
@@ -84,12 +96,12 @@ function UploadPanel({ setImportResult, threadlineId }) {
                         PROCESS
     ==============================================*/
 
-    const processFile = async (file) => {
+    const executeFileUpload = async (fileToUpload) => {
         setStatus("uploading");
         setErrorMessage("");
         try {
-            validateFile(file);
-            const response = await uploadArchive(file, user, threadlineId);
+            validateFile(fileToUpload);
+            const response = await uploadArchive(fileToUpload, user, threadlineId);
             setStatus("idle");
             if (setImportResult) {
                 setImportResult(response);
@@ -102,12 +114,36 @@ function UploadPanel({ setImportResult, threadlineId }) {
         }
     };
 
-    const handleProcessPaste = async () => {
-        if (!pastedText.trim()) return;
+    const processFile = async (file) => {
+        try {
+            validateFile(file);
+            // Pre-flight Temporal Inspection
+            const inspection = await inspectTemporalFile(file);
+            if (!inspection.hasValidTimestamp) {
+                setModalMetadata({
+                    sourceName: `FILE: ${file.name}`,
+                    reason: inspection.reason,
+                    detectedType: inspection.detectedFormat
+                });
+                setPendingAction({ type: "file", payload: file });
+                setModalOpen(true);
+                return;
+            }
+
+            // Valid timestamps detected -> Proceed
+            await executeFileUpload(file);
+        } catch (error) {
+            console.error("Upload validation error:", error);
+            setStatus("error");
+            setErrorMessage(error.message);
+        }
+    };
+
+    const executePasteUpload = async (textToUpload, titleToUpload) => {
         setStatus("uploading");
         setErrorMessage("");
         try {
-            const response = await pasteArchiveText(pastedText, pasteTitle, user, threadlineId);
+            const response = await pasteArchiveText(textToUpload, titleToUpload, user, threadlineId);
             setStatus("idle");
             setPastedText("");
             setPasteTitle("");
@@ -121,6 +157,69 @@ function UploadPanel({ setImportResult, threadlineId }) {
             const msg = error.response?.data?.message || error.message || "Failed to parse pasted communication text.";
             setErrorMessage(msg);
         }
+    };
+
+    const handleProcessPaste = async () => {
+        if (!pastedText.trim()) return;
+
+        // Pre-flight Temporal Inspection
+        const inspection = inspectTemporalText(pastedText);
+        if (!inspection.hasValidTimestamp) {
+            setModalMetadata({
+                sourceName: pasteTitle ? `PASTE: ${pasteTitle}` : "PASTED CHAT SNIPPET",
+                reason: inspection.reason,
+                detectedType: inspection.detectedFormat
+            });
+            setPendingAction({ type: "paste", payload: pastedText, title: pasteTitle });
+            setModalOpen(true);
+            return;
+        }
+
+        // Valid timestamps detected -> Proceed
+        await executePasteUpload(pastedText, pasteTitle);
+    };
+
+    /*==============================================
+                TEMPORAL MODAL HANDLERS
+    ==============================================*/
+
+    const handleModalConfirm = async (temporalData) => {
+        setModalOpen(false);
+        if (!pendingAction) return;
+
+        if (pendingAction.type === "paste") {
+            const augmentedText = injectTimestampToText(pendingAction.payload, temporalData.isoTimestamp);
+            setPendingAction(null);
+            await executePasteUpload(augmentedText, pendingAction.title);
+        } else if (pendingAction.type === "file") {
+            const origFile = pendingAction.payload;
+            const ext = origFile.name.split(".").pop().toLowerCase();
+            const textExts = ["txt", "log", "csv", "json"];
+
+            if (textExts.includes(ext)) {
+                try {
+                    const textContent = await origFile.text();
+                    const augmentedContent = injectTimestampToText(textContent, temporalData.isoTimestamp);
+                    const augmentedFile = new File([augmentedContent], origFile.name, {
+                        type: origFile.type || "text/plain"
+                    });
+                    setPendingAction(null);
+                    await executeFileUpload(augmentedFile);
+                } catch (err) {
+                    console.warn("Could not read file text for timestamp injection, passing raw file:", err);
+                    setPendingAction(null);
+                    await executeFileUpload(origFile);
+                }
+            } else {
+                setPendingAction(null);
+                await executeFileUpload(origFile);
+            }
+        }
+    };
+
+    const handleModalCancel = () => {
+        setModalOpen(false);
+        setPendingAction(null);
     };
 
     /*==============================================
@@ -360,7 +459,7 @@ function UploadPanel({ setImportResult, threadlineId }) {
                             setPastedText(e.target.value);
                             detectPastedFormat(e.target.value);
                         }}
-                        placeholder="Paste conversation text here...&#10;&#10;Supported formats:&#10;• WhatsApp: 10/12/2026, 10:30 - Alice: Hey! Are you ready?&#10;• Signal: [2026-10-12 14:30:15] Alice: Meeting notes attached.&#10;• Email: From: alice@example.com / Subject: Case update...&#10;• Logs: [2026-10-12 10:30:00] Alice: Status update..."
+                        placeholder="Paste conversation text here...&#10;&#10;Supported formats:&#10;  WhatsApp: 10/12/2026, 10:30 - Alice: Hey! Are you ready?&#10;  Signal: [2026-10-12 14:30:15] Alice: Meeting notes attached.&#10;  Email: From: alice@example.com / Subject: Case update...&#10;  Logs: [2026-10-12 10:30:00] Alice: Status update..."
                         rows={8}
                         style={{
                             width: "100%",
@@ -427,6 +526,14 @@ function UploadPanel({ setImportResult, threadlineId }) {
                     </div>
                 </div>
             )}
+
+            {/* Temporal Verification & Prompt Modal */}
+            <DateTimePromptModal
+                isOpen={modalOpen}
+                metadata={modalMetadata}
+                onConfirm={handleModalConfirm}
+                onCancel={handleModalCancel}
+            />
         </section>
     );
 }
