@@ -61,31 +61,6 @@ function Workspace({
                     <HelpSection 
                         onBack={() => setShowingHelp(false)} 
                     />
-                ) : archiveEmpty ? (
-                    <ThreadlineWorkspace
-                        threadline={{
-                            id: `archive_${user.uid}`,
-                            title: "Communications Archive",
-                            source: "Ingested History",
-                            platform: "Multi",
-                            messageCount: 0,
-                            conversationCount: 0
-                        }}
-                        setThreadlines={setThreadlines}
-                        setCurrentThreadline={setCurrentThreadline}
-                        uid={user.uid}
-                        onImportSuccess={refreshArchiveStatus}
-                        onDelete={onDelete}
-                    />
-                ) : currentThreadline ? (
-                    <ThreadlineWorkspace
-                        threadline={currentThreadline}
-                        setThreadlines={setThreadlines}
-                        setCurrentThreadline={setCurrentThreadline}
-                        uid={user.uid}
-                        onImportSuccess={refreshArchiveStatus}
-                        onDelete={onDelete}
-                    />
                 ) : creatingThreadline ? (
                     <NewThreadline
                         onCreate={async(threadline)=>{
@@ -106,11 +81,37 @@ function Workspace({
                             }
                             catch(error){
                                 console.error(error);
+                                alert("Failed to save threadline: " + (error.response?.data?.message || error.message));
                             }
                         }}
                         onCancel={()=>{
                             setCreatingThreadline(false);
                         }}
+                    />
+                ) : currentThreadline ? (
+                    <ThreadlineWorkspace
+                        threadline={currentThreadline}
+                        setThreadlines={setThreadlines}
+                        setCurrentThreadline={setCurrentThreadline}
+                        uid={user.uid}
+                        onImportSuccess={refreshArchiveStatus}
+                        onDelete={onDelete}
+                    />
+                ) : archiveEmpty ? (
+                    <ThreadlineWorkspace
+                        threadline={{
+                            id: `archive_${user.uid}`,
+                            title: "Communications Archive",
+                            source: "Ingested History",
+                            platform: "Multi",
+                            messageCount: 0,
+                            conversationCount: 0
+                        }}
+                        setThreadlines={setThreadlines}
+                        setCurrentThreadline={setCurrentThreadline}
+                        uid={user.uid}
+                        onImportSuccess={refreshArchiveStatus}
+                        onDelete={onDelete}
                     />
                 ) : (
                     <ThreadlineHome

@@ -173,12 +173,11 @@ function Sidebar({
             <nav style={{ flex: 1 }}>
                 {/* + New Threadline Action */}
                 <div
-                    className={archiveEmpty ? "nav-item disabled" : "nav-item"}
-                    onClick={archiveEmpty ? () => alert("Please upload a backup file to your Communications Archive first to unlock workspace features.") : onNew}
+                    className="nav-item"
+                    onClick={onNew}
                     style={{ 
                         fontWeight: "700", 
-                        opacity: archiveEmpty ? 0.4 : 1, 
-                        cursor: archiveEmpty ? "not-allowed" : "pointer",
+                        cursor: "pointer",
                         display: "flex",
                         alignItems: "center",
                         gap: "10px",
@@ -277,7 +276,9 @@ function Sidebar({
                     YOUR THREADLINES
                 </div>
 
-                {threadlines.map((threadline) => (
+                {threadlines
+                    .filter(t => !t.id?.startsWith("archive_") && !t.firestoreId?.startsWith("archive_"))
+                    .map((threadline) => (
                     <div
                         key={threadline.firestoreId || threadline.id}
                         className={
