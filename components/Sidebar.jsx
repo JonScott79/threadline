@@ -194,7 +194,7 @@ function Sidebar({
                     onClick={onShowHelp}
                     style={{ fontWeight: "600", color: "var(--text-muted)" }}
                 >
-                    📖 Help & Guide
+                    📘 Help Center
                 </div>
 
                 <div
