@@ -1,3 +1,8 @@
+﻿const fs = require("fs");
+const path = require("path");
+const os = require("os");
+const crypto = require("crypto");
+
 const { detectFile } = require("../parsers/detector");
 
 const { parseSMSBackup } = require("../parsers/smsbackup");
@@ -7,9 +12,11 @@ const { parseLogFile } = require("../parsers/logbackup");
 const { parseWhatsAppChat } = require("../parsers/whatsapp");
 const { parseEmailFile } = require("../parsers/email");
 const { parseZipContainer } = require("../parsers/zip");
+const { parseSignalFile } = require("../parsers/signal");
+const { parsePDFDocument } = require("../parsers/pdf");
+const { parseScreenshotOCR } = require("../parsers/ocr");
 
 const { buildConversations } = require("./conversationBuilder");
-
 const Archive = require("../models/Archive");
 
 /*======================================================
@@ -23,26 +30,13 @@ const parsers = {
     "Log / Plaintext": parseLogFile,
     "WhatsApp": parseWhatsAppChat,
     "Email": parseEmailFile,
-    "ZIP Container": parseZipContainer
+    "ZIP Container": parseZipContainer,
+    "Signal": parseSignalFile,
+    "PDF Document": parsePDFDocument,
+    "Screenshot / OCR": parseScreenshotOCR
 };
 
-/*======================================================
-                    PROCESS IMPORT
-======================================================*/
-
-function processImport(filePath) {
-    const detection = detectFile(filePath);
-
-    const parser = parsers[detection.type];
-
-    if (!parser) {
-        throw new Error(
-            `Unsupported import type: ${detection.type}`
-        );
-    }
-
-    const parseResult = parser(filePath);
-
+function finalizeArchive(detection, parseResult) {
     const conversations = buildConversations(parseResult.messages);
 
     // Compute exact inserted message counts
@@ -83,9 +77,61 @@ function processImport(filePath) {
 }
 
 /*======================================================
+                    PROCESS IMPORT
+======================================================*/
+
+function processImport(filePath) {
+    const detection = detectFile(filePath);
+
+    const parser = parsers[detection.type];
+
+    if (!parser) {
+        throw new Error(
+            `Unsupported import type: ${detection.type}`
+        );
+    }
+
+    const parseResult = parser(filePath);
+
+    if (parseResult && typeof parseResult.then === "function") {
+        return parseResult.then(resolvedResult => finalizeArchive(detection, resolvedResult));
+    }
+
+    return finalizeArchive(detection, parseResult);
+}
+
+/**
+ * Direct text paste processor:
+ * Writes pasted text to a temporary buffer file, detects the format, and processes the import.
+ */
+async function processImportText(rawText, sourceHint = "Pasted Text") {
+    if (!rawText || !rawText.trim()) {
+        throw new Error("No text provided for import.");
+    }
+
+    const tempDir = os.tmpdir();
+    const tempFile = path.join(tempDir, `threadline_paste_${crypto.randomUUID()}.txt`);
+    fs.writeFileSync(tempFile, rawText, "utf8");
+
+    try {
+        const archive = await processImport(tempFile);
+        archive.source = sourceHint;
+        return archive;
+    } finally {
+        if (fs.existsSync(tempFile)) {
+            try {
+                fs.unlinkSync(tempFile);
+            } catch (e) {}
+        }
+    }
+}
+
+/*======================================================
                         EXPORTS
 ======================================================*/
 
 module.exports = {
-    processImport
+    parsers,
+    processImport,
+    processImportText
 };

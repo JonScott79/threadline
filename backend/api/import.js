@@ -1,4 +1,4 @@
-/*======================================================
+﻿/*======================================================
                         IMPORTS
 ======================================================*/
 
@@ -9,7 +9,7 @@ const path = require("path");
 const fs = require("fs");
 
 // Engine
-const { processImport } = require("../engines/importEngine");
+const { processImport, processImportText } = require("../engines/importEngine");
 
 // Services
 const { ingestArchive } = require("../services/threadlines");
@@ -120,7 +120,7 @@ router.post("/", upload.single("archive"), async (request, response) => {
 
         console.log("Running Import Engine...");
 
-        const archive = processImport(uploadedFilePath);
+        const archive = await processImport(uploadedFilePath);
 
         console.log("Archive created.");
         console.log("Messages:", archive.messageCount);
@@ -173,6 +173,70 @@ router.post("/", upload.single("archive"), async (request, response) => {
                 console.warn("Failed to delete temp upload file:", cleanupErr.message);
             }
         }
+    }
+});
+
+/*======================================================
+                DIRECT TEXT PASTE IMPORT
+======================================================*/
+
+router.post("/paste", express.json({ limit: "50mb" }), async (request, response) => {
+    try {
+        const { text, title, threadlineId } = request.body;
+        if (!text || !text.trim()) {
+            return response.status(400).json({
+                status: "error",
+                message: "No text provided for import."
+            });
+        }
+
+        if (!request.uid) {
+            return response.status(401).json({
+                status: "error",
+                message: "Missing user id."
+            });
+        }
+
+        console.log("==========================================");
+        console.log("PASTED TEXT IMPORT REQUEST");
+        console.log("UID:", request.uid);
+        console.log("Text Length:", text.length);
+
+        const archive = await processImportText(text, "Pasted Snippet");
+
+        console.log("Archive created.");
+        console.log("Messages:", archive.messageCount);
+        console.log("Conversations:", archive.conversationCount);
+
+        const filename = (title && title.trim()) ? `${title.trim()}.txt` : `Pasted_Chat_${Date.now()}.txt`;
+        const sizeBytes = Buffer.byteLength(text, "utf8");
+
+        const targetThreadlineId = threadlineId || null;
+
+        const result = await ingestArchive(
+            request.uid,
+            archive,
+            filename,
+            sizeBytes,
+            targetThreadlineId
+        );
+
+        console.log("Pasted Archive Ingested successfully.");
+        console.log("==========================================");
+
+        archive.stats = result.stats;
+
+        response.json({
+            status: "success",
+            threadlineId: result.threadlineId,
+            archive
+        });
+    } catch (error) {
+        console.error("PASTED TEXT IMPORT FAILED:", error);
+        response.status(500).json({
+            status: "error",
+            message: error.message
+        });
     }
 });
 

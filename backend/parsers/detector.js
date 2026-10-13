@@ -1,4 +1,4 @@
-/*
+﻿/*
     detector.js
 
     Forensic format detector for communication archives.
@@ -21,6 +21,8 @@ function detectFile(filePath) {
         return { type: "Unknown", confidence: 0 };
     }
 
+    const lowerPath = filePath.toLowerCase();
+
     /*------------------------------------------
         0. ZIP Container (Magic bytes PK\x03\x04)
     ------------------------------------------*/
@@ -30,7 +32,7 @@ function detectFile(filePath) {
             confidence: 100
         };
     }
-    if (filePath.toLowerCase().endsWith(".zip")) {
+    if (lowerPath.endsWith(".zip")) {
         return {
             type: "ZIP Container",
             confidence: 90
@@ -38,7 +40,38 @@ function detectFile(filePath) {
     }
 
     /*------------------------------------------
-        1. SMS Backup & Restore
+        1. PDF Document (%PDF-)
+    ------------------------------------------*/
+    if (buffer && buffer[0] === 0x25 && buffer[1] === 0x50 && buffer[2] === 0x44 && buffer[3] === 0x46) {
+        return {
+            type: "PDF Document",
+            confidence: 100
+        };
+    }
+    if (lowerPath.endsWith(".pdf")) {
+        return {
+            type: "PDF Document",
+            confidence: 95
+        };
+    }
+
+    /*------------------------------------------
+        2. Screenshots / Images (PNG, JPEG, WebP)
+    ------------------------------------------*/
+    const isPng = buffer && buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47;
+    const isJpeg = buffer && buffer[0] === 0xFF && buffer[1] === 0xD8 && buffer[2] === 0xFF;
+    const isWebP = buffer && buffer.toString("ascii", 0, 4) === "RIFF" && buffer.toString("ascii", 8, 12) === "WEBP";
+    const isImageExt = lowerPath.endsWith(".png") || lowerPath.endsWith(".jpg") || lowerPath.endsWith(".jpeg") || lowerPath.endsWith(".webp");
+
+    if (isPng || isJpeg || isWebP || isImageExt) {
+        return {
+            type: "Screenshot / OCR",
+            confidence: 100
+        };
+    }
+
+    /*------------------------------------------
+        3. SMS Backup & Restore
     ------------------------------------------*/
     if (
         fileSample.includes("<smses") ||
@@ -52,7 +85,7 @@ function detectFile(filePath) {
     }
 
     /*------------------------------------------
-        2. HTML Conversation Export
+        4. HTML Conversation Export
     ------------------------------------------*/
     if (
         fileSample.includes("<h2>Conversation with:") ||
@@ -65,7 +98,7 @@ function detectFile(filePath) {
     }
 
     /*------------------------------------------
-        3. Facebook Messenger
+        5. Facebook Messenger
     ------------------------------------------*/
     if (
         fileSample.includes("\"participants\"") &&
@@ -78,7 +111,26 @@ function detectFile(filePath) {
     }
 
     /*------------------------------------------
-        4. WhatsApp Export
+        6. Signal (Text & JSON)
+    ------------------------------------------*/
+    const hasSignalName = /signal/i.test(filePath);
+    const hasSignalTxtPatterns = (
+        /\[\d{4}[-/.]\d{1,2}[-/.]\d{1,2}[,\s]+\d{1,2}:\d{2}/.test(fileSample) ||
+        /\d{4}[-/.]\d{1,2}[-/.]\d{1,2}\s+\d{1,2}:\d{2}(?::\d{2})?\s+-\s+/.test(fileSample)
+    );
+    const hasSignalJsonPatterns = (
+        fileSample.includes("\"source\"") && (fileSample.includes("\"timestamp\"") || fileSample.includes("\"sent_at\""))
+    );
+
+    if (hasSignalName || hasSignalTxtPatterns || hasSignalJsonPatterns) {
+        return {
+            type: "Signal",
+            confidence: hasSignalName ? 95 : 85
+        };
+    }
+
+    /*------------------------------------------
+        7. WhatsApp Export
     ------------------------------------------*/
     const hasWhatsAppPatterns = (
         /\[\d{1,4}[-/.]\d{1,2}[-/.]\d{2,4},?\s+\d{1,2}:\d{2}/.test(fileSample) ||
@@ -94,13 +146,13 @@ function detectFile(filePath) {
     }
 
     /*------------------------------------------
-        5. Email (.eml / .mbox)
+        8. Email (.eml / .mbox)
     ------------------------------------------*/
     const hasEmailHeaders = (
         /^From:\s+/m.test(fileSample) &&
         (/^Date:\s+/m.test(fileSample) || /^Subject:\s+/m.test(fileSample))
     );
-    const isEmailExt = filePath.toLowerCase().endsWith(".eml") || filePath.toLowerCase().endsWith(".mbox");
+    const isEmailExt = lowerPath.endsWith(".eml") || lowerPath.endsWith(".mbox");
 
     if (hasEmailHeaders || isEmailExt) {
         return {
@@ -110,10 +162,10 @@ function detectFile(filePath) {
     }
 
     /*------------------------------------------
-        6. Communication Log / Plaintext (.log / .txt)
+        9. Communication Log / Plaintext (.log / .txt)
     ------------------------------------------*/
     const hasTimestampedLines = /(?:\[?\d{4}[-/.]\d{2}[-/.]\d{2}[ T]\d{2}:\d{2}|\[\d{10,13}\]|[A-Za-z]{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2})/.test(fileSample);
-    const isTxtOrLog = filePath.endsWith(".log") || filePath.endsWith(".txt");
+    const isTxtOrLog = lowerPath.endsWith(".log") || lowerPath.endsWith(".txt");
 
     if (hasTimestampedLines || isTxtOrLog) {
         return {
