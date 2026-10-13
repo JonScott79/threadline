@@ -22,11 +22,14 @@ Threadline operates as a **Monolithic Node.js/React Application**:
 |--------|--------|
 | SMS Backup & Restore (`.xml`) | **IMPLEMENTED** |
 | HTML Conversation Export (`.html`) | **IMPLEMENTED** |
-| Facebook Messenger (`.json`) | PLANNED |
-| WhatsApp Export (`.txt`/`.zip`) | PLANNED |
-| Signal Export | PLANNED |
-| Email (`.eml`/`.msg`) | PLANNED |
-| PDF Documents | PLANNED |
+| Communication Logs (`.log`, `.txt`) | **IMPLEMENTED** |
+| Facebook Messenger (`.json`) | **IMPLEMENTED** |
+| WhatsApp Export (`.txt`, `.zip`) | **IMPLEMENTED** |
+| Signal Export (`.txt`, `.json`) | **IMPLEMENTED** |
+| Email (`.eml`, `.mbox`) | **IMPLEMENTED** |
+| PDF Documents (`.pdf`) | **IMPLEMENTED** |
+| Screenshots / OCR (`.png`, `.jpg`, `.webp`) | **IMPLEMENTED** |
+| Direct Paste Snippets (Text / Chat) | **IMPLEMENTED** |
 
 ## How to Run
 
@@ -79,3 +82,4 @@ When deploying the frontend to Netlify, you must set the following environment v
 - `backend/` contains the Express API, SQLite integration, and parser logic.
 - `src/` contains the React frontend.
 - `docs/` contains legacy architecture and planning documents.
+
