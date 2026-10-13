@@ -16,16 +16,16 @@
 function ThreadlineHome({ onCreate }) {
     return (
         <section className="panel welcome-home" style={{ textAlign: "center", padding: "60px 40px" }}>
-            <div style={{ display: "flex", justifyContent: "center", marginBottom: "24px" }}>
+            <div style={{ display: "flex", justifyContent: "center", marginBottom: "28px" }}>
                 <img 
-                    src="/logo-2.png" 
-                    alt="THREADLINE by LANZAR" 
+                    src="/banner-small-print.png" 
+                    alt="THREADLINE by LANZAR — Organize • Understand • Timelines That Tell The Truth" 
                     style={{ 
                         width: "100%", 
-                        maxWidth: "260px", 
+                        maxWidth: "500px", 
                         height: "auto", 
-                        borderRadius: "26px",
-                        boxShadow: "0 14px 40px rgba(0, 0, 0, 0.65), 0 0 30px rgba(63, 216, 255, 0.2)",
+                        borderRadius: "18px",
+                        boxShadow: "0 12px 36px rgba(0, 0, 0, 0.65), 0 0 28px rgba(63, 216, 255, 0.18)",
                         border: "1px solid rgba(255, 255, 255, 0.08)",
                         display: "block"
                     }} 
