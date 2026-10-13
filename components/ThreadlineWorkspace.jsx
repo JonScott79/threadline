@@ -1076,9 +1076,14 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                 display: "flex",
                 flexDirection: "column",
                 alignItems: "center",
-                justifyContent: "center",
-                minHeight: "100%",
-                padding: "40px 20px",
+                justifyContent: "flex-start",
+                width: "100%",
+                height: "100%",
+                maxHeight: "100%",
+                overflowY: "auto",
+                overflowX: "hidden",
+                padding: "clamp(24px, 4vh, 40px) 20px 60px 20px",
+                boxSizing: "border-box",
                 gap: "0"
             }}>
                 {/* Branding */}
