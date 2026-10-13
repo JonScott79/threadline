@@ -129,7 +129,26 @@ function Sidebar({
                 </h1>
                 
                 <div style={{ fontSize: "0.65rem", fontWeight: "600", letterSpacing: "1px", color: "var(--text-muted)", marginTop: "4px" }}>
-                    by <span style={{ color: "var(--accent)" }}>▲ LANZAR</span>
+                    <a
+                        href="https://lanzar.me"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                            color: "inherit",
+                            textDecoration: "none",
+                            display: "inline-block"
+                        }}
+                        onMouseEnter={(e) => {
+                            const span = e.currentTarget.querySelector('span');
+                            if (span) span.style.textDecoration = 'underline';
+                        }}
+                        onMouseLeave={(e) => {
+                            const span = e.currentTarget.querySelector('span');
+                            if (span) span.style.textDecoration = 'none';
+                        }}
+                    >
+                        by <span style={{ color: "var(--accent)" }}>▲ LANZAR</span>
+                    </a>
                 </div>
             </div>
 
