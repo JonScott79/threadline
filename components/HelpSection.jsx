@@ -20,7 +20,7 @@ function HelpSection({ onBack }) {
     const [activeTab, setActiveTab] = useState("workflow");
 
     return (
-        <div className="workspace-dashboard empty-state" style={{ overflowY: "auto", padding: "32px 40px", maxWidth: "1500px", margin: "0 auto" }}>
+        <div className="help-section-view" style={{ width: "100%", maxWidth: "1500px", margin: "0 auto", padding: "36px 40px 60px 40px", boxSizing: "border-box", display: "flex", flexDirection: "column" }}>
             {/* Header */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "28px", borderBottom: "1px solid var(--border)", paddingBottom: "20px" }}>
                 <div>

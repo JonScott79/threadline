@@ -52,9 +52,10 @@ function Workspace({
     ==============================================*/
 
     const isDashboardActive = (!!currentThreadline || archiveEmpty) && !showingHelp;
+    const isHelpActive = showingHelp;
 
     return(
-        <section className={`workspace ${isDashboardActive ? "dashboard-active" : ""}`}>
+        <section className={`workspace ${isDashboardActive ? "dashboard-active" : ""} ${isHelpActive ? "help-active" : ""}`}>
             {
                 showingHelp ? (
                     <HelpSection 

@@ -570,21 +570,38 @@
 ======================================================*/
 
 .workspace{
-
     display:flex;
-
     flex-direction:column;
-
-    justify-content:center;
-
+    justify-content:flex-start;
     align-items:center;
-
-    overflow:auto;
-
-    padding:60px;
-
+    overflow-y:auto;
+    overflow-x:hidden;
+    padding:40px 20px;
     height:100%;
+}
 
+.workspace > .welcome-home {
+    margin: auto 0;
+}
+
+.workspace.help-active {
+    padding: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: flex-start !important;
+    align-items: stretch !important;
+    height: calc(100vh - 48px) !important;
+    max-height: calc(100vh - 48px) !important;
+    min-height: 0 !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+}
+
+.workspace.dashboard-active > *,
+.workspace.help-active > * {
+    max-width: none !important;
+    width: 100% !important;
+    min-height: 0 !important;
 }
 
 .workspace.dashboard-active {
