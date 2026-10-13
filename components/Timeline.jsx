@@ -26,7 +26,7 @@ import { API_BASE_URL } from "../src/apiConfig";
 import {
     Timeline as VisTimeline,
     DataSet
-} from "vis-timeline/standalone/esm/vis-timeline-graph2d";
+} from "vis-timeline/standalone";
 import "vis-timeline/styles/vis-timeline-graph2d.min.css";
 
 // =====================================
