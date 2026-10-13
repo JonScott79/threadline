@@ -1,61 +1,90 @@
 /*==================================================
     THREADLINE
-    MASTER THEME
+    MASTER THEME - EXACT LOGO PALETTE & GLOW
 ==================================================*/
 
-:root{
+:root {
 
     /*=========================================
-        COLORS
+        CORE LOGO IDENTITY PALETTE
     =========================================*/
 
-    --background:#0B1016;
-    --background-secondary:#101820;
+    --void: #04070B;
+    --background: #060B12;
+    --background-secondary: #0A1019;
 
-    --panel:#141D26;
-    --panel-light:#1B2632;
+    --panel: #0C131F;
+    --panel-light: #121B2B;
+    --surface-card: #0E1724;
 
-    --border:#243445;
+    --border: #1E2D40;
+    --border-light: rgba(255, 255, 255, 0.08);
 
-    --accent:#3FD8FF;
-    --accent-hover:#6FE8FF;
+    /* Dual-Tone Logo Accents */
+    --cyan: #00D0FF;
+    --cyan-hover: #38D8FF;
+    --cyan-muted: #1E6B8A;
+    --cyan-glow: rgba(0, 208, 255, 0.45);
+    --cyan-subtle: rgba(0, 208, 255, 0.12);
 
-    --success:#42D392;
-    --warning:#F7C94B;
-    --danger:#FF5E73;
+    --amber: #FF9500;
+    --amber-hover: #FFA51E;
+    --amber-muted: #8C550A;
+    --amber-glow: rgba(255, 149, 0, 0.45);
+    --amber-subtle: rgba(255, 149, 0, 0.12);
 
-    --text:#F2F7FB;
-    --text-light:#B4C1CF;
-    --text-muted:#748191;
+    --chrome: #E6EDF5;
+    --steel: #9AAAB8;
+
+    --accent: var(--cyan);
+    --accent-hover: var(--cyan-hover);
+    --accent-secondary: var(--amber);
+
+    --success: #30D158;
+    --warning: #FF9F0A;
+    --danger: #FF453A;
+
+    --text: #F2F7FB;
+    --text-light: #B4C1CF;
+    --text-muted: #6B7B8E;
+
+    /*=========================================
+        SIGNATURE LOGO GRADIENTS & GLOWS
+    =========================================*/
+
+    --gradient-logo: linear-gradient(135deg, #00D0FF 0%, #FF9500 100%);
+    --gradient-logo-subtle: linear-gradient(135deg, rgba(0, 208, 255, 0.15) 0%, rgba(255, 149, 0, 0.15) 100%);
+    --gradient-border-glow: linear-gradient(135deg, #00D0FF 0%, rgba(0, 208, 255, 0.35) 30%, rgba(255, 149, 0, 0.35) 70%, #FF9500 100%);
+
+    --glow-cyan: 0 0 20px rgba(0, 208, 255, 0.45);
+    --glow-amber: 0 0 20px rgba(255, 149, 0, 0.45);
+    --glow-dual: 0 0 25px rgba(0, 208, 255, 0.3), 0 0 25px rgba(255, 149, 0, 0.25);
+    --glow-strong: 0 0 35px rgba(0, 208, 255, 0.45), 0 0 35px rgba(255, 149, 0, 0.35);
 
     /*=========================================
         TYPOGRAPHY
     =========================================*/
 
-    --font-main:'Inter',sans-serif;
-    --font-mono:'JetBrains Mono',monospace;
+    --font-main: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
 
     /*=========================================
         LAYOUT
     =========================================*/
 
-    --sidebar-width:300px;
-    --header-height:72px;
+    --sidebar-width: 300px;
+    --header-height: 72px;
 
-    --content-width:1600px;
+    --content-width: 1600px;
 
     /*=========================================
         EFFECTS
     =========================================*/
 
-    --transition:.18s ease;
+    --transition: 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 
-    --shadow:
+    --shadow: 0 16px 40px rgba(0, 0, 0, 0.65);
 
-        0 12px 30px rgba(0,0,0,.45);
-
-    --glow:
-
-        0 0 18px rgba(63,216,255,.08);
+    --glow: 0 0 20px rgba(0, 208, 255, 0.15);
 
 }

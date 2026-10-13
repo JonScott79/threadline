@@ -1,9 +1,13 @@
 /*
     UploadPanel.jsx
 
-    Primary user upload and ingestion interface.
-    Supports both file drag-and-drop/browsing and direct text/chat snippet pasting.
-    Integrated with Temporal Verification Gate to ensure valid chronological timestamps.
+    Threadline Primary Ingestion & Telemetry Dropzone.
+    100% Styled to the Official Threadline Logo Identity:
+    - Dual-Glow Neon Squircle Rim (Electric Cyan #00D0FF to Warm Amber #FF9500)
+    - Signature Waveform Pulse Line (Cyan to Amber gradient)
+    - Faceted Chrome Delta Chevron & Radiant 4-Point Lens Flare
+    - No cartoon emojis: crisp high-tech vector SVGs throughout
+    - Integrated with Temporal Verification Gate for pre-flight timestamp inspection
 */
 
 import { useState, useRef } from "react";
@@ -271,57 +275,130 @@ function UploadPanel({ setImportResult, threadlineId }) {
                         RENDER
     ==============================================*/
 
+    // Common card container style matching Threadline Logo Squircle
+    const squircleCardStyle = {
+        position: "relative",
+        background: "linear-gradient(#070C14, #070C14) padding-box, linear-gradient(135deg, #00D0FF 0%, rgba(0, 208, 255, 0.4) 30%, rgba(255, 149, 0, 0.4) 70%, #FF9500 100%) border-box",
+        border: "1.5px solid transparent",
+        borderRadius: "22px",
+        boxShadow: "0 0 35px rgba(0, 208, 255, 0.22), 0 0 35px rgba(255, 149, 0, 0.18), 0 20px 50px rgba(0, 0, 0, 0.75)",
+        overflow: "hidden"
+    };
+
     // 1. Processing state UI
     if (status === "uploading") {
         return (
-            <section className="panel upload-panel" style={{ padding: 0 }}>
+            <div style={squircleCardStyle}>
                 <div 
-                    className="upload-area uploading" 
                     style={{ 
                         cursor: "wait", 
-                        minHeight: "260px", 
-                        borderStyle: "solid", 
-                        borderColor: "var(--accent)" 
+                        minHeight: "280px", 
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        padding: "36px 24px",
+                        background: "radial-gradient(ellipse at center, rgba(0, 208, 255, 0.08) 0%, rgba(6, 11, 18, 0.95) 100%)"
                     }}
                 >
-                    <div className="spinner-glow">⚙</div>
-                    <h3 style={{ color: "var(--accent)", letterSpacing: "1px", textTransform: "uppercase" }}>
+                    {/* Glowing Logo Icon */}
+                    <div style={{ position: "relative", marginBottom: "20px" }}>
+                        <img 
+                            src="/logo-icon.png" 
+                            alt="Processing..." 
+                            style={{ 
+                                width: "64px", 
+                                height: "64px", 
+                                borderRadius: "14px",
+                                filter: "drop-shadow(0 0 20px rgba(0, 208, 255, 0.8)) drop-shadow(0 0 25px rgba(255, 149, 0, 0.6))",
+                                animation: "pulse 2s infinite ease-in-out"
+                            }} 
+                        />
+                    </div>
+
+                    {/* Glowing Waveform Pulse SVG */}
+                    <svg width="240" height="28" viewBox="0 0 240 28" fill="none" style={{ marginBottom: "16px" }}>
+                        <path 
+                            d="M0 14H75Q85 14 90 22Q95 28 100 14Q107 -4 115 14Q120 25 125 7Q130 -3 135 14Q140 23 145 14H240" 
+                            stroke="url(#uploadGlowGrad)" 
+                            strokeWidth="2.5" 
+                            strokeLinecap="round" 
+                            strokeLinejoin="round"
+                        />
+                        <defs>
+                            <linearGradient id="uploadGlowGrad" x1="0" y1="14" x2="240" y2="14" gradientUnits="userSpaceOnUse">
+                                <stop offset="0%" stopColor="#00D0FF" />
+                                <stop offset="50%" stopColor="#00D0FF" />
+                                <stop offset="55%" stopColor="#FF9500" />
+                                <stop offset="100%" stopColor="#FF9500" />
+                            </linearGradient>
+                        </defs>
+                    </svg>
+
+                    <h3 style={{ 
+                        color: "#F8FAFC", 
+                        fontSize: "1.05rem", 
+                        fontWeight: "800", 
+                        letterSpacing: "1.5px", 
+                        textTransform: "uppercase",
+                        marginBottom: "8px",
+                        textShadow: "0 0 15px rgba(0, 208, 255, 0.5)"
+                    }}>
                         PARSING COMMUNICATION DATA...
                     </h3>
-                    <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", maxWidth: "450px", textAlign: "center", lineHeight: "1.5" }}>
-                        Extracting timestamps, normalizing speakers, and populating local timeline index tables.
+                    <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", maxWidth: "460px", textAlign: "center", lineHeight: "1.6" }}>
+                        Extracting timestamps, normalizing conversation participants, and populating forensic timeline records.
                     </p>
                 </div>
-            </section>
+            </div>
         );
     }
 
     // 2. Error state UI
     if (status === "error") {
         return (
-            <section className="panel upload-panel" style={{ padding: 0 }}>
+            <div style={squircleCardStyle}>
                 <div 
-                    className="upload-area error-state" 
                     style={{ 
-                        minHeight: "260px", 
-                        borderStyle: "solid", 
-                        borderColor: "var(--danger)", 
-                        background: "rgba(255,69,58,0.02)" 
+                        minHeight: "280px", 
+                        padding: "36px 24px",
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        background: "radial-gradient(ellipse at center, rgba(255, 69, 58, 0.08) 0%, rgba(6, 11, 18, 0.95) 100%)"
                     }}
                 >
-                    <div style={{ fontSize: "2rem", marginBottom: "12px" }}>⚠️</div>
-                    <h3 style={{ color: "var(--danger)", letterSpacing: "1px", textTransform: "uppercase", marginBottom: "8px" }}>
+                    <div style={{ 
+                        width: "52px", 
+                        height: "52px", 
+                        borderRadius: "12px", 
+                        background: "rgba(255, 69, 58, 0.15)",
+                        border: "1.5px solid #FF453A",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        boxShadow: "0 0 20px rgba(255, 69, 58, 0.4)",
+                        marginBottom: "16px"
+                    }}>
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#FF453A" strokeWidth="2.5" strokeLinecap="round">
+                            <line x1="18" y1="6" x2="6" y2="18" />
+                            <line x1="6" y1="6" x2="18" y2="18" />
+                        </svg>
+                    </div>
+
+                    <h3 style={{ color: "#FF453A", letterSpacing: "1.5px", textTransform: "uppercase", marginBottom: "8px", fontWeight: "800" }}>
                         IMPORT FAILED
                     </h3>
                     <div 
                         style={{ 
                             color: "var(--text-light)", 
                             fontSize: "0.85rem", 
-                            maxWidth: "500px", 
+                            maxWidth: "520px", 
                             padding: "12px 18px", 
-                            background: "rgba(255,69,58,0.06)", 
-                            border: "1px solid rgba(255,69,58,0.15)", 
-                            borderRadius: "4px", 
+                            background: "rgba(255, 69, 58, 0.06)", 
+                            border: "1px solid rgba(255, 69, 58, 0.25)", 
+                            borderRadius: "8px", 
                             textAlign: "center", 
                             fontFamily: "var(--font-mono)", 
                             wordBreak: "break-word", 
@@ -332,82 +409,103 @@ function UploadPanel({ setImportResult, threadlineId }) {
                         {errorMessage}
                     </div>
                     <button 
-                        className="button primary" 
+                        type="button"
                         onClick={() => setStatus("idle")}
                         style={{ 
-                            padding: "10px 24px", 
+                            padding: "10px 28px", 
                             fontSize: "0.85rem", 
-                            background: "var(--danger)", 
-                            borderColor: "var(--danger)" 
+                            fontWeight: "800",
+                            letterSpacing: "1px",
+                            background: "linear-gradient(135deg, #FF453A 0%, #FF9500 100%)",
+                            color: "#FFFFFF",
+                            border: "none",
+                            borderRadius: "8px",
+                            cursor: "pointer",
+                            boxShadow: "0 0 20px rgba(255, 69, 58, 0.4)"
                         }}
                     >
                         TRY AGAIN
                     </button>
                 </div>
-            </section>
+            </div>
         );
     }
 
-    // 3. Default idle UI with Mode Tabs
+    // 3. Default idle UI with Logo-Matched Dual Glow
     return (
-        <section className="panel upload-panel" style={{ padding: 0, overflow: "hidden" }}>
+        <section style={squircleCardStyle}>
             {/* Mode Switcher Tabs */}
             <div 
-                className="upload-mode-toggle" 
                 style={{ 
                     display: "flex", 
                     gap: "10px", 
-                    padding: "12px 20px", 
-                    borderBottom: "1px solid var(--border)", 
-                    background: "rgba(255,255,255,0.02)" 
+                    padding: "14px 20px", 
+                    borderBottom: "1px solid rgba(255, 255, 255, 0.07)", 
+                    background: "rgba(10, 16, 25, 0.65)",
+                    backdropFilter: "blur(12px)"
                 }}
             >
+                {/* File Upload Mode Tab */}
                 <button
                     type="button"
                     onClick={() => setMode("file")}
                     style={{
-                        padding: "8px 20px",
+                        padding: "10px 22px",
                         fontSize: "0.85rem",
-                        fontWeight: "700",
-                        borderRadius: "8px",
-                        border: mode === "file" ? "1.5px solid #38BDF8" : "1px solid var(--border)",
-                        background: mode === "file" ? "rgba(56, 189, 248, 0.16)" : "transparent",
-                        color: mode === "file" ? "#38BDF8" : "var(--text-muted)",
-                        boxShadow: mode === "file" ? "0 0 16px rgba(56, 189, 248, 0.35)" : "none",
+                        fontWeight: "800",
+                        letterSpacing: "0.5px",
+                        borderRadius: "10px",
+                        border: mode === "file" ? "1.5px solid #00D0FF" : "1px solid rgba(255, 255, 255, 0.08)",
+                        background: mode === "file" ? "rgba(0, 208, 255, 0.14)" : "rgba(255, 255, 255, 0.02)",
+                        color: mode === "file" ? "#00D0FF" : "var(--text-muted)",
+                        boxShadow: mode === "file" ? "0 0 20px rgba(0, 208, 255, 0.4), inset 0 0 10px rgba(0, 208, 255, 0.15)" : "none",
                         cursor: "pointer",
                         display: "flex",
                         alignItems: "center",
-                        gap: "8px",
+                        gap: "10px",
                         transition: "all 0.2s cubic-bezier(0.16, 1, 0.3, 1)"
                     }}
                 >
-                    <span style={{ filter: mode === "file" ? "drop-shadow(0 0 6px rgba(56, 189, 248, 0.6))" : "none" }}>📁</span> 
+                    {/* Sleek Upload Tray Vector Icon */}
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                        <polyline points="17 8 12 3 7 8" />
+                        <line x1="12" y1="3" x2="12" y2="15" />
+                    </svg>
                     Upload File / Archive
                 </button>
+
+                {/* Paste Mode Tab */}
                 <button
                     type="button"
                     onClick={() => setMode("paste")}
                     style={{
-                        padding: "8px 20px",
+                        padding: "10px 22px",
                         fontSize: "0.85rem",
-                        fontWeight: "700",
-                        borderRadius: "8px",
-                        border: mode === "paste" ? "1.5px solid #F46B45" : "1px solid var(--border)",
-                        background: mode === "paste" ? "rgba(244, 107, 69, 0.16)" : "transparent",
-                        color: mode === "paste" ? "#FF8A63" : "var(--text-muted)",
-                        boxShadow: mode === "paste" ? "0 0 16px rgba(244, 107, 69, 0.35)" : "none",
+                        fontWeight: "800",
+                        letterSpacing: "0.5px",
+                        borderRadius: "10px",
+                        border: mode === "paste" ? "1.5px solid #FF9500" : "1px solid rgba(255, 255, 255, 0.08)",
+                        background: mode === "paste" ? "rgba(255, 149, 0, 0.14)" : "rgba(255, 255, 255, 0.02)",
+                        color: mode === "paste" ? "#FF9500" : "var(--text-muted)",
+                        boxShadow: mode === "paste" ? "0 0 20px rgba(255, 149, 0, 0.4), inset 0 0 10px rgba(255, 149, 0, 0.15)" : "none",
                         cursor: "pointer",
                         display: "flex",
                         alignItems: "center",
-                        gap: "8px",
+                        gap: "10px",
                         transition: "all 0.2s cubic-bezier(0.16, 1, 0.3, 1)"
                     }}
                 >
-                    <span style={{ filter: mode === "paste" ? "drop-shadow(0 0 6px rgba(244, 107, 69, 0.6))" : "none" }}>📋</span> 
+                    {/* Sleek Terminal / Snippet Vector Icon */}
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="4 17 10 11 4 5" />
+                        <line x1="12" y1="19" x2="20" y2="19" />
+                    </svg>
                     Paste Chat / Text Snippet
                 </button>
             </div>
 
+            {/* Mode 1: File Dropzone */}
             {mode === "file" ? (
                 <>
                     <input
@@ -419,152 +517,239 @@ function UploadPanel({ setImportResult, threadlineId }) {
                         onChange={handleBrowseChange}
                     />
                     <div
-                        className={`upload-area ${dragOver ? "drag-over" : ""}`}
                         onClick={handleAreaClick}
                         onDragOver={handleDragOver}
                         onDragEnter={handleDragEnter}
                         onDragLeave={handleDragLeave}
                         onDrop={handleDrop}
                         style={{ 
-                            minHeight: "250px", 
-                            border: dragOver ? "2px dashed #F46B45" : "2px dashed #20596E",
-                            borderRadius: "10px",
-                            margin: "16px",
-                            background: dragOver ? "rgba(244, 107, 69, 0.1)" : "rgba(16, 42, 67, 0.35)",
+                            minHeight: "270px", 
+                            border: dragOver ? "2px dashed #FF9500" : "1.5px dashed rgba(0, 208, 255, 0.35)",
+                            borderRadius: "16px",
+                            margin: "18px",
+                            background: dragOver 
+                                ? "radial-gradient(ellipse at center, rgba(255, 149, 0, 0.14) 0%, rgba(6, 11, 18, 0.95) 100%)" 
+                                : "radial-gradient(ellipse at center, rgba(0, 208, 255, 0.05) 0%, rgba(6, 11, 18, 0.85) 100%)",
                             boxShadow: dragOver 
-                                ? "0 0 30px rgba(244, 107, 69, 0.4), inset 0 0 15px rgba(244, 107, 69, 0.2)" 
-                                : "0 0 20px rgba(56, 189, 248, 0.08)",
+                                ? "0 0 40px rgba(255, 149, 0, 0.5), inset 0 0 25px rgba(255, 149, 0, 0.2)" 
+                                : "0 0 25px rgba(0, 208, 255, 0.08), inset 0 0 20px rgba(0, 208, 255, 0.03)",
                             cursor: "pointer",
-                            transition: "all 0.22s ease",
+                            transition: "all 0.22s cubic-bezier(0.16, 1, 0.3, 1)",
                             display: "flex",
                             flexDirection: "column",
                             alignItems: "center",
                             justifyContent: "center",
-                            padding: "24px"
+                            padding: "28px 24px"
                         }}
                     >
-                        <div style={{ fontSize: "2.4rem", marginBottom: "8px", filter: dragOver ? "drop-shadow(0 0 12px rgba(244, 107, 69, 0.6))" : "drop-shadow(0 0 10px rgba(56, 189, 248, 0.4))" }}>
-                            {dragOver ? "🚀" : "🛸"}
+                        {/* Emblem: Official Logo Badge with Chrome Arrow & Dual Neon Glow */}
+                        <div style={{ position: "relative", marginBottom: "16px" }}>
+                            <img 
+                                src="/logo-icon.png" 
+                                alt="Threadline" 
+                                style={{ 
+                                    width: "60px", 
+                                    height: "60px", 
+                                    borderRadius: "14px",
+                                    filter: dragOver 
+                                        ? "drop-shadow(0 0 25px rgba(255, 149, 0, 0.9)) drop-shadow(0 0 15px rgba(0, 208, 255, 0.6))" 
+                                        : "drop-shadow(0 0 16px rgba(0, 208, 255, 0.65)) drop-shadow(0 0 14px rgba(255, 149, 0, 0.45))",
+                                    transform: dragOver ? "scale(1.08)" : "scale(1)",
+                                    transition: "all 0.25s ease"
+                                }} 
+                            />
                         </div>
-                        <h3 style={{ letterSpacing: "1.2px", textTransform: "uppercase", color: dragOver ? "#FF8A63" : "#F8FAFC", textShadow: dragOver ? "0 0 12px rgba(244, 107, 69, 0.5)" : "none" }}>
-                            {dragOver ? "DROP ARCHIVE FILE TO ENGAGE" : "CLICK TO SELECT FILE OR DROP IT HERE"}
+
+                        {/* Signature Horizontal Waveform Accent */}
+                        <svg width="220" height="24" viewBox="0 0 220 24" fill="none" style={{ marginBottom: "14px" }}>
+                            <path 
+                                d="M0 12H70Q80 12 85 19Q90 24 95 12Q102 -3 108 12Q113 22 117 6Q122 -2 127 12Q132 20 137 12H220" 
+                                stroke="url(#dropZoneWaveGrad)" 
+                                strokeWidth="2.2" 
+                                strokeLinecap="round" 
+                                strokeLinejoin="round"
+                            />
+                            <defs>
+                                <linearGradient id="dropZoneWaveGrad" x1="0" y1="12" x2="220" y2="12" gradientUnits="userSpaceOnUse">
+                                    <stop offset="0%" stopColor="#00D0FF" />
+                                    <stop offset="48%" stopColor="#00D0FF" />
+                                    <stop offset="52%" stopColor="#FF9500" />
+                                    <stop offset="100%" stopColor="#FF9500" />
+                                </linearGradient>
+                            </defs>
+                        </svg>
+
+                        {/* Title */}
+                        <h3 style={{ 
+                            fontSize: "1.1rem",
+                            fontWeight: "800",
+                            letterSpacing: "1.5px", 
+                            textTransform: "uppercase", 
+                            color: dragOver ? "#FF9500" : "#F8FAFC", 
+                            textShadow: dragOver ? "0 0 18px rgba(255, 149, 0, 0.7)" : "0 0 12px rgba(0, 208, 255, 0.4)",
+                            marginBottom: "10px"
+                        }}>
+                            {dragOver ? "RELEASE ARCHIVE TO INGEST" : "CLICK TO SELECT FILE OR DROP IT HERE"}
                         </h3>
-                        <p style={{ maxWidth: "600px", textAlign: "center", fontSize: "0.85rem", lineHeight: "1.5", color: "#94A3B8", marginTop: "6px" }}>
-                            Supports XML, HTML exports, JSON (Messenger / Signal), WhatsApp (.txt / .zip), Email (.eml / .mbox), PDF documents, and Screenshots (.png / .jpg).
+
+                        {/* Supported Formats Pill Strip */}
+                        <div style={{
+                            display: "flex",
+                            flexWrap: "wrap",
+                            justifyContent: "center",
+                            gap: "6px",
+                            maxWidth: "520px",
+                            margin: "4px 0 12px 0"
+                        }}>
+                            {[
+                                "XML Exports", "HTML Backups", "Messenger JSON", 
+                                "WhatsApp (.txt / .zip)", "Signal", "Email (.eml / .mbox)", 
+                                "PDF Forensics", "Screenshots / OCR"
+                            ].map((tag) => (
+                                <span 
+                                    key={tag}
+                                    style={{
+                                        fontSize: "0.72rem",
+                                        fontWeight: "600",
+                                        letterSpacing: "0.4px",
+                                        padding: "3px 9px",
+                                        borderRadius: "6px",
+                                        background: "rgba(255, 255, 255, 0.03)",
+                                        border: "1px solid rgba(255, 255, 255, 0.08)",
+                                        color: "var(--text-light)"
+                                    }}
+                                >
+                                    {tag}
+                                </span>
+                            ))}
+                        </div>
+
+                        <p style={{ 
+                            color: "var(--text-muted)", 
+                            fontSize: "0.8rem", 
+                            margin: 0,
+                            letterSpacing: "0.3px"
+                        }}>
+                            Max file size: 250MB &bull; Automatic chronological verification on ingest
                         </p>
                     </div>
                 </>
             ) : (
-                <div className="paste-area" style={{ padding: "24px", display: "flex", flexDirection: "column", gap: "16px" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <label style={{ fontSize: "0.8rem", fontWeight: "700", color: "#38BDF8", textTransform: "uppercase", letterSpacing: "1px", display: "flex", alignItems: "center", gap: "6px" }}>
-                            <span>✦</span> Paste Chat Transcript or Messages
-                        </label>
-                        {detectedType && (
-                            <span 
-                                style={{ 
-                                    fontSize: "0.75rem", 
-                                    padding: "4px 12px", 
-                                    borderRadius: "14px", 
-                                    background: "rgba(244, 107, 69, 0.16)", 
-                                    color: "#FF8A63", 
-                                    border: "1px solid #F46B45", 
-                                    boxShadow: "0 0 12px rgba(244, 107, 69, 0.3)",
-                                    fontWeight: "700" 
-                                }}
-                            >
-                                Format: {detectedType}
-                            </span>
-                        )}
-                    </div>
-                    <textarea
-                        value={pastedText}
-                        onChange={(e) => {
-                            setPastedText(e.target.value);
-                            detectPastedFormat(e.target.value);
-                        }}
-                        placeholder="Paste conversation text here...&#10;&#10;Supported formats:&#10;  WhatsApp: 10/12/2026, 10:30 - Alice: Hey! Are you ready?&#10;  Signal: [2026-10-12 14:30:15] Alice: Meeting notes attached.&#10;  Email: From: alice@example.com / Subject: Case update...&#10;  Logs: [2026-10-12 10:30:00] Alice: Status update..."
-                        rows={8}
-                        style={{
-                            width: "100%",
-                            background: "#0A1826",
-                            border: "1.5px solid #20596E",
-                            borderRadius: "8px",
-                            padding: "14px",
-                            color: "#F8FAFC",
-                            fontFamily: "var(--font-mono, 'JetBrains Mono', monospace)",
-                            fontSize: "0.85rem",
-                            lineHeight: "1.5",
-                            resize: "vertical",
-                            outline: "none",
-                            boxShadow: "inset 0 1px 4px rgba(0, 0, 0, 0.6)"
-                        }}
-                    />
-                    <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
+                /* Mode 2: Direct Text & Chat Snippet Pasting */
+                <div style={{ padding: "20px 24px" }}>
+                    <div style={{ marginBottom: "14px" }}>
+                        <div style={{ 
+                            display: "flex", 
+                            justifyContent: "space-between", 
+                            alignItems: "center", 
+                            marginBottom: "8px" 
+                        }}>
+                            <label style={{ 
+                                fontSize: "0.78rem", 
+                                fontWeight: "800", 
+                                letterSpacing: "1px", 
+                                color: "#FF9500", 
+                                textTransform: "uppercase" 
+                            }}>
+                                SOURCE / THREAD LABEL (OPTIONAL)
+                            </label>
+                            {detectedType && (
+                                <span style={{
+                                    fontSize: "0.72rem",
+                                    fontWeight: "800",
+                                    color: "#00D0FF",
+                                    background: "rgba(0, 208, 255, 0.12)",
+                                    border: "1px solid rgba(0, 208, 255, 0.3)",
+                                    padding: "2px 8px",
+                                    borderRadius: "4px",
+                                    letterSpacing: "0.5px"
+                                }}>
+                                    DETECTED: {detectedType.toUpperCase()}
+                                </span>
+                            )}
+                        </div>
                         <input
                             type="text"
-                            placeholder="Optional Title (e.g. WhatsApp with Alice)"
+                            placeholder="e.g., Target WhatsApp Export, Incident Transcript, SMS Thread..."
                             value={pasteTitle}
                             onChange={(e) => setPasteTitle(e.target.value)}
                             style={{
-                                flex: 1,
-                                minWidth: "220px",
-                                background: "#0A1826",
-                                border: "1.5px solid #20596E",
-                                borderRadius: "8px",
+                                width: "100%",
                                 padding: "10px 14px",
+                                background: "rgba(6, 11, 18, 0.7)",
+                                border: "1px solid rgba(255, 149, 0, 0.35)",
+                                borderRadius: "8px",
                                 color: "#F8FAFC",
-                                fontSize: "0.85rem",
-                                outline: "none"
+                                fontSize: "0.88rem",
+                                outline: "none",
+                                boxShadow: "inset 0 0 10px rgba(0, 0, 0, 0.5)"
                             }}
                         />
+                    </div>
+
+                    <div style={{ marginBottom: "16px" }}>
+                        <textarea
+                            rows={8}
+                            placeholder="Paste raw conversation text, exported messages, chat snippets, or communication logs here..."
+                            value={pastedText}
+                            onChange={(e) => {
+                                setPastedText(e.target.value);
+                                detectPastedFormat(e.target.value);
+                            }}
+                            style={{
+                                width: "100%",
+                                padding: "12px 14px",
+                                background: "rgba(6, 11, 18, 0.8)",
+                                border: "1px solid rgba(0, 208, 255, 0.3)",
+                                borderRadius: "8px",
+                                color: "#F8FAFC",
+                                fontSize: "0.84rem",
+                                fontFamily: "var(--font-mono)",
+                                lineHeight: "1.5",
+                                resize: "vertical",
+                                outline: "none",
+                                boxShadow: "inset 0 0 15px rgba(0, 0, 0, 0.6)"
+                            }}
+                        />
+                    </div>
+
+                    <div style={{ display: "flex", justifyContent: "flex-end" }}>
                         <button
                             type="button"
-                            className="button primary"
-                            disabled={!pastedText.trim()}
                             onClick={handleProcessPaste}
+                            disabled={!pastedText.trim()}
                             style={{
-                                padding: "11px 26px",
-                                fontWeight: "800",
+                                padding: "12px 28px",
                                 fontSize: "0.85rem",
-                                letterSpacing: "0.6px",
-                                background: "linear-gradient(135deg, #FF8A63 0%, #F46B45 50%, #D95737 100%)",
-                                border: "none",
-                                color: "#FFFFFF",
+                                fontWeight: "800",
+                                letterSpacing: "1px",
+                                textTransform: "uppercase",
                                 borderRadius: "8px",
-                                cursor: pastedText.trim() ? "pointer" : "not-allowed",
-                                opacity: pastedText.trim() ? 1 : 0.45,
+                                border: "none",
+                                background: pastedText.trim() 
+                                    ? "linear-gradient(135deg, #00D0FF 0%, #FF9500 100%)" 
+                                    : "rgba(255, 255, 255, 0.08)",
+                                color: pastedText.trim() ? "#05080E" : "var(--text-muted)",
                                 boxShadow: pastedText.trim() 
-                                    ? "0 4px 18px rgba(244, 107, 69, 0.55), 0 0 25px rgba(244, 107, 69, 0.3)" 
+                                    ? "0 0 25px rgba(0, 208, 255, 0.4), 0 0 25px rgba(255, 149, 0, 0.35)" 
                                     : "none",
-                                textShadow: "0 1px 2px rgba(0, 0, 0, 0.4)",
+                                cursor: pastedText.trim() ? "pointer" : "not-allowed",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "8px",
                                 transition: "all 0.2s cubic-bezier(0.16, 1, 0.3, 1)"
                             }}
                         >
-                            IMPORT PASTED CHAT
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <polygon points="5 3 19 12 5 21 5 3" />
+                            </svg>
+                            INGEST &amp; VERIFY CHAT STREAM
                         </button>
-                        {pastedText && (
-                            <button
-                                type="button"
-                                onClick={() => { setPastedText(""); setPasteTitle(""); setDetectedType(null); }}
-                                style={{
-                                    background: "transparent",
-                                    border: "1px solid var(--border)",
-                                    borderRadius: "6px",
-                                    padding: "10px 16px",
-                                    color: "var(--text-muted)",
-                                    cursor: "pointer",
-                                    fontSize: "0.85rem"
-                                }}
-                            >
-                                CLEAR
-                            </button>
-                        )}
                     </div>
                 </div>
             )}
 
-            {/* Temporal Verification & Prompt Modal */}
+            {/* Interactive Temporal Verification Modal */}
             <DateTimePromptModal
                 isOpen={modalOpen}
                 metadata={modalMetadata}
