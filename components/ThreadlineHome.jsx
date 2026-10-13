@@ -16,9 +16,21 @@
 function ThreadlineHome({ onCreate }) {
     return (
         <section className="panel welcome-home" style={{ textAlign: "center", padding: "60px 40px" }}>
-            <h1 style={{ fontSize: "3rem", color: "var(--accent)", letterSpacing: "0.2rem", marginBottom: "16px" }}>
-                THREADLINE
-            </h1>
+            <div style={{ display: "flex", justifyContent: "center", marginBottom: "24px" }}>
+                <img 
+                    src="/logo-2.png" 
+                    alt="THREADLINE by LANZAR" 
+                    style={{ 
+                        width: "100%", 
+                        maxWidth: "260px", 
+                        height: "auto", 
+                        borderRadius: "26px",
+                        boxShadow: "0 14px 40px rgba(0, 0, 0, 0.65), 0 0 30px rgba(63, 216, 255, 0.2)",
+                        border: "1px solid rgba(255, 255, 255, 0.08)",
+                        display: "block"
+                    }} 
+                />
+            </div>
             
             <p style={{ fontSize: "1.2rem", color: "var(--text-light)", marginBottom: "12px" }}>
                 A line through time containing the history of human communication.

@@ -1087,16 +1087,22 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                 gap: "0"
             }}>
                 {/* Branding */}
-                <div style={{ textAlign: "center", marginBottom: "12px" }}>
-                    <h1 style={{
-                        fontSize: "2.4rem",
-                        fontWeight: "800",
-                        color: "var(--accent)",
-                        letterSpacing: "0.25rem",
-                        marginBottom: "6px"
-                    }}>
-                        THREADLINE
-                    </h1>
+                <div style={{ textAlign: "center", marginBottom: "14px" }}>
+                    <div style={{ display: "flex", justifyContent: "center", marginBottom: "14px" }}>
+                        <img 
+                            src="/logo-2.png" 
+                            alt="THREADLINE by LANZAR" 
+                            style={{ 
+                                width: "100%", 
+                                maxWidth: "210px", 
+                                height: "auto", 
+                                borderRadius: "22px",
+                                boxShadow: "0 10px 32px rgba(0, 0, 0, 0.65), 0 0 26px rgba(63, 216, 255, 0.2)",
+                                border: "1px solid rgba(255, 255, 255, 0.08)",
+                                display: "block"
+                            }} 
+                        />
+                    </div>
                     <p style={{
                         fontSize: "0.85rem",
                         color: "var(--text-muted)",

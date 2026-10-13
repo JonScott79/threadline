@@ -156,9 +156,20 @@ function App(){
 					<span style={{ fontSize: "1.2rem", lineHeight: 1 }}>☰</span>
 					<span style={{ fontSize: "0.75rem", fontWeight: "700", letterSpacing: "1px" }}>MENU</span>
 				</button>
-				<div className="mobile-header-title">
+				<div className="mobile-header-title" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+					<img 
+						src="/logo-icon.png" 
+						alt="Threadline" 
+						style={{ 
+							width: "24px", 
+							height: "24px", 
+							borderRadius: "6px",
+							boxShadow: "0 0 10px rgba(63, 216, 255, 0.35)",
+							flexShrink: 0
+						}} 
+					/>
 					<span style={{ color: "var(--accent)", fontWeight: "800", letterSpacing: "1.5px", fontSize: "0.9rem" }}>
-						▲ THREADLINE
+						THREADLINE
 					</span>
 				</div>
 				<button 

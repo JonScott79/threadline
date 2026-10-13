@@ -124,43 +124,48 @@ function Sidebar({
 
         <aside className={`sidebar ${isOpenMobile ? "mobile-open" : ""}`}>
             {onCloseMobile && (
-                <button
-                    type="button"
-                    className="sidebar-close-btn"
-                    onClick={onCloseMobile}
-                    aria-label="Close menu"
-                >
-                    ✕
-                </button>
+                <button type="button" className="sidebar-close-btn" onClick={onCloseMobile} aria-label="Close menu">&times;</button>
             )}
 
-            <div className="sidebar-header">
-                
-                <h1 style={{ fontSize: "1.3rem", fontWeight: "800", color: "var(--text)" }}>
-                    THREADLINE
-                </h1>
-                
-                <div style={{ fontSize: "0.65rem", fontWeight: "600", letterSpacing: "1px", color: "var(--text-muted)", marginTop: "4px" }}>
-                    <a
-                        href="https://lanzar.me"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{
-                            color: "inherit",
-                            textDecoration: "none",
-                            display: "inline-block"
-                        }}
-                        onMouseEnter={(e) => {
-                            const span = e.currentTarget.querySelector('span');
-                            if (span) span.style.textDecoration = 'underline';
-                        }}
-                        onMouseLeave={(e) => {
-                            const span = e.currentTarget.querySelector('span');
-                            if (span) span.style.textDecoration = 'none';
-                        }}
-                    >
-                        by <span style={{ color: "var(--accent)" }}>▲ LANZAR</span>
-                    </a>
+            <div className="sidebar-header" style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "22px" }}>
+                <img 
+                    src="/logo-icon.png" 
+                    alt="Threadline" 
+                    style={{ 
+                        width: "38px", 
+                        height: "38px", 
+                        borderRadius: "9px",
+                        boxShadow: "0 4px 14px rgba(0, 0, 0, 0.45), 0 0 12px rgba(63, 216, 255, 0.25)",
+                        flexShrink: 0,
+                        display: "block"
+                    }} 
+                />
+                <div>
+                    <h1 style={{ fontSize: "1.25rem", fontWeight: "800", color: "var(--text)", margin: 0, letterSpacing: "1px", lineHeight: 1.15 }}>
+                        THREADLINE
+                    </h1>
+                    <div style={{ fontSize: "0.65rem", fontWeight: "600", letterSpacing: "1px", color: "var(--text-muted)", marginTop: "4px" }}>
+                        <a
+                            href="https://lanzar.me"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{
+                                color: "inherit",
+                                textDecoration: "none",
+                                display: "inline-block"
+                            }}
+                            onMouseEnter={(e) => {
+                                const span = e.currentTarget.querySelector('span');
+                                if (span) span.style.textDecoration = 'underline';
+                            }}
+                            onMouseLeave={(e) => {
+                                const span = e.currentTarget.querySelector('span');
+                                if (span) span.style.textDecoration = 'none';
+                            }}
+                        >
+                            by <span style={{ color: "var(--accent)" }}>▲ LANZAR</span>
+                        </a>
+                    </div>
                 </div>
             </div>
 

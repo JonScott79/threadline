@@ -24,8 +24,18 @@ function HelpSection({ onBack }) {
             {/* Header */}
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "24px", borderBottom: "1px solid var(--border)", paddingBottom: "18px", flexWrap: "wrap", gap: "12px" }}>
                 <div>
-                    <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "6px" }}>
-                        <span style={{ fontSize: "1.6rem" }}>🛡️</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "6px" }}>
+                        <img 
+                            src="/logo-icon.png" 
+                            alt="Threadline" 
+                            style={{ 
+                                width: "32px", 
+                                height: "32px", 
+                                borderRadius: "8px",
+                                boxShadow: "0 2px 10px rgba(63, 216, 255, 0.3)",
+                                flexShrink: 0 
+                            }} 
+                        />
                         <h2 style={{ color: "var(--accent)", letterSpacing: "1.5px", textTransform: "uppercase", fontSize: "1.5rem", fontWeight: "800", margin: 0 }}>
                             THREADLINE INVESTIGATIVE HELP CENTER
                         </h2>
