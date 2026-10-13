@@ -1291,51 +1291,135 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
         <div className="workspace-dashboard">
             {/* Import Overlay — appears when clicking Import in populated workspace */}
             {showImportOverlay && (
-                <div style={{
-                    position: "absolute",
-                    inset: 0,
-                    zIndex: 100,
-                    background: "rgba(11, 16, 22, 0.95)",
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: "20px",
-                    padding: "40px"
-                }}>
-                    <button
-                        className="button-link"
-                        onClick={() => setShowImportOverlay(false)}
+                <div 
+                    className="import-overlay-backdrop"
+                    style={{
+                        position: "fixed",
+                        inset: 0,
+                        zIndex: 10000,
+                        background: "rgba(4, 7, 12, 0.88)",
+                        backdropFilter: "blur(12px)",
+                        overflowY: "auto",
+                        overflowX: "hidden",
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        justifyContent: "flex-start",
+                        padding: "clamp(16px, 3vh, 32px) 16px 60px 16px",
+                        boxSizing: "border-box"
+                    }}
+                    onClick={(e) => {
+                        if (e.target === e.currentTarget) {
+                            setShowImportOverlay(false);
+                        }
+                    }}
+                >
+                    <div 
                         style={{
-                            position: "absolute",
-                            top: "20px",
-                            right: "20px",
-                            fontSize: "1.2rem",
-                            color: "var(--text-muted)",
-                            cursor: "pointer"
+                            width: "100%",
+                            maxWidth: "640px",
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: "14px",
+                            position: "relative",
+                            margin: "0 auto"
                         }}
                     >
-                        ✕ CLOSE
-                    </button>
-                    <h2 style={{
-                        color: "var(--accent)",
-                        textTransform: "uppercase",
-                        letterSpacing: "2px",
-                        fontSize: "1.2rem"
-                    }}>
-                        IMPORT ADDITIONAL ARCHIVE
-                    </h2>
-                    <div style={{ width: "100%", maxWidth: "560px" }}>
-                        <UploadPanel
-                            setImportResult={(result) => {
-                                handleImportSuccess(result);
-                                setShowImportOverlay(false);
-                            }}
-                            threadlineId={threadline.id}
-                        />
-                    </div>
-                    <div style={{ width: "100%", maxWidth: "560px" }}>
-                        <SupportedImports />
+                        {/* Modal Header Bar with Close Button */}
+                        <div style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            padding: "12px 18px",
+                            background: "linear-gradient(135deg, rgba(10, 16, 25, 0.9) 0%, rgba(15, 23, 42, 0.9) 100%)",
+                            borderRadius: "12px",
+                            border: "1px solid rgba(0, 208, 255, 0.25)",
+                            boxShadow: "0 0 20px rgba(0, 208, 255, 0.12)"
+                        }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                                <div style={{
+                                    width: "32px",
+                                    height: "32px",
+                                    borderRadius: "8px",
+                                    background: "rgba(0, 208, 255, 0.12)",
+                                    border: "1px solid rgba(0, 208, 255, 0.35)",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    boxShadow: "0 0 12px rgba(0, 208, 255, 0.25)"
+                                }}>
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                                        <path d="M12 3L20 20L12 16L4 20L12 3Z" fill="#00D0FF" />
+                                    </svg>
+                                </div>
+                                <div>
+                                    <h3 style={{
+                                        margin: 0,
+                                        fontSize: "0.95rem",
+                                        fontWeight: "800",
+                                        color: "#F8FAFC",
+                                        letterSpacing: "1px",
+                                        textTransform: "uppercase"
+                                    }}>
+                                        Import Communication Archive
+                                    </h3>
+                                    <p style={{
+                                        margin: "2px 0 0 0",
+                                        fontSize: "0.72rem",
+                                        color: "var(--text-muted)"
+                                    }}>
+                                        Add phone extractions, chat logs, or text snippets to this workspace.
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setShowImportOverlay(false)}
+                                style={{
+                                    background: "rgba(255, 255, 255, 0.06)",
+                                    border: "1px solid rgba(255, 255, 255, 0.2)",
+                                    borderRadius: "6px",
+                                    color: "#F8FAFC",
+                                    cursor: "pointer",
+                                    padding: "6px 12px",
+                                    fontSize: "0.78rem",
+                                    fontWeight: "700",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: "4px",
+                                    transition: "all 0.2s"
+                                }}
+                                onMouseEnter={(e) => {
+                                    e.currentTarget.style.background = "rgba(255, 69, 58, 0.2)";
+                                    e.currentTarget.style.borderColor = "rgba(255, 69, 58, 0.5)";
+                                    e.currentTarget.style.color = "#FF453A";
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.currentTarget.style.background = "rgba(255, 255, 255, 0.06)";
+                                    e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.2)";
+                                    e.currentTarget.style.color = "#F8FAFC";
+                                }}
+                                title="Close modal (Esc)"
+                            >
+                                ✕ CLOSE
+                            </button>
+                        </div>
+
+                        {/* Upload Panel */}
+                        <div style={{ width: "100%" }}>
+                            <UploadPanel
+                                setImportResult={(result) => {
+                                    handleImportSuccess(result);
+                                    setShowImportOverlay(false);
+                                }}
+                                threadlineId={threadline.id}
+                            />
+                        </div>
+
+                        {/* Supported Formats Card (Compact & Scrollable) */}
+                        <div style={{ width: "100%" }}>
+                            <SupportedImports compact={true} />
+                        </div>
                     </div>
                 </div>
             )}
