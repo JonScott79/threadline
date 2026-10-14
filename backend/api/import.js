@@ -7,6 +7,7 @@ const express = require("express");
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
+const crypto = require("crypto");
 
 // Engine
 const { processImport, processImportText } = require("../engines/importEngine");
@@ -63,7 +64,9 @@ router.get("/", async (request, response) => {
                 SELECT DISTINCT i.id, i.filename, i.source, i.platform, i.file_size AS fileSize, 
                        i.message_count AS messageCount, i.participant_count AS participantCount, 
                        i.thread_count AS threadCount, i.earliest_timestamp AS earliestTimestamp, 
-                       i.latest_timestamp AS latestTimestamp, i.imported_at AS importedAt, i.status, i.errors
+                       i.latest_timestamp AS latestTimestamp, i.imported_at AS importedAt, i.status, i.errors,
+                       i.sha256, i.discovered_count AS discoveredCount, i.skipped_count AS skippedCount,
+                       i.provenance_metadata AS provenanceMetadata
                 FROM imports i
                 JOIN message_imports mi ON i.id = mi.import_id
                 JOIN messages m ON mi.message_id = m.id
@@ -76,7 +79,9 @@ router.get("/", async (request, response) => {
                 SELECT id, filename, source, platform, file_size AS fileSize, 
                        message_count AS messageCount, participant_count AS participantCount, 
                        thread_count AS threadCount, earliest_timestamp AS earliestTimestamp, 
-                       latest_timestamp AS latestTimestamp, imported_at AS importedAt, status, errors
+                       latest_timestamp AS latestTimestamp, imported_at AS importedAt, status, errors,
+                       sha256, discovered_count AS discoveredCount, skipped_count AS skippedCount,
+                       provenance_metadata AS provenanceMetadata
                 FROM imports
                 WHERE owner_id = ?
                 ORDER BY imported_at DESC
@@ -130,12 +135,16 @@ router.post("/", upload.single("archive"), async (request, response) => {
 
         const targetThreadlineId = request.body.threadlineId || null;
 
+        const fileBuffer = fs.readFileSync(uploadedFilePath);
+        const fileSha256 = crypto.createHash("sha256").update(fileBuffer).digest("hex");
+
         const result = await ingestArchive(
             request.uid,
             archive,
             request.file.originalname,
             request.file.size,
-            targetThreadlineId
+            targetThreadlineId,
+            fileSha256
         );
 
         console.log("Archive Ingested successfully.");

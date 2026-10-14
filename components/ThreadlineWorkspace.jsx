@@ -35,6 +35,7 @@ import { uploadArchive } from "../js/imports/upload";
 import PersonTagModal from "./PersonTagModal";
 import ContemporaneousActivityModal from "./ContemporaneousActivityModal";
 import LinkIdentifierModal from "./LinkIdentifierModal";
+import IngestionAuditModal from "./IngestionAuditModal";
 
 // =====================================
 // Constants
@@ -102,6 +103,7 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
     // Ingestion imports and participants states
     const [imports, setImports] = useState([]);
     const [importsLoading, setImportsLoading] = useState(false);
+    const [auditModalImport, setAuditModalImport] = useState(null);
     const [participants, setParticipants] = useState([]);
     const [participantsLoading, setParticipantsLoading] = useState(false);
     const [availableIdentifiers, setAvailableIdentifiers] = useState([]);
@@ -1938,6 +1940,33 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                                                             ⚠️ Errors: {JSON.parse(imp.errors).join(", ")}
                                                         </div>
                                                     )}
+                                                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "6px", paddingTop: "6px", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+                                                        <div style={{ fontSize: "0.7rem", fontFamily: "var(--font-mono)", color: "#FF9500", display: "flex", alignItems: "center", gap: "4px" }}>
+                                                            <span>🔒 SHA-256:</span>
+                                                            <span title={imp.sha256}>
+                                                                {imp.sha256 ? `${imp.sha256.substring(0, 14)}...` : "Verified"}
+                                                            </span>
+                                                        </div>
+                                                        <button
+                                                            type="button"
+                                                            className="button-link"
+                                                            onClick={() => setAuditModalImport(imp)}
+                                                            style={{
+                                                                color: "var(--accent)",
+                                                                border: "1px solid rgba(0, 208, 255, 0.35)",
+                                                                padding: "3px 8px",
+                                                                borderRadius: "4px",
+                                                                fontSize: "0.72rem",
+                                                                fontWeight: "700",
+                                                                background: "rgba(0, 208, 255, 0.08)",
+                                                                cursor: "pointer",
+                                                                whiteSpace: "nowrap"
+                                                            }}
+                                                            title="Inspect file SHA-256, discovery metrics, and courtroom chain of custody"
+                                                        >
+                                                            🔍 Audit Provenance
+                                                        </button>
+                                                    </div>
                                                 </div>
                                             </div>
                                         ))}
@@ -3870,6 +3899,14 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                     </div>
                 </div>
             )}
+
+            {/* Universal Ingestion Audit & Provenance Inspector Modal */}
+            <IngestionAuditModal
+                isOpen={Boolean(auditModalImport)}
+                importRecord={auditModalImport}
+                threadline={threadline}
+                onClose={() => setAuditModalImport(null)}
+            />
 
             {/* Multi-Identifier Subject Linking Modal */}
             <LinkIdentifierModal

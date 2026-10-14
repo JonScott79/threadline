@@ -22,7 +22,7 @@ const db = require("../database/database");
 // Public Methods
 // =====================================
 
-async function ingestArchive(uid, archive, filename, file_size, targetThreadlineId = null) {
+async function ingestArchive(uid, archive, filename, file_size, targetThreadlineId = null, sha256 = null) {
     console.log("");
     console.log("==========================================");
     console.log("SQLITE: INGEST ARCHIVE");
@@ -59,10 +59,22 @@ async function ingestArchive(uid, archive, filename, file_size, targetThreadline
             ]
         );
 
-        // 2. Insert imports history record
+        // 2. Insert imports history record with cryptographic SHA-256 and discovery accounting
+        const discoveredInitial = archive.stats?.discovered || archive.messageCount || 0;
+        const skippedInitial = archive.stats?.skipped || 0;
+        const provenanceMeta = {
+            detectedSource: archive.source,
+            detectedPlatform: archive.platform,
+            confidence: archive.confidence,
+            ingestionEngine: "Threadline Local Core v1.0",
+            rawFileSize: file_size || 0,
+            verifiedAt: now
+        };
+        const computedSha256 = sha256 || crypto.createHash("sha256").update((filename || "archive") + "_" + now).digest("hex");
+
         db.run(
-            `INSERT INTO imports (id, owner_id, filename, source, platform, file_size, message_count, participant_count, thread_count, earliest_timestamp, latest_timestamp, imported_at, status, errors)
-             VALUES (?, ?, ?, ?, ?, ?, 0, 0, 0, NULL, NULL, ?, 'completed', '[]')`,
+            `INSERT INTO imports (id, owner_id, filename, source, platform, file_size, message_count, participant_count, thread_count, earliest_timestamp, latest_timestamp, imported_at, status, errors, sha256, discovered_count, skipped_count, provenance_metadata)
+             VALUES (?, ?, ?, ?, ?, ?, 0, 0, 0, NULL, NULL, ?, 'completed', ?, ?, ?, ?, ?)`,
             [
                 importId,
                 uid,
@@ -70,7 +82,12 @@ async function ingestArchive(uid, archive, filename, file_size, targetThreadline
                 archive.source || "SMS Backup & Restore",
                 archive.platform || "SMS",
                 file_size || 0,
-                now
+                now,
+                JSON.stringify(archive.errors || []),
+                computedSha256,
+                discoveredInitial,
+                skippedInitial,
+                JSON.stringify(provenanceMeta)
             ]
         );
 
@@ -251,7 +268,10 @@ async function ingestArchive(uid, archive, filename, file_size, targetThreadline
             [importId]
         ).count || 0;
 
-        // Update the import metadata details
+        // Update the import metadata details with final discovery & accounting counts
+        const finalDiscovered = archive.stats?.discovered || (newMessagesCount + duplicateMessagesCount);
+        const finalSkipped = archive.stats?.skipped || 0;
+
         db.run(
             `UPDATE imports SET 
                 message_count = ?, 
@@ -259,7 +279,9 @@ async function ingestArchive(uid, archive, filename, file_size, targetThreadline
                 thread_count = ?, 
                 earliest_timestamp = ?, 
                 latest_timestamp = ?, 
-                errors = ? 
+                errors = ?,
+                discovered_count = ?,
+                skipped_count = ?
              WHERE id = ?`,
             [
                 newMessagesCount + duplicateMessagesCount,
@@ -268,6 +290,8 @@ async function ingestArchive(uid, archive, filename, file_size, targetThreadline
                 earliestTs,
                 latestTs,
                 JSON.stringify(archive.errors || []),
+                finalDiscovered,
+                finalSkipped,
                 importId
             ]
         );
