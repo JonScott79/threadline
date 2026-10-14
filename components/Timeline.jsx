@@ -110,7 +110,6 @@ const Timeline = forwardRef(function Timeline({
     const [laserPos, setLaserPos] = useState(null); // { x: number, time: number, group: string }
     const laserPosRef = useRef(null);
     laserPosRef.current = laserPos;
-    const isHoveringFlagRef = useRef(false);
 
     // Metadata: full data span
     const [dataEarliest, setDataEarliest] = useState(null);
@@ -290,24 +289,9 @@ const Timeline = forwardRef(function Timeline({
 
             // Synchronized Cross-Track Laser Tracking
             if (laserEnabledRef.current && !laserLockedRef.current && timelineRef.current && domContainer) {
-                // If cursor is directly interacting with or hovering over the HUD flag, hold position
-                if (isHoveringFlagRef.current) return;
-
                 const rect = domContainer.getBoundingClientRect();
                 const clientX = e.clientX;
-                const clientY = e.clientY;
                 const relX = clientX - rect.left;
-                const relY = clientY - rect.top;
-
-                // Proximity hold: if mouse approaches top-right near the floating flag, freeze movement so user can click
-                if (laserPosRef.current) {
-                    const flagLeft = laserPosRef.current.x - 20;
-                    const flagRight = laserPosRef.current.x + 420;
-                    if (relY >= 0 && relY <= 52 && relX >= flagLeft && relX <= flagRight) {
-                        return;
-                    }
-                }
-
                 if (relX >= 0 && relX <= rect.width) {
                     const props = timelineRef.current.getEventProperties(e);
                     if (props && props.time) {
@@ -349,32 +333,6 @@ const Timeline = forwardRef(function Timeline({
             const start = props.start.getTime();
             const end = props.end.getTime();
             debouncedFetch(start, end);
-        });
-
-        // Click on timeline background to anchor / freeze laser cursor
-        timeline.on("click", (props) => {
-            if (props.event && props.event.target && props.event.target.closest(".tl-laser-flag")) {
-                return;
-            }
-            if (props.item && props.item !== "temporal-selection-bg") return;
-
-            if (laserEnabledRef.current && timelineRef.current && domContainer) {
-                if (!laserLockedRef.current && props.time) {
-                    const rect = domContainer.getBoundingClientRect();
-                    const clientX = props.event.clientX;
-                    const relX = clientX - rect.left;
-                    const newPos = {
-                        x: relX,
-                        time: props.time.getTime(),
-                        group: props.group || null
-                    };
-                    laserPosRef.current = newPos;
-                    setLaserPos(newPos);
-                    setLaserLocked(true);
-                } else {
-                    setLaserLocked(prev => !prev);
-                }
-            }
         });
 
         // On item select -> drill down or jump to message
@@ -1007,32 +965,38 @@ const Timeline = forwardRef(function Timeline({
                     >
                         <div
                             className="tl-laser-flag"
-                            style={{ pointerEvents: "auto" }}
-                            onMouseEnter={() => { isHoveringFlagRef.current = true; }}
-                            onMouseLeave={() => { isHoveringFlagRef.current = false; }}
+                            style={{ pointerEvents: laserLocked ? "auto" : "none" }}
                             onClick={(e) => e.stopPropagation()}
                         >
                             <span className="tl-laser-indicator">{laserLocked ? "🔒" : "⚡"}</span>
                             <span className="tl-laser-time">
                                 {new Date(laserPos.time).toISOString().replace("T", " ").replace("Z", " UTC")}
                             </span>
-                            <button
-                                type="button"
-                                className="tl-laser-lock-btn"
-                                onClick={() => setLaserLocked(prev => !prev)}
-                                title={laserLocked ? "Unlock laser (resume tracking)" : "Lock laser at this timestamp (or press L)"}
-                            >
-                                {laserLocked ? "Unlock" : "Freeze"}
-                            </button>
-                            {onCorrelateTimestamp && (
-                                <button
-                                    type="button"
-                                    className="tl-laser-correlate-btn"
-                                    onClick={() => onCorrelateTimestamp({ timestamp: laserPos.time })}
-                                    title="Scan contemporaneous activity across all devices within ±Δt of this laser timestamp"
-                                >
-                                    ⚡ Correlate
-                                </button>
+                            {laserLocked ? (
+                                <>
+                                    <button
+                                        type="button"
+                                        className="tl-laser-lock-btn"
+                                        onClick={() => setLaserLocked(false)}
+                                        title="Unlock laser (resume live tracking, or press L)"
+                                    >
+                                        Unlock (L)
+                                    </button>
+                                    {onCorrelateTimestamp && (
+                                        <button
+                                            type="button"
+                                            className="tl-laser-correlate-btn"
+                                            onClick={() => onCorrelateTimestamp({ timestamp: laserPos.time })}
+                                            title="Scan contemporaneous activity across all devices within ±Δt of this laser timestamp"
+                                        >
+                                            ⚡ Correlate
+                                        </button>
+                                    )}
+                                </>
+                            ) : (
+                                <span style={{ fontSize: "0.68rem", color: "rgba(255, 255, 255, 0.45)", fontStyle: "italic", paddingLeft: "2px" }}>
+                                    Press L or click Freeze above
+                                </span>
                             )}
                         </div>
                     </div>
