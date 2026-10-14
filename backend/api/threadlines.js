@@ -209,14 +209,71 @@ router.get("/:id/participants", (request, response) => {
              ORDER BY name ASC`,
             [id]
         );
-        // Parse JSON fields
-        const parsedRows = rows.map(r => ({
-            ...r,
-            platformIdentifiers: JSON.parse(r.platformIdentifiers || "[]"),
-            aliases: JSON.parse(r.aliases || "[]"),
-            metadata: JSON.parse(r.metadata || "{}")
-        }));
-        response.json({ status: "success", participants: parsedRows });
+        
+        // Parse JSON fields and calculate message count per subject across all linked identifiers
+        const parsedRows = rows.map(r => {
+            const platformIdents = JSON.parse(r.platformIdentifiers || "[]");
+            const meta = JSON.parse(r.metadata || "{}");
+            const linkedList = Array.isArray(meta.linkedIdentifiers) ? meta.linkedIdentifiers : [];
+            const allIdents = Array.from(new Set([
+                r.phoneNumber,
+                r.name,
+                ...platformIdents,
+                ...linkedList.map(l => (typeof l === "string" ? l : l.identifier))
+            ].filter(Boolean)));
+
+            let messageCount = 0;
+            if (allIdents.length > 0) {
+                const placeholders = allIdents.map(() => "?").join(",");
+                const cntRow = db.queryOne(
+                    `SELECT COUNT(*) AS c FROM messages 
+                     WHERE threadline_id = ? AND (sender IN (${placeholders}) OR recipient IN (${placeholders}))`,
+                    [id, ...allIdents, ...allIdents]
+                );
+                messageCount = cntRow ? cntRow.c : 0;
+            }
+
+            return {
+                ...r,
+                platformIdentifiers: platformIdents,
+                aliases: JSON.parse(r.aliases || "[]"),
+                metadata: meta,
+                linkedIdentifiers: linkedList,
+                allIdentifiers: allIdents,
+                messageCount
+            };
+        });
+
+        // Compute available unlinked identifiers in the case
+        const rawIdents = db.query(
+            `SELECT sender AS ident, COUNT(*) AS count FROM messages WHERE threadline_id = ? AND sender IS NOT NULL GROUP BY sender
+             UNION ALL
+             SELECT recipient AS ident, COUNT(*) AS count FROM messages WHERE threadline_id = ? AND recipient IS NOT NULL GROUP BY recipient`,
+            [id, id]
+        );
+        const countsMap = {};
+        rawIdents.forEach(r => {
+            countsMap[r.ident] = (countsMap[r.ident] || 0) + r.count;
+        });
+
+        const assignedMap = {};
+        parsedRows.forEach(p => {
+            p.allIdentifiers.forEach(ident => {
+                assignedMap[ident] = { participantId: p.id, name: p.name };
+            });
+        });
+
+        const availableIdentifiers = Object.keys(countsMap).map(ident => ({
+            identifier: ident,
+            messageCount: countsMap[ident],
+            assignedTo: assignedMap[ident] || null
+        })).sort((a, b) => b.messageCount - a.messageCount);
+
+        response.json({ 
+            status: "success", 
+            participants: parsedRows,
+            availableIdentifiers 
+        });
     } catch (error) {
         response.status(500).json({ status: "error", message: error.message });
     }
@@ -414,6 +471,263 @@ router.post("/:id/participants/tag", (request, response) => {
         response.status(500).json({ status: "error", message: error.message });
     }
 });
+
+/**
+ * POST /api/threadlines/:id/participants/:participantId/link
+ * Disambiguation & Alias Linking:
+ * Links an additional burner number, SIM, or digital handle to a subject entity.
+ * Non-destructive: preserves original raw sender/recipient on all messages.
+ */
+router.post("/:id/participants/:participantId/link", (request, response) => {
+    try {
+        const { id, participantId } = request.params;
+        const { identifier, confidence, notes } = request.body;
+
+        if (!identifier || !identifier.trim()) {
+            return response.status(400).json({ status: "error", message: "Identifier is required." });
+        }
+
+        const isArchive = id === `archive_${request.uid}`;
+        const row = db.queryOne("SELECT owner_id FROM threadlines WHERE id = ?", [id]);
+        if (!isArchive && (!row || row.owner_id !== request.uid)) {
+            return response.status(403).json({ status: "error", message: "Access denied." });
+        }
+
+        const subject = db.queryOne("SELECT * FROM participants WHERE id = ? AND threadline_id = ?", [participantId, id]);
+        if (!subject) {
+            return response.status(404).json({ status: "error", message: "Subject participant not found." });
+        }
+
+        const cleanIdent = identifier.trim();
+        const currentMeta = JSON.parse(subject.metadata || "{}");
+        const currentLinked = Array.isArray(currentMeta.linkedIdentifiers) ? currentMeta.linkedIdentifiers : [];
+        const currentPlatform = JSON.parse(subject.platform_identifiers || "[]");
+
+        // Check if already linked
+        const existingIdx = currentLinked.findIndex(l => (typeof l === "string" ? l : l.identifier) === cleanIdent);
+        const newLinkObj = {
+            identifier: cleanIdent,
+            confidence: confidence || "verified", // "verified" | "inferred" | "suspected"
+            notes: notes || "",
+            linkedAt: new Date().toISOString(),
+            linkedBy: request.uid
+        };
+
+        if (existingIdx >= 0) {
+            currentLinked[existingIdx] = newLinkObj;
+        } else {
+            currentLinked.push(newLinkObj);
+        }
+
+        if (!currentPlatform.includes(cleanIdent)) {
+            currentPlatform.push(cleanIdent);
+        }
+
+        const updatedMeta = {
+            ...currentMeta,
+            linkedIdentifiers: currentLinked
+        };
+
+        db.run(
+            `UPDATE participants 
+             SET platform_identifiers = ?, metadata = ? 
+             WHERE id = ? AND threadline_id = ?`,
+            [JSON.stringify(currentPlatform), JSON.stringify(updatedMeta), participantId, id]
+        );
+
+        // If another participant record exists for this identifier, mark it as linked to this subject
+        const targetPart = db.queryOne(
+            `SELECT * FROM participants WHERE threadline_id = ? AND (phone_number = ? OR name = ?) AND id != ?`,
+            [id, cleanIdent, cleanIdent, participantId]
+        );
+        if (targetPart) {
+            const targetMeta = JSON.parse(targetPart.metadata || "{}");
+            targetMeta.linkedToParticipantId = participantId;
+            targetMeta.linkedToSubjectName = subject.name;
+            db.run(
+                `UPDATE participants SET metadata = ? WHERE id = ? AND threadline_id = ?`,
+                [JSON.stringify(targetMeta), targetPart.id, id]
+            );
+        }
+
+        response.json({
+            status: "success",
+            message: `Identifier ${cleanIdent} linked to ${subject.name}.`,
+            participant: {
+                id: participantId,
+                name: subject.name,
+                phoneNumber: subject.phone_number,
+                platformIdentifiers: currentPlatform,
+                linkedIdentifiers: currentLinked,
+                metadata: updatedMeta
+            }
+        });
+    } catch (error) {
+        response.status(500).json({ status: "error", message: error.message });
+    }
+});
+
+/**
+ * POST /api/threadlines/:id/participants/:participantId/unlink
+ * Removes a linked identifier from a subject entity without mutating any raw messages.
+ */
+router.post("/:id/participants/:participantId/unlink", (request, response) => {
+    try {
+        const { id, participantId } = request.params;
+        const { identifier } = request.body;
+
+        if (!identifier || !identifier.trim()) {
+            return response.status(400).json({ status: "error", message: "Identifier is required." });
+        }
+
+        const isArchive = id === `archive_${request.uid}`;
+        const row = db.queryOne("SELECT owner_id FROM threadlines WHERE id = ?", [id]);
+        if (!isArchive && (!row || row.owner_id !== request.uid)) {
+            return response.status(403).json({ status: "error", message: "Access denied." });
+        }
+
+        const subject = db.queryOne("SELECT * FROM participants WHERE id = ? AND threadline_id = ?", [participantId, id]);
+        if (!subject) {
+            return response.status(404).json({ status: "error", message: "Subject participant not found." });
+        }
+
+        const cleanIdent = identifier.trim();
+        const currentMeta = JSON.parse(subject.metadata || "{}");
+        const currentLinked = Array.isArray(currentMeta.linkedIdentifiers) ? currentMeta.linkedIdentifiers : [];
+        const currentPlatform = JSON.parse(subject.platform_identifiers || "[]");
+
+        const updatedLinked = currentLinked.filter(l => (typeof l === "string" ? l : l.identifier) !== cleanIdent);
+        const updatedPlatform = currentPlatform.filter(p => p !== cleanIdent);
+
+        const updatedMeta = {
+            ...currentMeta,
+            linkedIdentifiers: updatedLinked
+        };
+
+        db.run(
+            `UPDATE participants 
+             SET platform_identifiers = ?, metadata = ? 
+             WHERE id = ? AND threadline_id = ?`,
+            [JSON.stringify(updatedPlatform), JSON.stringify(updatedMeta), participantId, id]
+        );
+
+        // Clear link pointer on any other participant record
+        const targetPart = db.queryOne(
+            `SELECT * FROM participants WHERE threadline_id = ? AND (phone_number = ? OR name = ?) AND id != ?`,
+            [id, cleanIdent, cleanIdent, participantId]
+        );
+        if (targetPart) {
+            const targetMeta = JSON.parse(targetPart.metadata || "{}");
+            delete targetMeta.linkedToParticipantId;
+            delete targetMeta.linkedToSubjectName;
+            db.run(
+                `UPDATE participants SET metadata = ? WHERE id = ? AND threadline_id = ?`,
+                [JSON.stringify(targetMeta), targetPart.id, id]
+            );
+        }
+
+        response.json({
+            status: "success",
+            message: `Identifier ${cleanIdent} unlinked from ${subject.name}.`,
+            participant: {
+                id: participantId,
+                name: subject.name,
+                phoneNumber: subject.phone_number,
+                platformIdentifiers: updatedPlatform,
+                linkedIdentifiers: updatedLinked,
+                metadata: updatedMeta
+            }
+        });
+    } catch (error) {
+        response.status(500).json({ status: "error", message: error.message });
+    }
+});
+
+/**
+ * GET /api/threadlines/:id/participants/:participantId/messages
+ * Subject Master Transcript:
+ * Retrieves all chronological messages involving ANY of the subject's linked identifiers.
+ */
+router.get("/:id/participants/:participantId/messages", (request, response) => {
+    try {
+        const { id, participantId } = request.params;
+        const start = request.query.start ? Number(request.query.start) : null;
+        const end = request.query.end ? Number(request.query.end) : null;
+        const limit = request.query.limit ? Math.min(2000, Number(request.query.limit)) : 1000;
+
+        const isArchive = id === `archive_${request.uid}`;
+        const row = db.queryOne("SELECT owner_id FROM threadlines WHERE id = ?", [id]);
+        if (!isArchive && (!row || row.owner_id !== request.uid)) {
+            return response.status(403).json({ status: "error", message: "Access denied." });
+        }
+
+        const subject = db.queryOne("SELECT * FROM participants WHERE id = ? AND threadline_id = ?", [participantId, id]);
+        if (!subject) {
+            return response.status(404).json({ status: "error", message: "Subject participant not found." });
+        }
+
+        const platformIdents = JSON.parse(subject.platform_identifiers || "[]");
+        const meta = JSON.parse(subject.metadata || "{}");
+        const linkedList = Array.isArray(meta.linkedIdentifiers) ? meta.linkedIdentifiers : [];
+        const allIdents = Array.from(new Set([
+            subject.phone_number,
+            subject.name,
+            ...platformIdents,
+            ...linkedList.map(l => (typeof l === "string" ? l : l.identifier))
+        ].filter(Boolean)));
+
+        if (allIdents.length === 0) {
+            return response.json({ status: "success", subject, messages: [], totalCount: 0 });
+        }
+
+        const placeholders = allIdents.map(() => "?").join(",");
+        let sql = `
+            SELECT m.id, m.conversation_id AS conversationId, m.sender, m.recipient, m.timestamp,
+                   m.body, m.attachments, m.platform, m.direction, m.metadata,
+                   c.title AS conversationTitle, c.platform AS conversationPlatform
+            FROM messages m
+            JOIN conversations c ON m.conversation_id = c.id
+            WHERE m.threadline_id = ? AND (m.sender IN (${placeholders}) OR m.recipient IN (${placeholders}))
+        `;
+        const params = [id, ...allIdents, ...allIdents];
+
+        if (start) {
+            sql += " AND m.timestamp >= ? ";
+            params.push(start);
+        }
+        if (end) {
+            sql += " AND m.timestamp <= ? ";
+            params.push(end);
+        }
+
+        sql += " ORDER BY m.timestamp ASC LIMIT ? ";
+        params.push(limit);
+
+        const messages = db.query(sql, params);
+        const formatted = messages.map(m => ({
+            ...m,
+            attachments: JSON.parse(m.attachments || "[]"),
+            metadata: JSON.parse(m.metadata || "{}")
+        }));
+
+        response.json({
+            status: "success",
+            subject: {
+                id: subject.id,
+                name: subject.name,
+                phoneNumber: subject.phone_number,
+                role: meta.role || null,
+                allIdentifiers: allIdents,
+                linkedIdentifiers: linkedList
+            },
+            messages: formatted,
+            totalCount: formatted.length
+        });
+    } catch (error) {
+        response.status(500).json({ status: "error", message: error.message });
+    }
+});
+
 
 /**
  * PUT /api/threadlines/:id/conversations/:convId

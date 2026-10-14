@@ -34,6 +34,7 @@ import DeleteThreadlineModal from "./DeleteThreadlineModal";
 import { uploadArchive } from "../js/imports/upload";
 import PersonTagModal from "./PersonTagModal";
 import ContemporaneousActivityModal from "./ContemporaneousActivityModal";
+import LinkIdentifierModal from "./LinkIdentifierModal";
 
 // =====================================
 // Constants
@@ -103,6 +104,11 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
     const [importsLoading, setImportsLoading] = useState(false);
     const [participants, setParticipants] = useState([]);
     const [participantsLoading, setParticipantsLoading] = useState(false);
+    const [availableIdentifiers, setAvailableIdentifiers] = useState([]);
+    const [linkModalTarget, setLinkModalTarget] = useState(null);
+    const [activeSubject, setActiveSubject] = useState(null);
+    const [subjectMessages, setSubjectMessages] = useState([]);
+    const [subjectMessagesLoading, setSubjectMessagesLoading] = useState(false);
 
     // Navigation and Zooming States
     const [zoom, setZoom] = useState("year");
@@ -532,11 +538,58 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
             });
             if (response.data && response.data.status === "success") {
                 setParticipants(response.data.participants || []);
+                setAvailableIdentifiers(response.data.availableIdentifiers || []);
             }
         } catch (error) {
             console.error("Failed to load participants:", error);
         } finally {
             setParticipantsLoading(false);
+        }
+    }
+
+    async function handleUnlinkIdentifier(participantId, identifier) {
+        if (!window.confirm(`Unlink identifier ${identifier} from subject? Original messages will remain completely preserved.`)) return;
+        try {
+            const response = await axios.post(
+                `${API_BASE_URL}/threadlines/${threadline.id}/participants/${participantId}/unlink`,
+                { identifier },
+                { headers: { "x-user-uid": uid } }
+            );
+            if (response.data && response.data.status === "success") {
+                await fetchParticipants();
+                if (activeSubject && activeSubject.id === participantId) {
+                    fetchSubjectMessages(activeSubject);
+                }
+            }
+        } catch (err) {
+            alert("Failed to unlink: " + (err.response?.data?.message || err.message));
+        }
+    }
+
+    async function fetchSubjectMessages(subject) {
+        if (!subject) return;
+        setActiveSubject(subject);
+        setActiveRightTab("subject");
+        setSubjectMessagesLoading(true);
+        try {
+            const response = await axios.get(
+                `${API_BASE_URL}/threadlines/${threadline.id}/participants/${subject.id}/messages`,
+                {
+                    params: {
+                        start: showFullConversation ? null : startTimestamp,
+                        end: showFullConversation ? null : endTimestamp,
+                        limit: 1000
+                    },
+                    headers: { "x-user-uid": uid }
+                }
+            );
+            if (response.data && response.data.status === "success") {
+                setSubjectMessages(response.data.messages || []);
+            }
+        } catch (err) {
+            console.error("Failed to load subject messages:", err);
+        } finally {
+            setSubjectMessagesLoading(false);
         }
     }
 
@@ -1898,7 +1951,7 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                                 <div className="pane-loading-indicator">LOADING PEOPLE...</div>
                             ) : (
                                 <div style={{ display: "flex", flexDirection: "column", gap: "10px", padding: "10px 4px" }}>
-                                    {/* Action Header for Police Officers & Investigators */}
+                                    {/* Action Header for Investigators */}
                                     <div style={{
                                         display: "flex",
                                         justifyContent: "space-between",
@@ -1910,10 +1963,13 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                                     }}>
                                         <div>
                                             <span style={{ fontSize: "0.8rem", fontWeight: "800", color: "#3fd8ff", letterSpacing: "0.8px", textTransform: "uppercase" }}>
-                                                Identified Subjects ({participants.length})
+                                                Identified Subjects ({participants.filter(p => {
+                                                    const m = typeof p.metadata === "string" ? JSON.parse(p.metadata || "{}") : (p.metadata || {});
+                                                    return !m.linkedToParticipantId;
+                                                }).length})
                                             </span>
                                             <p style={{ margin: "2px 0 0 0", fontSize: "0.72rem", color: "var(--text-muted)" }}>
-                                                Tag phone numbers with verified identities & legal roles.
+                                                Multi-identifier disambiguation & non-destructive linking.
                                             </p>
                                         </div>
                                         <button
@@ -1928,108 +1984,183 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                                                 alignItems: "center",
                                                 gap: "4px"
                                             }}
-                                            title="Manually enter and tag a new phone number or person"
+                                            title="Manually tag a new person or phone number"
                                         >
                                             + Tag Person / Phone
                                         </button>
                                     </div>
 
                                     {participants.length > 0 ? (
-                                        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                                            {participants.map(part => {
-                                                const meta = typeof part.metadata === "string" ? JSON.parse(part.metadata || "{}") : (part.metadata || {});
-                                                const role = meta.role;
-                                                const notes = meta.notes;
-                                                const aliases = Array.isArray(part.aliases) 
-                                                    ? part.aliases 
-                                                    : (typeof part.aliases === "string" ? JSON.parse(part.aliases || "[]") : []);
+                                        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                                            {participants
+                                                .filter(part => {
+                                                    const meta = typeof part.metadata === "string" ? JSON.parse(part.metadata || "{}") : (part.metadata || {});
+                                                    return !meta.linkedToParticipantId;
+                                                })
+                                                .map(part => {
+                                                    const meta = typeof part.metadata === "string" ? JSON.parse(part.metadata || "{}") : (part.metadata || {});
+                                                    const role = meta.role;
+                                                    const notes = meta.notes;
+                                                    const aliases = Array.isArray(part.aliases) 
+                                                        ? part.aliases 
+                                                        : (typeof part.aliases === "string" ? JSON.parse(part.aliases || "[]") : []);
+                                                    const linkedList = Array.isArray(part.linkedIdentifiers) ? part.linkedIdentifiers : [];
 
-                                                return (
-                                                    <div 
-                                                        key={part.id} 
-                                                        className="preview-card" 
-                                                        style={{ 
-                                                            background: "rgba(255, 255, 255, 0.02)", 
-                                                            border: "1px solid var(--border)", 
-                                                            padding: "12px", 
-                                                            borderRadius: "8px", 
-                                                            textAlign: "left",
-                                                            display: "flex",
-                                                            justifyContent: "space-between",
-                                                            alignItems: "flex-start",
-                                                            gap: "10px"
-                                                        }}
-                                                    >
-                                                        <div style={{ display: "flex", gap: "10px", alignItems: "flex-start", flex: 1, minWidth: 0 }}>
-                                                            <div style={{ 
-                                                                width: "36px", 
-                                                                height: "36px", 
-                                                                borderRadius: "8px", 
-                                                                background: "rgba(0, 208, 255, 0.1)", 
-                                                                border: "1px solid rgba(0, 208, 255, 0.3)", 
-                                                                display: "flex", 
-                                                                alignItems: "center", 
-                                                                justifyContent: "center",
-                                                                fontSize: "1.1rem",
-                                                                flexShrink: 0
-                                                            }}>
-                                                                👤
-                                                            </div>
-                                                            <div style={{ flex: 1, minWidth: 0 }}>
-                                                                <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", marginBottom: "3px" }}>
-                                                                    <strong style={{ fontSize: "0.9rem", color: "var(--text-light)" }}>
-                                                                        {part.name}
-                                                                    </strong>
-                                                                    {role && getParticipantRoleBadge(part.phoneNumber || part.name)}
-                                                                </div>
-
-                                                                <div style={{ fontSize: "0.75rem", color: "var(--accent)", fontFamily: "var(--font-mono)", marginBottom: "4px" }}>
-                                                                    📱 {part.phoneNumber || part.email || "No Identifier"}
-                                                                </div>
-
-                                                                {aliases.length > 0 && (
-                                                                    <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginBottom: "3px" }}>
-                                                                        Aliases: <span style={{ color: "var(--text-light)" }}>{aliases.join(", ")}</span>
-                                                                    </div>
-                                                                )}
-
-                                                                {notes && (
+                                                    return (
+                                                        <div 
+                                                            key={part.id} 
+                                                            className="subject-card"
+                                                            style={{
+                                                                border: activeSubject?.id === part.id ? "1.5px solid #FF9500" : undefined,
+                                                                boxShadow: activeSubject?.id === part.id ? "0 0 16px rgba(255, 149, 0, 0.15)" : undefined
+                                                            }}
+                                                        >
+                                                            {/* Card Header */}
+                                                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "10px" }}>
+                                                                <div style={{ display: "flex", gap: "10px", alignItems: "center", minWidth: 0 }}>
                                                                     <div style={{ 
-                                                                        fontSize: "0.72rem", 
-                                                                        color: "var(--text-muted)", 
-                                                                        background: "rgba(0,0,0,0.3)", 
-                                                                        padding: "4px 8px", 
-                                                                        borderRadius: "4px",
-                                                                        borderLeft: "2px solid var(--accent)",
-                                                                        marginTop: "4px"
+                                                                        width: "34px", 
+                                                                        height: "34px", 
+                                                                        borderRadius: "8px", 
+                                                                        background: role ? "rgba(255, 149, 0, 0.12)" : "rgba(0, 208, 255, 0.1)", 
+                                                                        border: role ? "1px solid rgba(255, 149, 0, 0.35)" : "1px solid rgba(0, 208, 255, 0.3)", 
+                                                                        display: "flex", 
+                                                                        alignItems: "center", 
+                                                                        justifyContent: "center",
+                                                                        fontSize: "1.05rem",
+                                                                        flexShrink: 0
                                                                     }}>
-                                                                        {notes}
+                                                                        👤
                                                                     </div>
-                                                                )}
+                                                                    <div style={{ minWidth: 0 }}>
+                                                                        <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                                                                            <strong style={{ fontSize: "0.88rem", color: "var(--text-light)" }}>
+                                                                                {part.name}
+                                                                            </strong>
+                                                                            {role && getParticipantRoleBadge(part.phoneNumber || part.name)}
+                                                                        </div>
+                                                                        <div style={{ fontSize: "0.74rem", color: "#3fd8ff", fontFamily: "var(--font-mono)" }}>
+                                                                            📱 {part.phoneNumber || part.name} <span style={{ fontSize: "0.62rem", color: "var(--text-muted)" }}>[PRIMARY]</span>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+
+                                                                <button
+                                                                    className="button-link"
+                                                                    onClick={() => setTagModalTarget(part)}
+                                                                    style={{
+                                                                        color: "var(--accent)",
+                                                                        border: "1px solid rgba(0, 208, 255, 0.3)",
+                                                                        padding: "3px 8px",
+                                                                        borderRadius: "5px",
+                                                                        fontSize: "0.72rem",
+                                                                        fontWeight: "700",
+                                                                        background: "rgba(0, 208, 255, 0.05)",
+                                                                        whiteSpace: "nowrap"
+                                                                    }}
+                                      title="Edit Subject identity, role, aliases, and notes"
+                                                                >
+                                                                    🏷️ Edit
+                                                                </button>
+                                                            </div>
+
+                                                            {/* Linked Identifiers Row */}
+                                                            {linkedList.length > 0 && (
+                                                                <div style={{ display: "flex", flexWrap: "wrap", gap: "5px", padding: "4px 0" }}>
+                                                                    {linkedList.map((l, lIdx) => {
+                                                                        const identStr = typeof l === "string" ? l : l.identifier;
+                                                                        const conf = typeof l === "object" ? l.confidence : "verified";
+                                                                        return (
+                                                                            <div key={lIdx} className="subject-ident-chip" title={l.notes || `Linked identifier: ${identStr}`}>
+                                                                                <span>📱 {identStr}</span>
+                                                                                <span className={`subject-confidence-tag ${conf}`}>
+                                                                                    {conf === "verified" ? "🟢 VERIFIED" : conf === "inferred" ? "🟡 INFERRED" : "🟠 SUSPECTED"}
+                                                                                </span>
+                                                                                <button
+                                                                                    type="button"
+                                                                                    className="subject-unlink-btn"
+                                                                                    onClick={() => handleUnlinkIdentifier(part.id, identStr)}
+                                                                                    title={`Unlink ${identStr}`}
+                                                                                >
+                                                                                    ✖
+                                                                                </button>
+                                                                            </div>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            )}
+
+                                                            {/* Cross-Identifier Total Message Count */}
+                                                            <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "0.74rem", color: "var(--text-light)" }}>
+                                                                <span style={{ color: "#3fd8ff" }}>💬</span>
+                                                                <strong style={{ color: "#3fd8ff" }}>
+                                                                    {part.messageCount !== undefined ? part.messageCount.toLocaleString() : 0} total messages
+                                                                </strong>
+                                                                <span style={{ color: "var(--text-muted)", fontSize: "0.7rem" }}>
+                                                                    across {part.allIdentifiers?.length || 1} identifier{(part.allIdentifiers?.length || 1) !== 1 ? "s" : ""}
+                                                                </span>
+                                                            </div>
+
+                                                            {aliases.length > 0 && (
+                                                                <div style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>
+                                                                    Aliases: <span style={{ color: "var(--text-light)" }}>{aliases.join(", ")}</span>
+                                                                </div>
+                                                            )}
+
+                                                            {notes && (
+                                                                <div style={{ 
+                                                                    fontSize: "0.71rem", 
+                                                                    color: "var(--text-muted)", 
+                                                                    background: "rgba(0,0,0,0.3)", 
+                                                                    padding: "4px 8px", 
+                                                                    borderRadius: "4px",
+                                                                    borderLeft: "2px solid var(--accent)"
+                                                                }}>
+                                                                    {notes}
+                                                                </div>
+                                                            )}
+
+                                                            {/* Action Row */}
+                                                            <div style={{ display: "flex", gap: "6px", marginTop: "4px" }}>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => fetchSubjectMessages(part)}
+                                                                    style={{
+                                                                        flex: 1,
+                                                                        padding: "5px 8px",
+                                                                        background: activeSubject?.id === part.id ? "rgba(255, 149, 0, 0.2)" : "rgba(0, 208, 255, 0.08)",
+                                                                        border: activeSubject?.id === part.id ? "1px solid #FF9500" : "1px solid rgba(0, 208, 255, 0.3)",
+                                                                        borderRadius: "5px",
+                                                                        color: activeSubject?.id === part.id ? "#FF9500" : "var(--accent)",
+                                                                        fontSize: "0.74rem",
+                                                                        fontWeight: "700",
+                                                                        cursor: "pointer"
+                                                                    }}
+                                                                    title="Open unified master transcript for this subject across all phone numbers"
+                                                                >
+                                                                    👁️ Subject Timeline
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => setLinkModalTarget(part)}
+                                                                    style={{
+                                                                        padding: "5px 10px",
+                                                                        background: "rgba(255, 255, 255, 0.04)",
+                                                                        border: "1px solid rgba(255, 255, 255, 0.15)",
+                                                                        borderRadius: "5px",
+                                                                        color: "var(--text-light)",
+                                                                        fontSize: "0.74rem",
+                                                                        fontWeight: "600",
+                                                                        cursor: "pointer"
+                                                                    }}
+                                                                    title="Link an additional burner number or handle to this subject"
+                                                                >
+                                                                    🔗 + Link Number
+                                                                </button>
                                                             </div>
                                                         </div>
-
-                                                        <button
-                                                            className="button-link"
-                                                            onClick={() => setTagModalTarget(part)}
-                                                            style={{
-                                                                color: "var(--accent)",
-                                                                border: "1px solid rgba(0, 208, 255, 0.4)",
-                                                                padding: "4px 8px",
-                                                                borderRadius: "5px",
-                                                                fontSize: "0.75rem",
-                                                                fontWeight: "700",
-                                                                cursor: "pointer",
-                                                                background: "rgba(0, 208, 255, 0.06)",
-                                                                whiteSpace: "nowrap"
-                                                            }}
-                                                            title="Tag or edit name, role, and notes for this person"
-                                                        >
-                                                            🏷️ Tag / Edit
-                                                        </button>
-                                                    </div>
-                                                );
-                                            })}
+                                                    );
+                                                })}
                                         </div>
                                     ) : (
                                         <div className="pane-loading-indicator" style={{ color: "var(--text-muted)", padding: "20px" }}>
@@ -2663,6 +2794,18 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                         >
                             Thread View
                         </button>
+                        {activeSubject && (
+                            <button 
+                                className={`pane-tab-btn ${activeRightTab === "subject" ? "active" : ""}`}
+                                onClick={() => setActiveRightTab("subject")}
+                                style={{ 
+                                    color: activeRightTab === "subject" ? "#FF9500" : undefined,
+                                    borderBottom: activeRightTab === "subject" ? "2px solid #FF9500" : undefined
+                                }}
+                            >
+                                👤 Subject Dossier ({activeSubject.name || activeSubject.phoneNumber})
+                            </button>
+                        )}
                         <button 
                             className={`pane-tab-btn ${activeRightTab === "temporal" ? "active" : ""}`}
                             onClick={() => temporalRange && setActiveRightTab("temporal")}
@@ -2677,7 +2820,134 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                     </div>
 
                     <div className="viewer-body-scroll">
-                        {activeRightTab === "day" && selectedDay ? (
+                        {activeRightTab === "subject" && activeSubject ? (
+                            subjectMessagesLoading ? (
+                                <div className="pane-loading-indicator">LOADING SUBJECT DOSSIER TRANSCRIPT...</div>
+                            ) : (
+                                <div style={{ display: "flex", flexDirection: "column", gap: "12px", padding: "4px" }}>
+                                    {/* Subject Dossier Header */}
+                                    <div className="subject-dossier-header">
+                                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "10px" }}>
+                                            <div>
+                                                <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", marginBottom: "4px" }}>
+                                                    <span style={{ fontSize: "1.1rem" }}>👤</span>
+                                                    <strong style={{ fontSize: "1.05rem", color: "#FFF" }}>{activeSubject.name || "Subject Dossier"}</strong>
+                                                    {getParticipantRoleBadge(activeSubject.phoneNumber || activeSubject.name)}
+                                                </div>
+                                                <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginBottom: "4px" }}>
+                                                    Primary Identifier: <span style={{ fontFamily: "var(--font-mono)", color: "#FF9500" }}>{activeSubject.phoneNumber || activeSubject.name}</span>
+                                                    {activeSubject.allIdentifiers?.length > 1 && (
+                                                        <span style={{ marginLeft: "8px" }}>
+                                                            • {activeSubject.allIdentifiers.length} Associated Identifiers ({activeSubject.allIdentifiers.join(", ")})
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>
+                                                    Master Chronological Transcript ({subjectMessages.length} messages across all devices)
+                                                </div>
+                                            </div>
+                                            <div style={{ display: "flex", gap: "6px" }}>
+                                                <button
+                                                    type="button"
+                                                    className="search-card-btn view-btn"
+                                                    onClick={() => window.print()}
+                                                    title="Print Subject Transcript (PDF)"
+                                                    style={{ padding: "5px 10px", fontSize: "0.74rem" }}
+                                                >
+                                                    🖨️ Print Dossier
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="button-link"
+                                                    onClick={() => setLinkModalTarget(activeSubject)}
+                                                    style={{
+                                                        color: "var(--accent)",
+                                                        border: "1px solid rgba(0, 208, 255, 0.4)",
+                                                        padding: "5px 10px",
+                                                        borderRadius: "5px",
+                                                        fontSize: "0.74rem",
+                                                        fontWeight: "700",
+                                                        background: "rgba(0, 208, 255, 0.08)"
+                                                    }}
+                                                >
+                                                    🔗 Link Number
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Subject Message Stream */}
+                                    {subjectMessages.length > 0 ? (
+                                        <div className="conversation-message-stream" style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                                            {subjectMessages.map(msg => {
+                                                const isSent = msg.direction === "sent";
+                                                return (
+                                                    <div
+                                                        key={msg.id}
+                                                        id={`msg-${msg.id}`}
+                                                        className={`message-bubble ${isSent ? "sent" : "received"}`}
+                                                        style={{ position: "relative", maxWidth: "88%" }}
+                                                    >
+                                                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+                                                            <span className="subject-msg-origin-tag">
+                                                                💬 {msg.conversationTitle || "SMS"}
+                                                            </span>
+                                                            <span style={{ fontSize: "0.7rem", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+                                                                {formatFullTimestamp(msg.timestamp)}
+                                                            </span>
+                                                        </div>
+                                                        <div style={{ fontSize: "0.72rem", color: isSent ? "rgba(255,255,255,0.7)" : "#3fd8ff", marginBottom: "4px", fontFamily: "var(--font-mono)" }}>
+                                                            {isSent ? `↗ Me ➔ ${msg.recipient}` : `↙ ${msg.sender} ➔ Me`}
+                                                        </div>
+                                                        <div style={{ fontSize: "0.86rem", lineHeight: "1.4", wordBreak: "break-word" }}>
+                                                            {msg.body}
+                                                        </div>
+                                                        <div style={{ display: "flex", justifyContent: "flex-end", gap: "6px", marginTop: "6px" }}>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleTimelineMessageSelect(msg)}
+                                                                style={{
+                                                                    background: "none",
+                                                                    border: "none",
+                                                                    color: "var(--text-muted)",
+                                                                    fontSize: "0.7rem",
+                                                                    cursor: "pointer",
+                                                                    padding: "2px 4px"
+                                                                }}
+                                                                title="Jump to timeline moment"
+                                                            >
+                                                                📍 Locate
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setCorrelatePivotMessage(msg)}
+                                                                style={{
+                                                                    background: "rgba(0, 208, 255, 0.12)",
+                                                                    border: "1px solid rgba(0, 208, 255, 0.3)",
+                                                                    color: "var(--accent)",
+                                                                    fontSize: "0.68rem",
+                                                                    fontWeight: "700",
+                                                                    borderRadius: "4px",
+                                                                    cursor: "pointer",
+                                                                    padding: "2px 6px"
+                                                                }}
+                                                                title="Find contemporaneous activity across all devices at this second"
+                                                            >
+                                                                ⚡ Correlate
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    ) : (
+                                        <div className="pane-loading-indicator" style={{ color: "var(--text-muted)", padding: "30px 0" }}>
+                                            NO MESSAGES FOUND FOR THIS SUBJECT IN SELECTED TIME RANGE.
+                                        </div>
+                                    )}
+                                </div>
+                            )
+                        ) : activeRightTab === "day" && selectedDay ? (
                             /* Day chronological list */
                             dayEventsLoading ? (
                                 <div className="pane-loading-indicator">RETRIEVING EVENTS...</div>
@@ -3600,6 +3870,22 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                     </div>
                 </div>
             )}
+
+            {/* Multi-Identifier Subject Linking Modal */}
+            <LinkIdentifierModal
+                isOpen={Boolean(linkModalTarget)}
+                subject={linkModalTarget}
+                threadlineId={threadline.id}
+                availableIdentifiers={availableIdentifiers}
+                uid={uid}
+                onClose={() => setLinkModalTarget(null)}
+                onLinked={async () => {
+                    await fetchParticipants();
+                    if (activeSubject && activeSubject.id === linkModalTarget?.id) {
+                        fetchSubjectMessages(linkModalTarget);
+                    }
+                }}
+            />
 
             {/* Forensic Person & Phone Tagging Modal */}
             <PersonTagModal
