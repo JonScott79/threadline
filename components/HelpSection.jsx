@@ -1,27 +1,33 @@
 /*
     HelpSection.jsx
 
-    Threadline Investigative Help Center & Standard Operating Procedures.
+    Threadline Investigative Help Center & Forensic Standard Operating Procedures.
     Provides comprehensive documentation for:
     - End-to-end forensic communications analysis workflow
-    - Multi-Track Swimlanes (By Log, By Conversation, Unified) & Hover HUD
-    - Forensic Person Tagging, Role Badges & People Tab
-    - Temporal Windowing, Alibi Verification & Evidence Export
-    - Chain of custody, standalone .tl files, and supported evidence formats
+    - Multi-Track Swimlanes (By Log, By Conversation, Unified) & Evidence Log Isolation Filters
+    - Synchronized Cross-Track Laser Cursor with Freeze Lock ('L' key)
+    - Contemporaneous Activity Co-Occurrence Matrix (Sliding-Window Correlation)
+    - Multi-Identifier Subject Disambiguation & Burner Number Linking
+    - Universal Ingestion Audit, Provenance & SHA-256 Cryptographic Hashes
+    - Courtroom Trial Exhibit Generator with Cryptographic Bates Stamping
+    - Chain of Custody, Standalone .tl Case Archives, and Supported Evidence Formats
 */
-
-// =====================================
-// Imports
-// =====================================
 
 import { useState } from "react";
 
-// =====================================
-// Component
-// =====================================
-
 function HelpSection({ onBack = null }) {
     const [activeTab, setActiveTab] = useState("workflow");
+
+    const tabs = [
+        { id: "workflow", icon: "🧭", label: "Investigative Workflow" },
+        { id: "timeline", icon: "⏱️", label: "Timeline, Swimlanes & Laser" },
+        { id: "cooccurrence", icon: "⚡", label: "Contemporaneous Matrix" },
+        { id: "disambiguation", icon: "👤", label: "Disambiguation & Entities" },
+        { id: "audit", icon: "🔍", label: "Ingestion Audit & Hashes" },
+        { id: "courtroom", icon: "⚖️", label: "Bates Stamping & Exhibits" },
+        { id: "formats", icon: "📄", label: "Supported Formats" },
+        { id: "sop", icon: "💡", label: "Forensic SOP & Best Practices" }
+    ];
 
     return (
         <div style={{ maxWidth: "1280px", margin: "0 auto", padding: "28px 24px", color: "var(--text)" }}>
@@ -33,8 +39,8 @@ function HelpSection({ onBack = null }) {
                             src="/logo-icon.png" 
                             alt="Threadline" 
                             style={{ 
-                                width: "32px", 
-                                height: "32px", 
+                                width: "34px", 
+                                height: "34px", 
                                 borderRadius: "8px",
                                 boxShadow: "0 2px 10px rgba(63, 216, 255, 0.3)",
                                 flexShrink: 0 
@@ -45,7 +51,7 @@ function HelpSection({ onBack = null }) {
                         </h2>
                     </div>
                     <p style={{ color: "var(--text-muted)", fontSize: "0.88rem", margin: 0 }}>
-                        Forensic Communications Analysis, Multi-Track Timeline Reconstruction & Evidence SOP
+                        Digital Forensics Standard Operating Procedures, Multi-Device Correlation & Courtroom Evidence Guide
                     </p>
                 </div>
                 {onBack && (
@@ -54,45 +60,45 @@ function HelpSection({ onBack = null }) {
                         onClick={onBack}
                         style={{ padding: "9px 22px", fontSize: "0.82rem", fontWeight: "600", letterSpacing: "0.5px", height: "38px", display: "flex", alignItems: "center", gap: "6px" }}
                     >
-                        <span>&larr;</span> BACK TO WORKSPACE
+                        <span>&larr;</span> BACK TO CASE WORKSPACE
                     </button>
                 )}
             </div>
 
             {/* Forensic Architecture Hero Banner */}
-            <section className="panel hero" style={{ padding: "24px 28px", marginBottom: "24px", background: "linear-gradient(135deg, rgba(20, 29, 38, 0.95) 0%, rgba(16, 24, 32, 0.98) 100%)", border: "1px solid rgba(63, 216, 255, 0.25)", borderRadius: "8px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "12px" }}>
-                    <span style={{ fontSize: "1.3rem" }}>🛡️</span>
+            <section className="panel hero" style={{ padding: "22px 26px", marginBottom: "24px", background: "linear-gradient(135deg, rgba(20, 29, 38, 0.95) 0%, rgba(16, 24, 32, 0.98) 100%)", border: "1px solid rgba(63, 216, 255, 0.25)", borderRadius: "8px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "10px" }}>
+                    <span style={{ fontSize: "1.4rem" }}>🛡️</span>
                     <h3 style={{ fontSize: "1.15rem", fontWeight: "700", color: "var(--text)", margin: 0, letterSpacing: "0.5px" }}>
-                        Digital Evidence Integrity & Forensic Architecture
+                        Local-First Forensic Communications Intelligence
                     </h3>
                 </div>
-                <p style={{ color: "var(--text-light)", fontSize: "0.9rem", lineHeight: "1.65", margin: "0 0 16px 0", textAlign: "left" }}>
-                    Threadline is an offline, local-first forensic communications analysis system designed to ingest, normalize, and visually synchronize disparate electronic communication records. By unifying SMS extractions, encrypted messaging exports, carrier logs, emails, PDF transcripts, and screenshot OCR into synchronized multi-track timelines, investigators can establish communication patterns, verify alibis, and isolate critical evidentiary exchanges with complete chain of custody.
+                <p style={{ color: "var(--text-light)", fontSize: "0.88rem", lineHeight: "1.65", margin: "0 0 16px 0", textAlign: "left" }}>
+                    Threadline is an offline, air-gapped forensic communications analysis workstation built to ingest, synchronize, and correlate multi-device extraction records. By linking extraction logs, carrier CDRs, encrypted chats, and document transcripts into synchronized multi-track timelines, investigators can verify alibis, uncover co-conspirator communications across alternate handles, and generate cryptographically sealed courtroom trial exhibits.
                 </p>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "14px", marginTop: "16px" }}>
-                    <div style={{ padding: "12px 16px", background: "rgba(63, 216, 255, 0.05)", border: "1px solid rgba(63, 216, 255, 0.2)", borderRadius: "6px" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "12px", marginTop: "14px" }}>
+                    <div style={{ padding: "12px 14px", background: "rgba(63, 216, 255, 0.05)", border: "1px solid rgba(63, 216, 255, 0.2)", borderRadius: "6px" }}>
                         <div style={{ color: "var(--accent)", fontWeight: "700", fontSize: "0.82rem", marginBottom: "4px", display: "flex", alignItems: "center", gap: "6px" }}>
-                            <span>🔒</span> 100% LOCAL-FIRST / CJIS SAFE
+                            <span>🔒</span> 100% AIR-GAPPED & CJIS SAFE
                         </div>
                         <div style={{ color: "var(--text-muted)", fontSize: "0.78rem", lineHeight: "1.45" }}>
-                            All evidence ingestion, parsing, database operations, and search indexing occur strictly on your authorized local machine. No records or PII are transmitted to external cloud APIs.
+                            All parsing, SQLite indexing, semantic keyword matching, and SHA-256 verification run entirely in your local environment. Zero external API leaks.
                         </div>
                     </div>
-                    <div style={{ padding: "12px 16px", background: "rgba(66, 211, 146, 0.05)", border: "1px solid rgba(66, 211, 146, 0.2)", borderRadius: "6px" }}>
+                    <div style={{ padding: "12px 14px", background: "rgba(66, 211, 146, 0.05)", border: "1px solid rgba(66, 211, 146, 0.2)", borderRadius: "6px" }}>
                         <div style={{ color: "var(--success)", fontWeight: "700", fontSize: "0.82rem", marginBottom: "4px", display: "flex", alignItems: "center", gap: "6px" }}>
-                            <span>📁</span> STANDALONE CASE FILES (.TL)
+                            <span>⚡</span> CO-OCCURRENCE MATRIX
                         </div>
                         <div style={{ color: "var(--text-muted)", fontSize: "0.78rem", lineHeight: "1.45" }}>
-                            Portable SQLite archives sealed with SHA-256 tamper-resistant checksums. Easily transferred between detectives, digital forensics examiners, and prosecuting attorneys.
+                            Detects contemporaneous communications across multiple suspect and courier devices within configurable temporal windows (&plusmn;30s to &plusmn;1h).
                         </div>
                     </div>
-                    <div style={{ padding: "12px 16px", background: "rgba(247, 201, 75, 0.05)", border: "1px solid rgba(247, 201, 75, 0.2)", borderRadius: "6px" }}>
-                        <div style={{ color: "var(--warning)", fontWeight: "700", fontSize: "0.82rem", marginBottom: "4px", display: "flex", alignItems: "center", gap: "6px" }}>
-                            <span>⏱️</span> MULTI-TRACK SWIMLANES
+                    <div style={{ padding: "12px 14px", background: "rgba(255, 159, 10, 0.05)", border: "1px solid rgba(255, 159, 10, 0.2)", borderRadius: "6px" }}>
+                        <div style={{ color: "#ff9f0a", fontWeight: "700", fontSize: "0.82rem", marginBottom: "4px", display: "flex", alignItems: "center", gap: "6px" }}>
+                            <span>⚖️</span> CRYPTOGRAPHIC BATES STAMPING
                         </div>
                         <div style={{ color: "var(--text-muted)", fontSize: "0.78rem", lineHeight: "1.45" }}>
-                            Continuous timeline with parallel swimlanes per extraction log or conversation, directional node arrows (↗/↙), and instant hover popover HUDs.
+                            Automated, customizable Bates numbering with agency headers and SHA-256 digital seals for direct admissibility in court.
                         </div>
                     </div>
                 </div>
@@ -100,284 +106,245 @@ function HelpSection({ onBack = null }) {
 
             {/* Navigation Tabs */}
             <div style={{ display: "flex", gap: "8px", marginBottom: "22px", borderBottom: "1px solid var(--border)", paddingBottom: "12px", flexWrap: "wrap" }}>
-                <button
-                    type="button"
-                    onClick={() => setActiveTab("workflow")}
-                    style={{
-                        padding: "8px 18px",
-                        fontSize: "0.84rem",
-                        fontWeight: "600",
-                        borderRadius: "6px",
-                        border: activeTab === "workflow" ? "1px solid var(--accent)" : "1px solid var(--border)",
-                        background: activeTab === "workflow" ? "rgba(63, 216, 255, 0.12)" : "transparent",
-                        color: activeTab === "workflow" ? "var(--accent)" : "var(--text-muted)",
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "6px"
-                    }}
-                >
-                    <span>🧭</span> Investigative Workflow
-                </button>
-                <button
-                    type="button"
-                    onClick={() => setActiveTab("timeline")}
-                    style={{
-                        padding: "8px 18px",
-                        fontSize: "0.84rem",
-                        fontWeight: "600",
-                        borderRadius: "6px",
-                        border: activeTab === "timeline" ? "1px solid var(--accent)" : "1px solid var(--border)",
-                        background: activeTab === "timeline" ? "rgba(63, 216, 255, 0.12)" : "transparent",
-                        color: activeTab === "timeline" ? "var(--accent)" : "var(--text-muted)",
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "6px"
-                    }}
-                >
-                    <span>⏱️</span> Timeline & Swimlanes
-                </button>
-                <button
-                    type="button"
-                    onClick={() => setActiveTab("tagging")}
-                    style={{
-                        padding: "8px 18px",
-                        fontSize: "0.84rem",
-                        fontWeight: "600",
-                        borderRadius: "6px",
-                        border: activeTab === "tagging" ? "1px solid var(--accent)" : "1px solid var(--border)",
-                        background: activeTab === "tagging" ? "rgba(63, 216, 255, 0.12)" : "transparent",
-                        color: activeTab === "tagging" ? "var(--accent)" : "var(--text-muted)",
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "6px"
-                    }}
-                >
-                    <span>🏷️</span> Person Tagging & Roles
-                </button>
-                <button
-                    type="button"
-                    onClick={() => setActiveTab("formats")}
-                    style={{
-                        padding: "8px 18px",
-                        fontSize: "0.84rem",
-                        fontWeight: "600",
-                        borderRadius: "6px",
-                        border: activeTab === "formats" ? "1px solid var(--accent)" : "1px solid var(--border)",
-                        background: activeTab === "formats" ? "rgba(63, 216, 255, 0.12)" : "transparent",
-                        color: activeTab === "formats" ? "var(--accent)" : "var(--text-muted)",
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "6px"
-                    }}
-                >
-                    <span>📄</span> Evidence Formats
-                </button>
-                <button
-                    type="button"
-                    onClick={() => setActiveTab("custody")}
-                    style={{
-                        padding: "8px 18px",
-                        fontSize: "0.84rem",
-                        fontWeight: "600",
-                        borderRadius: "6px",
-                        border: activeTab === "custody" ? "1px solid var(--accent)" : "1px solid var(--border)",
-                        background: activeTab === "custody" ? "rgba(63, 216, 255, 0.12)" : "transparent",
-                        color: activeTab === "custody" ? "var(--accent)" : "var(--text-muted)",
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "6px"
-                    }}
-                >
-                    <span>⚖️</span> Chain of Custody & Court
-                </button>
-                <button
-                    type="button"
-                    onClick={() => setActiveTab("tips")}
-                    style={{
-                        padding: "8px 18px",
-                        fontSize: "0.84rem",
-                        fontWeight: "600",
-                        borderRadius: "6px",
-                        border: activeTab === "tips" ? "1px solid var(--accent)" : "1px solid var(--border)",
-                        background: activeTab === "tips" ? "rgba(63, 216, 255, 0.12)" : "transparent",
-                        color: activeTab === "tips" ? "var(--accent)" : "var(--text-muted)",
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "6px"
-                    }}
-                >
-                    <span>💡</span> Tips & SOP
-                </button>
+                {tabs.map(t => (
+                    <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => setActiveTab(t.id)}
+                        style={{
+                            padding: "8px 16px",
+                            fontSize: "0.82rem",
+                            fontWeight: "600",
+                            borderRadius: "6px",
+                            border: activeTab === t.id ? "1px solid var(--accent)" : "1px solid var(--border)",
+                            background: activeTab === t.id ? "rgba(63, 216, 255, 0.12)" : "transparent",
+                            color: activeTab === t.id ? "var(--accent)" : "var(--text-muted)",
+                            cursor: "pointer",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "6px"
+                        }}
+                    >
+                        <span>{t.icon}</span> {t.label}
+                    </button>
+                ))}
             </div>
 
-            {/* TAB 1: WORKFLOW */}
+            {/* TAB 1: INVESTIGATIVE WORKFLOW */}
             {activeTab === "workflow" && (
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "16px" }}>
-                    <div className="preview-card" style={{ textAlign: "left", padding: "22px", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "8px" }}>
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
-                            <span style={{ fontSize: "1.8rem" }}>📥</span>
+                    <div className="preview-card" style={{ textAlign: "left", padding: "20px", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "8px" }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
+                            <span style={{ fontSize: "1.6rem" }}>📁</span>
                             <span style={{ fontSize: "0.75rem", fontFamily: "var(--font-mono)", color: "var(--accent)", background: "rgba(63,216,255,0.1)", padding: "2px 8px", borderRadius: "4px" }}>PHASE 1</span>
                         </div>
-                        <h4 style={{ color: "var(--accent)", fontSize: "1rem", marginBottom: "8px", fontWeight: "700" }}>1. Ingest Extractions & Logs</h4>
+                        <h4 style={{ color: "var(--accent)", fontSize: "0.95rem", marginBottom: "8px", fontWeight: "700" }}>1. Case Setup & Multi-Log Ingestion</h4>
                         <p style={{ fontSize: "0.84rem", color: "var(--text-light)", lineHeight: "1.5" }}>
-                            Click <strong>+ IMPORT</strong> in the upper right. Drag and drop phone extractions (Cellebrite, Oxygen, GrayKey, carrier XML, WhatsApp ZIP, Signal JSON, Email, PDF, or screenshots) or paste raw text transcripts directly into the parser.
+                            Create a dedicated Threadline case (or click <strong>+ IMPORT</strong>). Ingest all seized extractions for the case (Cellebrite UFED, Oxygen, GrayKey, WhatsApp, Signal, carrier CDRs, or screenshot OCR). Every file is automatically hashed with SHA-256 and mapped to its own swimlane.
                         </p>
                     </div>
 
-                    <div className="preview-card" style={{ textAlign: "left", padding: "22px", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "8px" }}>
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
-                            <span style={{ fontSize: "1.8rem" }}>🏷️</span>
+                    <div className="preview-card" style={{ textAlign: "left", padding: "20px", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "8px" }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
+                            <span style={{ fontSize: "1.6rem" }}>👤</span>
                             <span style={{ fontSize: "0.75rem", fontFamily: "var(--font-mono)", color: "var(--accent)", background: "rgba(63,216,255,0.1)", padding: "2px 8px", borderRadius: "4px" }}>PHASE 2</span>
                         </div>
-                        <h4 style={{ color: "var(--accent)", fontSize: "1rem", marginBottom: "8px", fontWeight: "700" }}>2. Tag Suspects & People</h4>
+                        <h4 style={{ color: "var(--accent)", fontSize: "0.95rem", marginBottom: "8px", fontWeight: "700" }}>2. Disambiguation & Alias Linking</h4>
                         <p style={{ fontSize: "0.84rem", color: "var(--text-light)", lineHeight: "1.5" }}>
-                            Switch to the <strong>People</strong> tab or click the tag icon on any raw phone number. Assign real names, investigative roles (<code>SUSPECT</code>, <code>COURIER</code>, <code>BUYER</code>, <code>WITNESS</code>), and operational notes that automatically propagate across all views.
+                            Open the <strong>PEOPLE</strong> tab. Link burner phone numbers, SIM swaps, and chat handles to real-world target identities with confidence ratings. Assign investigative roles (<code>SUSPECT</code>, <code>COURIER</code>, <code>BUYER</code>, <code>WITNESS</code>) that propagate globally across all swimlanes.
                         </p>
                     </div>
 
-                    <div className="preview-card" style={{ textAlign: "left", padding: "22px", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "8px" }}>
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
-                            <span style={{ fontSize: "1.8rem" }}>⏱️</span>
-                            <span style={{ fontSize: "0.75rem", fontFamily: "var(--font-mono)", color: "var(--accent)", background: "rgba(63,216,255,0.1)", padding: "2px 8px", borderRadius: "4px" }}>PHASE 3</span>
+                    <div className="preview-card" style={{ textAlign: "left", padding: "20px", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "8px" }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
+                            <span style={{ fontSize: "1.6rem" }}>⚡</span>
+                            <span style={{ fontSize: "0.75rem", fontFamily: "var(--font-mono)", color: "#ff9f0a", background: "rgba(255,159,10,0.1)", padding: "2px 8px", borderRadius: "4px" }}>PHASE 3</span>
                         </div>
-                        <h4 style={{ color: "var(--accent)", fontSize: "1rem", marginBottom: "8px", fontWeight: "700" }}>3. Multi-Track Swimlane Analysis</h4>
+                        <h4 style={{ color: "#ff9f0a", fontSize: "0.95rem", marginBottom: "8px", fontWeight: "700" }}>3. Laser Crosshair & Co-Occurrence Analysis</h4>
                         <p style={{ fontSize: "0.84rem", color: "var(--text-light)", lineHeight: "1.5" }}>
-                            Switch between <strong>📱 BY LOG</strong> to view extractions side-by-side on parallel lines, or <strong>💬 BY CONVERSATION</strong>. Hover over any bar or event pill to inspect messages instantly with the zero-latency Forensic Popover HUD.
+                            Engage the Synchronized Cross-Track Laser Cursor. Move across suspect swimlanes and press <kbd style={{ background: "rgba(255,255,255,0.1)", padding: "2px 6px", borderRadius: "3px" }}>L</kbd> to freeze on an incriminating message. Click <strong>⚡ CORRELATE</strong> to launch the Contemporaneous Activity Matrix and reveal what co-conspirators sent at that exact time.
                         </p>
                     </div>
 
-                    <div className="preview-card" style={{ textAlign: "left", padding: "22px", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "8px" }}>
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
-                            <span style={{ fontSize: "1.8rem" }}>🔍</span>
+                    <div className="preview-card" style={{ textAlign: "left", padding: "20px", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "8px" }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
+                            <span style={{ fontSize: "1.6rem" }}>🔍</span>
                             <span style={{ fontSize: "0.75rem", fontFamily: "var(--font-mono)", color: "var(--accent)", background: "rgba(63,216,255,0.1)", padding: "2px 8px", borderRadius: "4px" }}>PHASE 4</span>
                         </div>
-                        <h4 style={{ color: "var(--accent)", fontSize: "1rem", marginBottom: "8px", fontWeight: "700" }}>4. Contextual Forensic Search</h4>
+                        <h4 style={{ color: "var(--accent)", fontSize: "0.95rem", marginBottom: "8px", fontWeight: "700" }}>4. Plain-Language Evidence Search</h4>
                         <p style={{ fontSize: "0.84rem", color: "var(--text-light)", lineHeight: "1.5" }}>
-                            Execute multi-word natural queries or keywords (e.g. <em>"drop spot"</em>, <em>"payment"</em>). Matching nodes pulse in neon yellow across the timeline, and results preserve preceding and succeeding messages to prevent out-of-context misinterpretation.
+                            Query keywords and natural phrases (e.g. <em>"drop location"</em>, <em>"wire transfer"</em>, <em>"meet at 10"</em>). Matches highlight in pulsing gold across timeline tracks with complete contextual surrounding dialog preserved.
                         </p>
                     </div>
 
-                    <div className="preview-card" style={{ textAlign: "left", padding: "22px", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "8px" }}>
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
-                            <span style={{ fontSize: "1.8rem" }}>📌</span>
+                    <div className="preview-card" style={{ textAlign: "left", padding: "20px", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "8px" }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
+                            <span style={{ fontSize: "1.6rem" }}>📋</span>
                             <span style={{ fontSize: "0.75rem", fontFamily: "var(--font-mono)", color: "var(--accent)", background: "rgba(63,216,255,0.1)", padding: "2px 8px", borderRadius: "4px" }}>PHASE 5</span>
                         </div>
-                        <h4 style={{ color: "var(--accent)", fontSize: "1rem", marginBottom: "8px", fontWeight: "700" }}>5. Curate Evidence Segments</h4>
+                        <h4 style={{ color: "var(--accent)", fontSize: "0.95rem", marginBottom: "8px", fontWeight: "700" }}>5. Evidence Verification & Ingestion Audit</h4>
                         <p style={{ fontSize: "0.84rem", color: "var(--text-light)", lineHeight: "1.5" }}>
-                            In the message viewer, select incriminating messages and click <strong>Save Segment</strong>. Label each segment to capture its trial significance (e.g., <em>"Order Confirmation 22:14"</em> or <em>"Threat Delivered"</em>).
+                            Inspect the <strong>IMPORTS</strong> tab or launch the Ingestion Audit modal. Verify raw file SHA-256 hashes, earliest/latest parsed timestamps, total message discovery counts, and any parser discrepancies for defensible evidentiary auditing.
                         </p>
                     </div>
 
-                    <div className="preview-card" style={{ textAlign: "left", padding: "22px", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "8px" }}>
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
-                            <span style={{ fontSize: "1.8rem" }}>📦</span>
-                            <span style={{ fontSize: "0.75rem", fontFamily: "var(--font-mono)", color: "var(--accent)", background: "rgba(63,216,255,0.1)", padding: "2px 8px", borderRadius: "4px" }}>PHASE 6</span>
+                    <div className="preview-card" style={{ textAlign: "left", padding: "20px", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "8px" }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
+                            <span style={{ fontSize: "1.6rem" }}>⚖️</span>
+                            <span style={{ fontSize: "0.75rem", fontFamily: "var(--font-mono)", color: "var(--success)", background: "rgba(66,211,146,0.1)", padding: "2px 8px", borderRadius: "4px" }}>PHASE 6</span>
                         </div>
-                        <h4 style={{ color: "var(--accent)", fontSize: "1rem", marginBottom: "8px", fontWeight: "700" }}>6. Export Court-Ready Exhibit</h4>
+                        <h4 style={{ color: "var(--success)", fontSize: "0.95rem", marginBottom: "8px", fontWeight: "700" }}>6. Bates Stamping & Courtroom Exhibits</h4>
                         <p style={{ fontSize: "0.84rem", color: "var(--text-light)", lineHeight: "1.5" }}>
-                            Click <strong>📦 EXPORT CASE</strong> to package the sealed <code>.tl</code> database file with SHA-256 verification hash, or generate trial-ready PDF/JSON exhibits with complete context chains.
+                            Click <strong>⚖️ TRIAL EXHIBIT</strong> to generate formal court exhibits. Configure custom Bates numbering (e.g. <code>STATE-EXHIBIT-000001</code>), select evidence threads or contemporaneous windows, and print/export court-admissible records with cryptographic verification seals.
                         </p>
                     </div>
                 </div>
             )}
 
-            {/* TAB 2: TIMELINE & SWIMLANES */}
+            {/* TAB 2: TIMELINE, SWIMLANES & LASER SYNC */}
             {activeTab === "timeline" && (
                 <div style={{ display: "flex", flexDirection: "column", gap: "18px" }}>
                     <div style={{ padding: "22px", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "8px" }}>
                         <h4 style={{ color: "var(--accent)", fontSize: "1.05rem", fontWeight: "700", marginBottom: "12px", display: "flex", alignItems: "center", gap: "8px" }}>
-                            <span>⏱️</span> Multi-Track Swimlanes (Parallel Line Modes)
+                            <span>⏱️</span> Parallel Swimlanes & Evidence Log Isolation
                         </h4>
                         <p style={{ color: "var(--text-light)", fontSize: "0.88rem", lineHeight: "1.6", margin: "0 0 14px 0" }}>
-                            Use the <strong>SWIMLANES</strong> mode switcher on the timeline header to toggle between three visual representations:
+                            Threadline replaces cluttered single-line charts with dedicated multi-device horizontal swimlanes:
                         </p>
                         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "14px" }}>
                             <div style={{ padding: "14px", background: "rgba(255,255,255,0.02)", border: "1px solid var(--border)", borderRadius: "6px" }}>
                                 <strong style={{ color: "var(--accent)", fontSize: "0.85rem", display: "block", marginBottom: "4px" }}>📱 BY LOG (Multi-Device Swimlanes)</strong>
                                 <span style={{ color: "var(--text-muted)", fontSize: "0.8rem", lineHeight: "1.45" }}>
-                                    Each uploaded extraction log (e.g. suspect phone, courier phone, victim backup) gets its <strong>own horizontal line</strong>. Allows instant identification of what different parties were doing at the exact same minute.
+                                    Each imported evidence log (e.g. Suspect iPhone, Courier Android, Victim CDR) is rendered on its own dedicated horizontal track. Compare temporal behavior side-by-side.
                                 </span>
                             </div>
                             <div style={{ padding: "14px", background: "rgba(255,255,255,0.02)", border: "1px solid var(--border)", borderRadius: "6px" }}>
-                                <strong style={{ color: "#ff9500", fontSize: "0.85rem", display: "block", marginBottom: "4px" }}>💬 BY CONVERSATION</strong>
+                                <strong style={{ color: "#ff9f0a", fontSize: "0.85rem", display: "block", marginBottom: "4px" }}>💬 BY CONVERSATION</strong>
                                 <span style={{ color: "var(--text-muted)", fontSize: "0.8rem", lineHeight: "1.45" }}>
-                                    Plots each chat thread onto an independent horizontal track with participant badges and total message counts on the left axis.
+                                    Plots individual chat threads on separate horizontal lanes. Shows message counts, participant names, and start/end dates along the vertical axis.
                                 </span>
                             </div>
                             <div style={{ padding: "14px", background: "rgba(255,255,255,0.02)", border: "1px solid var(--border)", borderRadius: "6px" }}>
                                 <strong style={{ color: "var(--text)", fontSize: "0.85rem", display: "block", marginBottom: "4px" }}>📊 UNIFIED STREAM</strong>
                                 <span style={{ color: "var(--text-muted)", fontSize: "0.8rem", lineHeight: "1.45" }}>
-                                    Consolidates all messages into a single aggregate activity distribution waveform for macro-level pattern recognition across years or months.
+                                    Aggregates all selected messages into a single temporal distribution waveform for macro pattern analysis across months or years.
                                 </span>
                             </div>
+                        </div>
+
+                        {/* Log Isolation Checkboxes */}
+                        <div style={{ marginTop: "16px", padding: "14px", background: "rgba(63, 216, 255, 0.04)", border: "1px solid rgba(63, 216, 255, 0.2)", borderRadius: "6px" }}>
+                            <strong style={{ color: "var(--accent)", fontSize: "0.85rem", display: "block", marginBottom: "6px" }}>
+                                🔘 Evidence Log Isolation Checkboxes:
+                            </strong>
+                            <p style={{ color: "var(--text-muted)", fontSize: "0.82rem", lineHeight: "1.5", margin: 0 }}>
+                                When viewing cases with multiple extractions, Threadline renders <strong>LOGS IN CASE:</strong> checkboxes right on the timeline bar. Check or uncheck any individual log (e.g., hide a massive 20,000-message carrier log while examining a specific phone extraction) to instantly declutter your workspace without deleting data.
+                            </p>
                         </div>
                     </div>
 
                     <div style={{ padding: "22px", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "8px" }}>
-                        <h4 style={{ color: "var(--accent)", fontSize: "1.05rem", fontWeight: "700", marginBottom: "12px", display: "flex", alignItems: "center", gap: "8px" }}>
-                            <span>⚡</span> Zero-Latency Forensic Hover Popover HUD
+                        <h4 style={{ color: "#ff9f0a", fontSize: "1.05rem", fontWeight: "700", marginBottom: "12px", display: "flex", alignItems: "center", gap: "8px" }}>
+                            <span>⚡</span> Synchronized Cross-Track Laser Cursor with Freeze Lock
                         </h4>
                         <p style={{ color: "var(--text-light)", fontSize: "0.88rem", lineHeight: "1.6", margin: "0 0 14px 0" }}>
-                            Hovering your mouse over any bar or message node on the timeline triggers an immediate glassmorphic card with full intelligence context:
+                            The Cross-Track Laser Cursor cuts vertically across all active swimlanes simultaneously to provide absolute temporal alignment:
                         </p>
-                        <ul style={{ color: "var(--text-muted)", fontSize: "0.84rem", lineHeight: "1.6", paddingLeft: "20px", margin: 0 }}>
-                            <li><strong>Direction Indicator:</strong> High-contrast badges distinguishing <code>↗ OUTGOING</code> (Amber) from <code>↙ INCOMING</code> (Electric Cyan).</li>
-                            <li><strong>Sender & Recipient Alignment:</strong> Identifies who sent the message, who received it, and displays custom investigator tags (e.g. <code>SUSPECT</code>, <code>COURIER</code>).</li>
-                            <li><strong>Source Identification:</strong> Displays the source file name (e.g. <code>📄 phone_extraction_marcus.json</code>) or chat thread title.</li>
-                            <li><strong>Timestamp Down to the Second:</strong> Exact localized timestamp without rounding or approximation.</li>
-                            <li><strong>Message Content Bubble:</strong> Displays the full text quote so you can read exchanges without leaving the temporal view.</li>
+                        <ul style={{ color: "var(--text-muted)", fontSize: "0.84rem", lineHeight: "1.6", paddingLeft: "20px", margin: "0 0 14px 0" }}>
+                            <li><strong>Continuous Crosshair:</strong> A high-visibility cyan beam tracks your mouse cursor across every device track, displaying the exact second at the bottom ruler.</li>
+                            <li><strong>Lock / Freeze Beam (<kbd style={{ background: "rgba(255,255,255,0.1)", padding: "2px 6px", borderRadius: "3px" }}>L</kbd> Key):</strong> Press <kbd style={{ background: "rgba(255,255,255,0.1)", padding: "2px 6px", borderRadius: "3px" }}>L</kbd> or click the timeline to lock the laser in place (turning amber). You can then safely move your mouse to click <strong>⚡ CORRELATE</strong> or inspect surrounding data.</li>
+                            <li><strong>Hover Popover HUD:</strong> Hovering any message node opens an instant glassmorphic HUD showing direction (<code>↗ OUTGOING</code> / <code>↙ INCOMING</code>), sender/recipient names, investigative tags, and full text body.</li>
                         </ul>
                     </div>
 
                     <div style={{ padding: "22px", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "8px" }}>
                         <h4 style={{ color: "var(--accent)", fontSize: "1.05rem", fontWeight: "700", marginBottom: "12px", display: "flex", alignItems: "center", gap: "8px" }}>
-                            <span>⏱️</span> Custom Drag-Range & Alibi Windows
+                            <span>⏱️</span> Drag-to-Select Alibi Window
                         </h4>
-                        <p style={{ color: "var(--text-light)", fontSize: "0.88rem", lineHeight: "1.6", margin: "0 0 14px 0" }}>
-                            To isolate an incident timeframe (e.g., robbery window between 14:15 and 14:45):
+                        <p style={{ color: "var(--text-light)", fontSize: "0.88rem", lineHeight: "1.6", margin: "0 0 12px 0" }}>
+                            To isolate an incident timeframe (e.g. robbery window between 14:15 and 14:45):
                         </p>
-                        <ul style={{ color: "var(--text-muted)", fontSize: "0.84rem", lineHeight: "1.6", paddingLeft: "20px", margin: 0 }}>
-                            <li>Click <strong>⏱️ SELECT RANGE</strong> on the timeline header (or hold the <code>Shift</code> key).</li>
-                            <li>Click and drag across the timeline across any swimlane.</li>
-                            <li>The selected period will be locked as the active <strong>Temporal Window</strong>, displaying all communications across all suspect phones in that exact window under the <em>Temporal Window</em> tab.</li>
-                        </ul>
+                        <ol style={{ color: "var(--text-muted)", fontSize: "0.84rem", lineHeight: "1.6", paddingLeft: "20px", margin: 0 }}>
+                            <li>Click <strong>⏱️ SELECT RANGE</strong> on the timeline header (or hold the <kbd style={{ background: "rgba(255,255,255,0.1)", padding: "2px 6px", borderRadius: "3px" }}>Shift</kbd> key).</li>
+                            <li>Click and drag across the timeline over the incident duration.</li>
+                            <li>The selected period is locked as the active <strong>Temporal Window</strong>, filtering search queries and day activities across all suspect phones.</li>
+                        </ol>
                     </div>
                 </div>
             )}
 
-            {/* TAB 3: PERSON TAGGING */}
-            {activeTab === "tagging" && (
+            {/* TAB 3: CONTEMPORANEOUS MATRIX */}
+            {activeTab === "cooccurrence" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "18px" }}>
+                    <div style={{ padding: "22px", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "8px" }}>
+                        <h4 style={{ color: "#ff9f0a", fontSize: "1.05rem", fontWeight: "700", marginBottom: "12px", display: "flex", alignItems: "center", gap: "8px" }}>
+                            <span>⚡</span> Contemporaneous Activity Co-Occurrence Matrix
+                        </h4>
+                        <p style={{ color: "var(--text-light)", fontSize: "0.88rem", lineHeight: "1.6", margin: "0 0 14px 0" }}>
+                            A decisive competitive capability over legacy forensics tools like Cellebrite Pathfinder and Magnet AXIOM: discovering hidden coordination when bad actors message back and forth across different apps or switch devices during an operation.
+                        </p>
+
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "14px", marginTop: "12px" }}>
+                            <div style={{ padding: "14px", background: "rgba(255,255,255,0.02)", border: "1px solid var(--border)", borderRadius: "6px" }}>
+                                <strong style={{ color: "var(--accent)", fontSize: "0.85rem", display: "block", marginBottom: "4px" }}>1. Launch from Laser or Header</strong>
+                                <span style={{ color: "var(--text-muted)", fontSize: "0.8rem", lineHeight: "1.45" }}>
+                                    Position the Laser Cursor over any key event, freeze it with <kbd style={{ background: "rgba(255,255,255,0.1)", padding: "2px 6px", borderRadius: "3px" }}>L</kbd>, and click <strong>⚡ CORRELATE</strong>, or click the correlate button on any message in dialog view.
+                                </span>
+                            </div>
+                            <div style={{ padding: "14px", background: "rgba(255,255,255,0.02)", border: "1px solid var(--border)", borderRadius: "6px" }}>
+                                <strong style={{ color: "var(--accent)", fontSize: "0.85rem", display: "block", marginBottom: "4px" }}>2. Configurable Window (&Delta;t)</strong>
+                                <span style={{ color: "var(--text-muted)", fontSize: "0.8rem", lineHeight: "1.45" }}>
+                                    Select your correlation tolerance: <strong>&plusmn;30 seconds</strong> (hot exchange), <strong>&plusmn;1 minute</strong>, <strong>&plusmn;5 minutes</strong>, <strong>&plusmn;15 minutes</strong>, or <strong>&plusmn;1 hour</strong>.
+                                </span>
+                            </div>
+                            <div style={{ padding: "14px", background: "rgba(255,255,255,0.02)", border: "1px solid var(--border)", borderRadius: "6px" }}>
+                                <strong style={{ color: "var(--accent)", fontSize: "0.85rem", display: "block", marginBottom: "4px" }}>3. Device Activity Breakdown</strong>
+                                <span style={{ color: "var(--text-muted)", fontSize: "0.8rem", lineHeight: "1.45" }}>
+                                    Displays total co-occurring message counts grouped by device and conversation, exposing secondary channels being used at the exact same moment.
+                                </span>
+                            </div>
+                        </div>
+
+                        <div style={{ marginTop: "16px", padding: "14px", background: "rgba(255, 159, 10, 0.05)", border: "1px solid rgba(255, 159, 10, 0.2)", borderRadius: "6px" }}>
+                            <strong style={{ color: "#ff9f0a", fontSize: "0.85rem", display: "block", marginBottom: "6px" }}>
+                                💡 Investigative Use Case:
+                            </strong>
+                            <p style={{ color: "var(--text-muted)", fontSize: "0.82rem", lineHeight: "1.5", margin: 0 }}>
+                                Suspect A texts Victim: <em>"Where are you?"</em> at 19:42:10. By correlating at &plusmn;1m, the matrix instantly flags Suspect A sending a Signal message to Suspect B at 19:42:35 saying: <em>"Target is walking in now"</em>. This establishes clear contemporaneous intent and conspiracy.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* TAB 4: DISAMBIGUATION & ENTITIES */}
+            {activeTab === "disambiguation" && (
                 <div style={{ display: "flex", flexDirection: "column", gap: "18px" }}>
                     <div style={{ padding: "22px", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "8px" }}>
                         <h4 style={{ color: "var(--accent)", fontSize: "1.05rem", fontWeight: "700", marginBottom: "12px", display: "flex", alignItems: "center", gap: "8px" }}>
-                            <span>🏷️</span> Forensic Person Tagging & Custom Roles
+                            <span>👤</span> Multi-Identifier Subject Disambiguation & Alias Linking
                         </h4>
                         <p style={{ color: "var(--text-light)", fontSize: "0.88rem", lineHeight: "1.6", margin: "0 0 14px 0" }}>
-                            Police and forensic examiners frequently extract devices containing unassigned numbers, burner contacts, or ambiguous handles. Threadline allows you to tag any raw identifier with verified investigative identity:
+                            Criminal actors routinely switch between burner numbers, multiple SIM cards, WhatsApp, and Telegram handles. Threadline allows you to consolidate multiple digital identities into a single real-world person entity:
                         </p>
+
                         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "14px" }}>
                             <div style={{ padding: "14px", background: "rgba(255,255,255,0.02)", border: "1px solid var(--border)", borderRadius: "6px" }}>
-                                <strong style={{ color: "var(--text)", fontSize: "0.85rem", display: "block", marginBottom: "4px" }}>1. Click the Tag Badge</strong>
+                                <strong style={{ color: "var(--text)", fontSize: "0.85rem", display: "block", marginBottom: "4px" }}>1. Non-Destructive Raw Integrity</strong>
                                 <span style={{ color: "var(--text-muted)", fontSize: "0.8rem", lineHeight: "1.45" }}>
-                                    In any thread list, dialogue bubble, or the <strong>People</strong> tab, click the 🏷️ icon next to any phone number or name.
+                                    Original sender numbers and raw platform IDs are never overwritten in the database. Disambiguation operates as a forensic link layer.
                                 </span>
                             </div>
                             <div style={{ padding: "14px", background: "rgba(255,255,255,0.02)", border: "1px solid var(--border)", borderRadius: "6px" }}>
-                                <strong style={{ color: "var(--text)", fontSize: "0.85rem", display: "block", marginBottom: "4px" }}>2. Assign Real Name & Role</strong>
+                                <strong style={{ color: "var(--text)", fontSize: "0.85rem", display: "block", marginBottom: "4px" }}>2. Confidence Grading</strong>
                                 <span style={{ color: "var(--text-muted)", fontSize: "0.8rem", lineHeight: "1.45" }}>
-                                    Enter the person's confirmed name and choose an investigative role (<code>SUSPECT</code>, <code>COURIER</code>, <code>BUYER</code>, <code>VICTIM</code>, <code>WITNESS</code>, <code>POI</code>).
+                                    Assign evidentiary confidence ratings when linking handles: <strong>Verified</strong> (subpoena/warrant confirmed), <strong>Inferred</strong> (content attribution), or <strong>Suspected</strong>.
                                 </span>
                             </div>
                             <div style={{ padding: "14px", background: "rgba(255,255,255,0.02)", border: "1px solid var(--border)", borderRadius: "6px" }}>
-                                <strong style={{ color: "var(--text)", fontSize: "0.85rem", display: "block", marginBottom: "4px" }}>3. Global Propagation</strong>
+                                <strong style={{ color: "var(--text)", fontSize: "0.85rem", display: "block", marginBottom: "4px" }}>3. Forensic Role Badges</strong>
                                 <span style={{ color: "var(--text-muted)", fontSize: "0.8rem", lineHeight: "1.45" }}>
-                                    The assigned name and glowing role badge instantly update across dialogue threads, day activity lists, and the Timeline Hover HUD cards.
+                                    Tag subjects with standard investigative roles: <code>SUSPECT</code>, <code>COURIER</code>, <code>BUYER</code>, <code>VICTIM</code>, <code>WITNESS</code>, or <code>POI</code>. Badges illuminate across all UI views.
                                 </span>
                             </div>
                         </div>
@@ -385,16 +352,111 @@ function HelpSection({ onBack = null }) {
 
                     <div style={{ padding: "22px", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "8px" }}>
                         <h4 style={{ color: "var(--accent)", fontSize: "1.05rem", fontWeight: "700", marginBottom: "12px", display: "flex", alignItems: "center", gap: "8px" }}>
-                            <span>👥</span> The People Directory Tab
+                            <span>👥</span> How to Link an Alternate Number or Handle
                         </h4>
-                        <p style={{ color: "var(--text-light)", fontSize: "0.88rem", lineHeight: "1.6", margin: "0 0 14px 0" }}>
-                            Click the <strong>PEOPLE</strong> tab in the left explorer panel to view an aggregated roster of all entities discovered across your ingested phone logs. Search by name, phone number, alias, or filter by investigative role.
-                        </p>
+                        <ol style={{ color: "var(--text-muted)", fontSize: "0.84rem", lineHeight: "1.6", paddingLeft: "20px", margin: 0 }}>
+                            <li>Navigate to the <strong>PEOPLE</strong> tab in the left explorer panel.</li>
+                            <li>Locate the target individual and click <strong>🔗 Link Number / Handle</strong> (or click <strong>Edit Profile</strong>).</li>
+                            <li>Enter the secondary phone number, Telegram username, or Instagram handle.</li>
+                            <li>Select your confidence level and enter case notes explaining the basis for attribution.</li>
+                            <li>Click <strong>Link Identifier</strong>. Threadline now associates all historical exchanges from that identifier to this entity!</li>
+                        </ol>
                     </div>
                 </div>
             )}
 
-            {/* TAB 4: FORMATS */}
+            {/* TAB 5: INGESTION AUDIT & HASHES */}
+            {activeTab === "audit" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "18px" }}>
+                    <div style={{ padding: "22px", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "8px" }}>
+                        <h4 style={{ color: "var(--accent)", fontSize: "1.05rem", fontWeight: "700", marginBottom: "12px", display: "flex", alignItems: "center", gap: "8px" }}>
+                            <span>🔍</span> Universal Ingestion Audit & Provenance Inspector
+                        </h4>
+                        <p style={{ color: "var(--text-light)", fontSize: "0.88rem", lineHeight: "1.6", margin: "0 0 14px 0" }}>
+                            Defensibility in digital forensics requires proving the mathematical integrity of imported evidence from the moment of ingestion:
+                        </p>
+
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "14px" }}>
+                            <div style={{ padding: "14px", background: "rgba(255,255,255,0.02)", border: "1px solid var(--border)", borderRadius: "6px" }}>
+                                <strong style={{ color: "var(--accent)", fontSize: "0.85rem", display: "block", marginBottom: "4px" }}>SHA-256 Cryptographic Hashing</strong>
+                                <span style={{ color: "var(--text-muted)", fontSize: "0.8rem", lineHeight: "1.45" }}>
+                                    Upon file receipt, Threadline computes a SHA-256 hash before parsing. The hash is permanently logged in the SQLite audit ledger for cross-examination verification.
+                                </span>
+                            </div>
+                            <div style={{ padding: "14px", background: "rgba(255,255,255,0.02)", border: "1px solid var(--border)", borderRadius: "6px" }}>
+                                <strong style={{ color: "var(--accent)", fontSize: "0.85rem", display: "block", marginBottom: "4px" }}>Discovered vs. Ingested Accounting</strong>
+                                <span style={{ color: "var(--text-muted)", fontSize: "0.8rem", lineHeight: "1.45" }}>
+                                    Complete audit trail tracking total messages found, successfully stored records, and count of skipped/corrupted nodes with detailed error explanations.
+                                </span>
+                            </div>
+                            <div style={{ padding: "14px", background: "rgba(255,255,255,0.02)", border: "1px solid var(--border)", borderRadius: "6px" }}>
+                                <strong style={{ color: "var(--accent)", fontSize: "0.85rem", display: "block", marginBottom: "4px" }}>Provenance Metadata</strong>
+                                <span style={{ color: "var(--text-muted)", fontSize: "0.8rem", lineHeight: "1.45" }}>
+                                    Logs original filename, file size, extraction source, detected platform, and exact temporal boundaries (earliest and latest record timestamp).
+                                </span>
+                            </div>
+                        </div>
+
+                        <div style={{ marginTop: "16px", padding: "14px", background: "rgba(63, 216, 255, 0.04)", border: "1px solid rgba(63, 216, 255, 0.2)", borderRadius: "6px" }}>
+                            <strong style={{ color: "var(--accent)", fontSize: "0.85rem", display: "block", marginBottom: "4px" }}>
+                                Accessing the Ingestion Audit:
+                            </strong>
+                            <p style={{ color: "var(--text-muted)", fontSize: "0.82rem", lineHeight: "1.5", margin: 0 }}>
+                                Click the <strong>IMPORTS</strong> tab in the left explorer panel to view every ingested extraction file and click <strong>🔍 View Audit & SHA-256</strong> to open the full provenance report.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* TAB 6: BATES STAMPING & COURTROOM EXHIBITS */}
+            {activeTab === "courtroom" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "18px" }}>
+                    <div style={{ padding: "22px", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "8px" }}>
+                        <h4 style={{ color: "var(--success)", fontSize: "1.05rem", fontWeight: "700", marginBottom: "12px", display: "flex", alignItems: "center", gap: "8px" }}>
+                            <span>⚖️</span> Courtroom Trial Exhibit & Cryptographic Bates Stamping Generator
+                        </h4>
+                        <p style={{ color: "var(--text-light)", fontSize: "0.88rem", lineHeight: "1.6", margin: "0 0 14px 0" }}>
+                            Transform raw communication databases into court-admissible trial exhibits with standardized Bates numbering, agency headers, and digital custody seals:
+                        </p>
+
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "14px" }}>
+                            <div style={{ padding: "14px", background: "rgba(255,255,255,0.02)", border: "1px solid var(--border)", borderRadius: "6px" }}>
+                                <strong style={{ color: "var(--success)", fontSize: "0.85rem", display: "block", marginBottom: "4px" }}>Sequential Bates Stamping</strong>
+                                <span style={{ color: "var(--text-muted)", fontSize: "0.8rem", lineHeight: "1.45" }}>
+                                    Configure custom prefixes (e.g., <code>STATE-EX-</code>, <code>DEF-BATES-</code>) and starting sequence numbers with 6-digit zero-padding (<code>STATE-EX-000001</code>).
+                                </span>
+                            </div>
+                            <div style={{ padding: "14px", background: "rgba(255,255,255,0.02)", border: "1px solid var(--border)", borderRadius: "6px" }}>
+                                <strong style={{ color: "var(--success)", fontSize: "0.85rem", display: "block", marginBottom: "4px" }}>Agency & Court Header</strong>
+                                <span style={{ color: "var(--text-muted)", fontSize: "0.8rem", lineHeight: "1.45" }}>
+                                    Include Agency Name, Case/Docket Number, Lead Investigator badge, and Title directly on generated exhibit cover sheets.
+                                </span>
+                            </div>
+                            <div style={{ padding: "14px", background: "rgba(255,255,255,0.02)", border: "1px solid var(--border)", borderRadius: "6px" }}>
+                                <strong style={{ color: "var(--success)", fontSize: "0.85rem", display: "block", marginBottom: "4px" }}>Print & PDF Ready</strong>
+                                <span style={{ color: "var(--text-muted)", fontSize: "0.8rem", lineHeight: "1.45" }}>
+                                    Dedicated print CSS produces crisp black-and-white or high-contrast tables suitable for physical trial binders or electronic PDF discovery.
+                                </span>
+                            </div>
+                        </div>
+
+                        <div style={{ marginTop: "16px", padding: "14px", background: "rgba(66, 211, 146, 0.05)", border: "1px solid rgba(66, 211, 146, 0.2)", borderRadius: "6px" }}>
+                            <strong style={{ color: "var(--success)", fontSize: "0.85rem", display: "block", marginBottom: "6px" }}>
+                                📄 How to Generate a Trial Exhibit:
+                            </strong>
+                            <ol style={{ color: "var(--text-muted)", fontSize: "0.82rem", lineHeight: "1.5", margin: 0, paddingLeft: "20px" }}>
+                                <li>In your case workspace, click the <strong>⚖️ TRIAL EXHIBIT</strong> button in the upper right.</li>
+                                <li>Specify your Bates prefix, start number, Agency Name, and Case Number.</li>
+                                <li>Choose your scope: full thread, current temporal alibi range, or bookmarked segments.</li>
+                                <li>Click <strong>🖨️ PRINT / SAVE TO PDF</strong> to generate the formatted legal exhibit.</li>
+                            </ol>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* TAB 7: SUPPORTED FORMATS */}
             {activeTab === "formats" && (
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "14px" }}>
                     <div style={{ padding: "16px", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "8px" }}>
@@ -436,84 +498,42 @@ function HelpSection({ onBack = null }) {
                 </div>
             )}
 
-            {/* TAB 5: CHAIN OF CUSTODY */}
-            {activeTab === "custody" && (
-                <div style={{ display: "flex", flexDirection: "column", gap: "18px" }}>
-                    <div style={{ padding: "22px", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "8px" }}>
-                        <h4 style={{ color: "var(--accent)", fontSize: "1.05rem", fontWeight: "700", marginBottom: "10px", display: "flex", alignItems: "center", gap: "8px" }}>
-                            <span>📁</span> Standalone Case Files (.tl) & Tamper Resistance
-                        </h4>
-                        <p style={{ color: "var(--text-light)", fontSize: "0.88rem", lineHeight: "1.6", margin: "0 0 14px 0" }}>
-                            Threadline provides a native standalone case format: <strong>.tl</strong> files. A <code>.tl</code> file encapsulates all parsed tables, metadata, timeline mappings, and curated evidence segments inside a standalone SQLite archive sealed with a SHA-256 cryptographic checksum.
-                        </p>
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "14px" }}>
-                            <div style={{ padding: "14px", background: "rgba(255,255,255,0.02)", border: "1px solid var(--border)", borderRadius: "6px" }}>
-                                <strong style={{ color: "var(--text)", fontSize: "0.85rem", display: "block", marginBottom: "4px" }}>Exporting a Case File:</strong>
-                                <span style={{ color: "var(--text-muted)", fontSize: "0.8rem", lineHeight: "1.45" }}>
-                                    Click <strong>Export .tl Case</strong> in the left sidebar or top bar. The system bundles the active database and issues an integrity verification hash that can be recorded directly in investigative case notes.
-                                </span>
-                            </div>
-                            <div style={{ padding: "14px", background: "rgba(255,255,255,0.02)", border: "1px solid var(--border)", borderRadius: "6px" }}>
-                                <strong style={{ color: "var(--text)", fontSize: "0.85rem", display: "block", marginBottom: "4px" }}>Opening Saved Cases:</strong>
-                                <span style={{ color: "var(--text-muted)", fontSize: "0.8rem", lineHeight: "1.45" }}>
-                                    Click <strong>📂 Open Saved Case</strong> to restore any saved case file instantly onto an offline workstation without requiring network access, account sync, or cloud credentials.
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div style={{ padding: "22px", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "8px" }}>
-                        <h4 style={{ color: "var(--accent)", fontSize: "1.05rem", fontWeight: "700", marginBottom: "10px", display: "flex", alignItems: "center", gap: "8px" }}>
-                            <span>⚖️</span> Courtroom Discovery & Export Standards
-                        </h4>
-                        <p style={{ color: "var(--text-light)", fontSize: "0.88rem", lineHeight: "1.6", margin: "0 0 14px 0" }}>
-                            Threadline exports transcripts with complete context to ensure defense teams cannot allege selective omission or out-of-context quotation:
-                        </p>
-                        <ul style={{ color: "var(--text-muted)", fontSize: "0.84rem", lineHeight: "1.6", paddingLeft: "20px", margin: 0 }}>
-                            <li><strong>Interval PDF Transcripts:</strong> Generates chronological trial exhibits with page numbers, precise timestamps, participant identifiers, and message bodies.</li>
-                            <li><strong>JSON Evidence Packages:</strong> Exports machine-readable raw message arrays with UTC timestamps, sender IDs, and recipient maps for technical forensic verification.</li>
-                            <li><strong>Surrounding Context Preservation:</strong> Every curated segment maintains its parent thread pointer, allowing instant expansion to view the full conversational history during testimony.</li>
-                        </ul>
-                    </div>
-                </div>
-            )}
-
-            {/* TAB 6: TIPS & SOP */}
-            {activeTab === "tips" && (
+            {/* TAB 8: FORENSIC SOP & BEST PRACTICES */}
+            {activeTab === "sop" && (
                 <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
                     <div style={{ padding: "20px", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "8px" }}>
                         <h4 style={{ color: "var(--text)", fontSize: "0.95rem", fontWeight: "700", marginBottom: "8px", display: "flex", alignItems: "center", gap: "8px" }}>
-                            <span>📱</span> 1. Ingest All Seized Phones into One Case
+                            <span>📁</span> 1. Ingest All Seized Evidence into One Case Workspace
                         </h4>
                         <p style={{ color: "var(--text-muted)", fontSize: "0.84rem", lineHeight: "1.5", margin: 0 }}>
-                            Always import all available extractions (suspect device, courier device, victim device) into the same Threadline case. Using <strong>📱 BY LOG</strong> swimlanes allows you to immediately see cross-talk and simultaneous actions across devices.
+                            Always import all extractions relating to the same matter (suspect device, courier device, victim extraction, carrier CDRs) into a single Threadline case. Use the <strong>LOGS IN CASE:</strong> filter checkboxes to toggle visibility on and off without segmenting your evidence.
                         </p>
                     </div>
 
                     <div style={{ padding: "20px", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "8px" }}>
                         <h4 style={{ color: "var(--text)", fontSize: "0.95rem", fontWeight: "700", marginBottom: "8px", display: "flex", alignItems: "center", gap: "8px" }}>
-                            <span>🏷️</span> 2. Tag Unsaved Numbers Immediately
+                            <span>⚡</span> 2. Correlate Critical Events Across Alternate Tracks
                         </h4>
                         <p style={{ color: "var(--text-muted)", fontSize: "0.84rem", lineHeight: "1.5", margin: 0 }}>
-                            Tag unknown phone numbers with known suspect or associate names in the <strong>People</strong> tab. This eliminates confusion in timeline swimlanes and ensures every message bubble clearly identifies the sender.
+                            Whenever you discover an alibi claim or high-value message, lock the Cross-Track Laser Cursor with <kbd style={{ background: "rgba(255,255,255,0.1)", padding: "2px 6px", borderRadius: "3px" }}>L</kbd> and click <strong>⚡ CORRELATE</strong>. This systematically disproves alibis by proving alternate communication on another device or platform.
                         </p>
                     </div>
 
                     <div style={{ padding: "20px", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "8px" }}>
                         <h4 style={{ color: "var(--text)", fontSize: "0.95rem", fontWeight: "700", marginBottom: "8px", display: "flex", alignItems: "center", gap: "8px" }}>
-                            <span>⏱️</span> 3. Anchor Searches to Alibi Windows
+                            <span>👤</span> 3. Disambiguate Identifiers Early
                         </h4>
                         <p style={{ color: "var(--text-muted)", fontSize: "0.84rem", lineHeight: "1.5", margin: 0 }}>
-                            If an incident occurred between 21:00 and 23:30, drag to select that 2.5-hour interval on the timeline first. Subsequent search queries and day activities will automatically lock to that window.
+                            Link burner contacts and social media handles to target entities in the <strong>PEOPLE</strong> tab as soon as attribution is established. This ensures all subsequent timeline reviews, matrix scans, and exhibit exports reflect confirmed identities.
                         </p>
                     </div>
 
                     <div style={{ padding: "20px", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "8px" }}>
                         <h4 style={{ color: "var(--text)", fontSize: "0.95rem", fontWeight: "700", marginBottom: "8px", display: "flex", alignItems: "center", gap: "8px" }}>
-                            <span>🔒</span> 4. Safe Offline Air-Gapped Deployment
+                            <span>⚖️</span> 4. Package Standalone .tl Case Archives for Discovery
                         </h4>
                         <p style={{ color: "var(--text-muted)", fontSize: "0.84rem", lineHeight: "1.5", margin: 0 }}>
-                            Threadline runs 100% offline. You can safely deploy and operate it on isolated, air-gapped forensic forensic examination stations without internet connectivity.
+                            Use <strong>📦 EXPORT CASE</strong> to create sealed <code>.tl</code> files for turnover to prosecutors, defense counsel, or partner agencies. The recipient can open the file in Threadline without cloud accounts, preserving full interactive timeline analysis and SHA-256 chain of custody.
                         </p>
                     </div>
                 </div>
@@ -521,9 +541,5 @@ function HelpSection({ onBack = null }) {
         </div>
     );
 }
-
-// =====================================
-// Exports
-// =====================================
 
 export default HelpSection;
