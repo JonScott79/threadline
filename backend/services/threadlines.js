@@ -31,7 +31,7 @@ async function ingestArchive(uid, archive, filename, file_size, targetThreadline
     console.log("File:", filename);
 
     const now = new Date().toISOString();
-    const threadlineId = targetThreadlineId || `archive_${uid}`;
+    const threadlineId = targetThreadlineId || crypto.randomUUID();
     const importId = crypto.randomUUID();
 
     let newMessagesCount = 0;

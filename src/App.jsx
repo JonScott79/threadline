@@ -33,39 +33,13 @@ function App(){
 
 	const [showingHelp, setShowingHelp] = useState(false);
 
-	const [archiveEmpty, setArchiveEmpty] = useState(true);
 	const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
     /*==============================================
                         AUTH
     ==============================================*/
 
-    const {
-
-        user,
-
-        loading
-
-    } = useAuth();
-
-	const refreshArchiveStatus = async () => {
-		if (user) {
-			try {
-				const archiveId = `archive_${user.uid}`;
-				const res = await axios.get(`${API_BASE_URL}/threadlines/${archiveId}`, {
-					headers: { "x-user-uid": user.uid }
-				});
-				if (res.data && res.data.status === "success" && res.data.threadline) {
-					const count = res.data.threadline.messageCount || 0;
-					setArchiveEmpty(count === 0);
-				} else {
-					setArchiveEmpty(true);
-				}
-			} catch (_error) {
-				setArchiveEmpty(true);
-			}
-		}
-	};
+    const { user, loading } = useAuth();
 
     /*==============================================
                         LOAD DATA
@@ -76,31 +50,19 @@ function App(){
         if (user) {
 
             loadThreadlines(user.uid)
-
                 .then(data => {
-
                     setThreadlines(data);
-
+                    if (data && data.length > 0) {
+                        setCurrentThreadline(prev => prev || data[0]);
+                    }
                 })
-
                 .catch(error => {
-
                     console.error("Failed to load threadlines:", error);
-
                 });
-
-            refreshArchiveStatus();
-
         } else {
-
             setThreadlines([]);
-
             setCurrentThreadline(null);
-
             setShowingHelp(false);
-
-            setArchiveEmpty(true);
-
         }
 
     }, [user]);
@@ -254,32 +216,17 @@ function App(){
 					setCurrentThreadline(null);
 					setCreatingThreadline(false);
 				}}
-
-				archiveEmpty={archiveEmpty}
-
 			/>
 
 			<Workspace
-
 				threadlines={threadlines}
-
 				setThreadlines={setThreadlines}
-
 				currentThreadline={currentThreadline}
-
 				setCurrentThreadline={setCurrentThreadline}
-
 				creatingThreadline={creatingThreadline}
-
 				setCreatingThreadline={setCreatingThreadline}
-
 				showingHelp={showingHelp}
-
 				setShowingHelp={setShowingHelp}
-
-				archiveEmpty={archiveEmpty}
-
-				refreshArchiveStatus={refreshArchiveStatus}
 
 				onDelete={async (threadline) => {
 					try {

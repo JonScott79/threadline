@@ -30,7 +30,6 @@ function Sidebar({
     onRename,
     onShowHelp,
     onCaseImported,
-    archiveEmpty,
     isOpenMobile = false,
     onCloseMobile
 }) {
@@ -237,38 +236,6 @@ function Sidebar({
                     Help Center
                 </div>
 
-                {/* Communications Archive */}
-                <div
-                    className={
-                        (currentThreadline?.id || "").startsWith("archive_")
-                            ? "nav-item active"
-                            : "nav-item"
-                    }
-                    onClick={() => onSelect({
-                        id: `archive_${user?.uid || "local"}`,
-                        firestoreId: `archive_${user?.uid || "local"}`,
-                        title: "Communications Archive",
-                        source: "Ingested History",
-                        platform: "Multi",
-                        messageCount: 0,
-                        conversationCount: 0
-                    })}
-                    style={{ 
-                        fontWeight: "600", 
-                        color: "var(--text)",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "10px"
-                    }}
-                >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00D0FF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="21 8 21 21 3 21 3 8" />
-                        <rect x="1" y="3" width="22" height="5" />
-                        <line x1="10" y1="12" x2="14" y2="12" />
-                    </svg>
-                    Communications Archive
-                </div>
-
                 <div className="sidebar-divider"></div>
 
                 {/* THREADLINES LIST */}
@@ -276,9 +243,7 @@ function Sidebar({
                     YOUR THREADLINES
                 </div>
 
-                {threadlines
-                    .filter(t => !t.id?.startsWith("archive_") && !t.firestoreId?.startsWith("archive_"))
-                    .map((threadline) => (
+                {threadlines.map((threadline) => (
                     <div
                         key={threadline.firestoreId || threadline.id}
                         className={
@@ -317,15 +282,13 @@ function Sidebar({
                             <button 
                                 className="edit-threadline-btn" 
                                 title="Rename Threadline"
-                                disabled={archiveEmpty}
                                 style={{ 
-                                    cursor: archiveEmpty ? "not-allowed" : "pointer",
+                                    cursor: "pointer",
                                     padding: "3px 6px",
                                     display: "inline-flex",
                                     alignItems: "center"
                                 }}
                                 onClick={(e) => {
-                                    if (archiveEmpty) return;
                                     e.stopPropagation();
                                     setEditingThreadline(threadline);
                                     setRenameValue(threadline.title);

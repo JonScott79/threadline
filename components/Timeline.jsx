@@ -95,6 +95,28 @@ const Timeline = forwardRef(function Timeline({
     // Track groups returned by the server
     const [activeGroups, setActiveGroups] = useState([]);
 
+    // Multi-log isolation / filter state
+    const [disabledLogGroupIds, setDisabledLogGroupIds] = useState([]);
+    const disabledLogGroupIdsRef = useRef([]);
+    disabledLogGroupIdsRef.current = disabledLogGroupIds;
+
+    const toggleLogGroup = (groupId) => {
+        setDisabledLogGroupIds(prev => {
+            const next = prev.includes(groupId) ? prev.filter(id => id !== groupId) : [...prev, groupId];
+            disabledLogGroupIdsRef.current = next;
+            if (currentBucketsRef.current && currentEventsRef.current) {
+                updateTimelineData(
+                    currentBucketsRef.current,
+                    currentZoomRef.current,
+                    isIndividualEventsRef.current,
+                    currentEventsRef.current,
+                    activeGroups
+                );
+            }
+            return next;
+        });
+    };
+
     // Hover Popover HUD state
     const [hoverHud, setHoverHud] = useState(null);
 
@@ -452,7 +474,12 @@ const Timeline = forwardRef(function Timeline({
         const currentMode = trackModeRef.current;
         const formattedGroups = [];
 
-        if (currentMode === "unified" || !serverGroups || serverGroups.length === 0) {
+        let visibleServerGroups = serverGroups || [];
+        if (currentMode === "log" && disabledLogGroupIdsRef.current.length > 0) {
+            visibleServerGroups = visibleServerGroups.filter(g => !disabledLogGroupIdsRef.current.includes(String(g.id)));
+        }
+
+        if (currentMode === "unified" || !visibleServerGroups || visibleServerGroups.length === 0) {
             formattedGroups.push({
                 id: "unified",
                 content: `
@@ -465,7 +492,7 @@ const Timeline = forwardRef(function Timeline({
                 className: "tl-group-lane-unified"
             });
         } else {
-            serverGroups.forEach((g, idx) => {
+            visibleServerGroups.forEach((g, idx) => {
                 const icon = currentMode === "log" ? "📱" : "💬";
                 const cleanTitle = g.title || (currentMode === "log" ? "Extraction Log" : "Conversation");
                 formattedGroups.push({
@@ -510,8 +537,13 @@ const Timeline = forwardRef(function Timeline({
         });
 
         // 3. Render Individual Events (Zoom Level: Seconds / Minutes)
-        if (isIndividualEvents && events.length > 0) {
-            const eventItems = events.map((ev, i) => {
+        let filteredEvents = events || [];
+        if (currentMode === "log" && disabledLogGroupIdsRef.current.length > 0) {
+            filteredEvents = filteredEvents.filter(ev => !disabledLogGroupIdsRef.current.includes(String(ev.groupId)));
+        }
+
+        if (isIndividualEvents && filteredEvents.length > 0) {
+            const eventItems = filteredEvents.map((ev, i) => {
                 const evTime = Number(ev.timestamp);
                 const evDate = new Date(evTime);
                 const isMatch = matchMessageIds.has(ev.sourceId) || matchMessageIds.has(ev.id) ||
@@ -564,9 +596,14 @@ const Timeline = forwardRef(function Timeline({
         }
 
         // 4. Render Aggregated Buckets (Zoom Level: Hours / Days / Weeks / Months / Years)
-        const maxCount = Math.max(...buckets.map(b => b.count), 1);
+        let filteredBuckets = buckets || [];
+        if (currentMode === "log" && disabledLogGroupIdsRef.current.length > 0) {
+            filteredBuckets = filteredBuckets.filter(b => !disabledLogGroupIdsRef.current.includes(String(b.groupId)));
+        }
 
-        const newItems = buckets.map((bucket, i) => {
+        const maxCount = Math.max(...filteredBuckets.map(b => b.count), 1);
+
+        const newItems = filteredBuckets.map((bucket, i) => {
             const { start: bStart, end: bEnd } = bucketToDateRange(bucket.period, zoom);
             const intensity = bucket.count / maxCount;
 
@@ -908,6 +945,57 @@ const Timeline = forwardRef(function Timeline({
                             </>
                         )}
                     </div>
+
+                    {/* Log Filter Checkboxes (Isolate or multi-select logs) */}
+                    {trackMode === "log" && activeGroups.length > 1 && (
+                        <div 
+                            className="tl-log-filter-row" 
+                            style={{ 
+                                display: "flex", 
+                                alignItems: "center", 
+                                gap: "6px", 
+                                marginLeft: "12px", 
+                                paddingLeft: "12px", 
+                                borderLeft: "1px solid rgba(255,255,255,0.15)", 
+                                flexWrap: "wrap" 
+                            }}
+                        >
+                            <span style={{ fontSize: "0.68rem", fontWeight: 800, color: "var(--text-muted)", letterSpacing: "1px" }}>
+                                LOGS IN CASE:
+                            </span>
+                            {activeGroups.map(g => {
+                                const isChecked = !disabledLogGroupIds.includes(String(g.id));
+                                return (
+                                    <label
+                                        key={g.id}
+                                        style={{
+                                            display: "inline-flex",
+                                            alignItems: "center",
+                                            gap: "5px",
+                                            fontSize: "0.72rem",
+                                            cursor: "pointer",
+                                            padding: "2px 7px",
+                                            borderRadius: "4px",
+                                            background: isChecked ? "rgba(63, 216, 255, 0.12)" : "rgba(255, 255, 255, 0.04)",
+                                            border: `1px solid ${isChecked ? g.color || "#3fd8ff" : "rgba(255, 255, 255, 0.15)"}`,
+                                            color: isChecked ? "#fff" : "var(--text-muted)",
+                                            userSelect: "none"
+                                        }}
+                                        title={`Toggle visibility of ${g.title} (${g.count} messages)`}
+                                    >
+                                        <input
+                                            type="checkbox"
+                                            checked={isChecked}
+                                            onChange={() => toggleLogGroup(String(g.id))}
+                                            style={{ accentColor: g.color || "#3fd8ff", cursor: "pointer", width: "12px", height: "12px" }}
+                                        />
+                                        <span style={{ fontWeight: 600 }}>{g.title}</span>
+                                        <span style={{ fontSize: "0.68rem", opacity: 0.7 }}>({g.count})</span>
+                                    </label>
+                                );
+                            })}
+                        </div>
+                    )}
                 </div>
 
                 <div className="timeline-controls">

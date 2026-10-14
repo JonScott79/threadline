@@ -55,7 +55,7 @@ const PINNED_COLORS = [
 // =====================================
 
 function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline, uid, onImportSuccess, onDelete }) {
-    const isArchive = threadline?.id?.startsWith("archive_") || false;
+    const isArchive = true; // Every Threadline is a self-contained case workspace
 
     /*==============================================
                         STATE
@@ -1847,13 +1847,13 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                             <input 
                                 type="text" 
                                 className="input search-input" 
-                                placeholder={isArchive ? "Search archive..." : "Search global archive to link matches..."} 
+                                placeholder="Search case communications and evidence..." 
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                                 style={{ width: "100%", padding: "8px" }}
                             />
                             <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginTop: "4px", textAlign: "left" }}>
-                                {isArchive ? "Ask your communication history a question." : "Find relevant conversations in the Archive to plot here."}
+                                Query communications and metadata in plain English or keywords.
                             </div>
                             {temporalRange && (
                                 <div style={{ marginTop: "8px", padding: "6px 10px", background: "rgba(63,216,255,0.08)", border: "1px solid rgba(63,216,255,0.3)", borderRadius: "4px", display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "0.75rem" }}>
@@ -3509,13 +3509,13 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                             isArchive ? (
                                 <div className="viewer-empty" style={{ display: "flex", flexDirection: "column", gap: "20px", alignItems: "center", padding: "20px" }}>
                                     <div className="viewer-empty-icon" style={{ fontSize: "2.5rem" }}>📁</div>
-                                    <h3 style={{ letterSpacing: "1px", textTransform: "uppercase", color: "var(--accent)" }}>COMMUNICATIONS ARCHIVE</h3>
+                                    <h3 style={{ letterSpacing: "1px", textTransform: "uppercase", color: "var(--accent)" }}>CASE EVIDENCE WORKSPACE</h3>
                                     <p style={{ color: "var(--text-muted)", fontSize: "0.9rem", textAlign: "center", lineHeight: "1.5" }}>
                                         Select a discovered Thread from the left pane list to inspect messages,<br />
-                                        or use the Search tab to query history in plain English.
+                                        or use the Search tab to query case evidence in plain English.
                                     </p>
                                     <div style={{ width: "100%", maxWidth: "500px", marginTop: "20px", borderTop: "1px solid var(--border)", paddingTop: "20px" }}>
-                                        <div style={{ fontSize: "0.85rem", color: "var(--accent)", fontWeight: "700", marginBottom: "12px", textTransform: "uppercase", letterSpacing: "1px", textAlign: "center" }}>Import Additional Backup History:</div>
+                                        <div style={{ fontSize: "0.85rem", color: "var(--accent)", fontWeight: "700", marginBottom: "12px", textTransform: "uppercase", letterSpacing: "1px", textAlign: "center" }}>Import Additional Log / Evidence to this Case:</div>
                                         <UploadPanel setImportResult={handleImportSuccess} threadlineId={threadline.id} />
                                         <ImportPreview result={importResult} />
                                     </div>

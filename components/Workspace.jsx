@@ -37,8 +37,6 @@ function Workspace({
     setCreatingThreadline,
     showingHelp,
     setShowingHelp,
-    archiveEmpty,
-    refreshArchiveStatus,
     onDelete
 }){
     /*==============================================
@@ -51,7 +49,7 @@ function Workspace({
                         RENDER
     ==============================================*/
 
-    const isDashboardActive = (!!currentThreadline || archiveEmpty) && !showingHelp;
+    const isDashboardActive = !!currentThreadline && !showingHelp;
     const isHelpActive = showingHelp;
 
     return(
@@ -94,23 +92,6 @@ function Workspace({
                         setThreadlines={setThreadlines}
                         setCurrentThreadline={setCurrentThreadline}
                         uid={user.uid}
-                        onImportSuccess={refreshArchiveStatus}
-                        onDelete={onDelete}
-                    />
-                ) : archiveEmpty ? (
-                    <ThreadlineWorkspace
-                        threadline={{
-                            id: `archive_${user.uid}`,
-                            title: "Communications Archive",
-                            source: "Ingested History",
-                            platform: "Multi",
-                            messageCount: 0,
-                            conversationCount: 0
-                        }}
-                        setThreadlines={setThreadlines}
-                        setCurrentThreadline={setCurrentThreadline}
-                        uid={user.uid}
-                        onImportSuccess={refreshArchiveStatus}
                         onDelete={onDelete}
                     />
                 ) : (
