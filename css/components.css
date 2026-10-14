@@ -3653,4 +3653,106 @@
     transform: scale(1.15);
 }
 
+/* ==========================================================================
+   Synchronized Cross-Track Laser Cursor
+   ========================================================================== */
+
+.vis-timeline-container {
+    position: relative;
+    overflow: hidden;
+}
+
+.tl-laser-cursor-line {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: #3fd8ff;
+    box-shadow: 0 0 10px #3fd8ff, 0 0 20px rgba(63, 216, 255, 0.6);
+    pointer-events: none;
+    z-index: 90;
+    transform: translateX(-50%);
+    will-change: left;
+}
+
+.tl-laser-cursor-line.locked {
+    background: #ff9f0a;
+    box-shadow: 0 0 10px #ff9f0a, 0 0 20px rgba(255, 159, 10, 0.6);
+}
+
+.tl-laser-flag {
+    position: absolute;
+    top: 6px;
+    left: 8px;
+    background: rgba(10, 18, 30, 0.94);
+    border: 1px solid rgba(63, 216, 255, 0.45);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.7), 0 0 10px rgba(63, 216, 255, 0.15);
+    backdrop-filter: blur(8px);
+    border-radius: 6px;
+    padding: 4px 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    pointer-events: auto;
+    white-space: nowrap;
+    animation: fadeIn 0.15s ease-out;
+}
+
+.tl-laser-cursor-line.locked .tl-laser-flag {
+    border-color: rgba(255, 159, 10, 0.55);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.7), 0 0 10px rgba(255, 159, 10, 0.15);
+}
+
+.tl-laser-indicator {
+    font-size: 0.8rem;
+}
+
+.tl-laser-time {
+    font-family: var(--font-mono, monospace);
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #f1f5f9;
+    letter-spacing: 0.5px;
+}
+
+.tl-laser-lock-btn {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #cbd5e1;
+    font-size: 0.68rem;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.tl-laser-lock-btn:hover {
+    background: rgba(255, 255, 255, 0.16);
+    color: #ffffff;
+}
+
+.tl-laser-correlate-btn {
+    background: rgba(63, 216, 255, 0.15);
+    border: 1px solid rgba(63, 216, 255, 0.45);
+    color: #3fd8ff;
+    font-size: 0.68rem;
+    font-weight: 800;
+    padding: 2px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    transition: all 0.15s ease;
+}
+
+.tl-laser-correlate-btn:hover {
+    background: #0284c7;
+    color: #ffffff;
+    border-color: #38bdf8;
+    box-shadow: 0 0 10px rgba(63, 216, 255, 0.4);
+}
+
+
 

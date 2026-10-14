@@ -1623,6 +1623,7 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                             setActiveRightTab(activeConversation ? "conversation" : "day");
                         }
                     }}
+                    onCorrelateTimestamp={handleLaunchCorrelation}
                 />
             </div>
 

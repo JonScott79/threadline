@@ -71,7 +71,8 @@ const Timeline = forwardRef(function Timeline({
     onSelectSearchResult = null,
     temporalRange = null,
     onSelectTemporalRange = null,
-    onClearTemporalRange = null
+    onClearTemporalRange = null,
+    onCorrelateTimestamp = null
 }, ref) {
     /*==============================================
                         STATE
@@ -96,6 +97,19 @@ const Timeline = forwardRef(function Timeline({
 
     // Hover Popover HUD state
     const [hoverHud, setHoverHud] = useState(null);
+
+    // Synchronized Cross-Track Laser Cursor state
+    const [laserEnabled, setLaserEnabled] = useState(true);
+    const laserEnabledRef = useRef(true);
+    laserEnabledRef.current = laserEnabled;
+
+    const [laserLocked, setLaserLocked] = useState(false);
+    const laserLockedRef = useRef(false);
+    laserLockedRef.current = laserLocked;
+
+    const [laserPos, setLaserPos] = useState(null); // { x: number, time: number, group: string }
+    const laserPosRef = useRef(null);
+    laserPosRef.current = laserPos;
 
     // Metadata: full data span
     const [dataEarliest, setDataEarliest] = useState(null);
@@ -272,8 +286,46 @@ const Timeline = forwardRef(function Timeline({
                     y: e.clientY
                 };
             });
+
+            // Synchronized Cross-Track Laser Tracking
+            if (laserEnabledRef.current && !laserLockedRef.current && timelineRef.current && domContainer) {
+                const rect = domContainer.getBoundingClientRect();
+                const clientX = e.clientX;
+                const relX = clientX - rect.left;
+                if (relX >= 0 && relX <= rect.width) {
+                    const props = timelineRef.current.getEventProperties(e);
+                    if (props && props.time) {
+                        const newPos = {
+                            x: relX,
+                            time: props.time.getTime(),
+                            group: props.group || null
+                        };
+                        laserPosRef.current = newPos;
+                        setLaserPos(newPos);
+                    }
+                }
+            }
         }
+
+        function handleMouseLeave() {
+            if (!laserLockedRef.current) {
+                laserPosRef.current = null;
+                setLaserPos(null);
+            }
+        }
+
+        function handleKeyDown(e) {
+            if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) return;
+            if (e.key === "l" || e.key === "L") {
+                if (laserPosRef.current) {
+                    setLaserLocked(prev => !prev);
+                }
+            }
+        }
+
         domContainer.addEventListener("mousemove", handleMouseMove, { passive: true });
+        domContainer.addEventListener("mouseleave", handleMouseLeave, { passive: true });
+        window.addEventListener("keydown", handleKeyDown);
 
         // Track range changes to fetch new aggregated data
         timeline.on("rangechanged", (props) => {
@@ -309,7 +361,9 @@ const Timeline = forwardRef(function Timeline({
         return () => {
             domContainer.removeEventListener("pointerdown", handlePointerDown);
             domContainer.removeEventListener("mousemove", handleMouseMove);
+            domContainer.removeEventListener("mouseleave", handleMouseLeave);
             window.removeEventListener("pointerup", handlePointerUp);
+            window.removeEventListener("keydown", handleKeyDown);
             if (timelineRef.current) {
                 timelineRef.current.destroy();
                 timelineRef.current = null;
@@ -801,6 +855,24 @@ const Timeline = forwardRef(function Timeline({
                         >
                             📊 UNIFIED
                         </button>
+                        <button
+                            type="button"
+                            className={`tl-track-pill ${laserEnabled ? "active" : ""}`}
+                            onClick={() => {
+                                setLaserEnabled(prev => !prev);
+                                if (laserEnabled) {
+                                    setLaserPos(null);
+                                    setLaserLocked(false);
+                                }
+                            }}
+                            title="Toggle Synchronized Cross-Track Laser Cursor across all swimlanes (Press 'L' to freeze)"
+                            style={{
+                                color: laserEnabled ? (laserLocked ? "#ff9f0a" : "#3fd8ff") : undefined,
+                                borderColor: laserEnabled ? (laserLocked ? "rgba(255, 159, 10, 0.5)" : "rgba(63, 216, 255, 0.4)") : undefined
+                            }}
+                        >
+                            {laserLocked ? "🔒 LASER LOCKED" : "⚡ LASER SYNC"}
+                        </button>
                     </div>
                 </div>
 
@@ -843,10 +915,50 @@ const Timeline = forwardRef(function Timeline({
             </div>
 
             {/* vis-timeline container */}
-            <div className="timeline-wave-container vis-timeline-container">
+            <div className="timeline-wave-container vis-timeline-container" style={{ position: "relative" }}>
                 {loading && <div className="timeline-overlay">ANALYZING TEMPORAL DISTRIBUTION...</div>}
                 {error && <div className="timeline-overlay error">{error}</div>}
                 <div ref={containerRef} className="vis-timeline-mount" />
+
+                {/* Synchronized Cross-Track Laser Cursor */}
+                {laserEnabled && laserPos && (
+                    <div
+                        className={`tl-laser-cursor-line ${laserLocked ? "locked" : ""}`}
+                        style={{
+                            left: `${laserPos.x}px`,
+                            pointerEvents: "none"
+                        }}
+                    >
+                        <div
+                            className="tl-laser-flag"
+                            style={{ pointerEvents: "auto" }}
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <span className="tl-laser-indicator">{laserLocked ? "🔒" : "⚡"}</span>
+                            <span className="tl-laser-time">
+                                {new Date(laserPos.time).toISOString().replace("T", " ").replace("Z", " UTC")}
+                            </span>
+                            <button
+                                type="button"
+                                className="tl-laser-lock-btn"
+                                onClick={() => setLaserLocked(prev => !prev)}
+                                title={laserLocked ? "Unlock laser (resume tracking)" : "Lock laser at this timestamp (or press L)"}
+                            >
+                                {laserLocked ? "Unlock" : "Freeze"}
+                            </button>
+                            {onCorrelateTimestamp && (
+                                <button
+                                    type="button"
+                                    className="tl-laser-correlate-btn"
+                                    onClick={() => onCorrelateTimestamp({ timestamp: laserPos.time })}
+                                    title="Scan contemporaneous activity across all devices within ±Δt of this laser timestamp"
+                                >
+                                    ⚡ Correlate
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* Zero-Latency Forensic Hover Popover HUD */}
