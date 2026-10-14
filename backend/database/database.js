@@ -52,14 +52,30 @@ function initializeDatabase() {
             db.exec(schemaSql);
             console.log("✓ Database schema verified and updated successfully.");
 
-            // Migration: Add owner_id to threadlines if it doesn't exist
-            try {
-                db.exec("ALTER TABLE threadlines ADD COLUMN owner_id TEXT;");
-                db.exec("UPDATE threadlines SET owner_id = 'local' WHERE owner_id IS NULL;");
-                console.log("✓ Migration: Added owner_id column to threadlines table.");
-            } catch (e) {
-                // Column already exists, ignore
+            // Robust Automatic Migrations for all core tables
+            const migrations = [
+                "ALTER TABLE threadlines ADD COLUMN owner_id TEXT;",
+                "ALTER TABLE imports ADD COLUMN sha256 TEXT;",
+                "ALTER TABLE imports ADD COLUMN discovered_count INTEGER DEFAULT 0;",
+                "ALTER TABLE imports ADD COLUMN skipped_count INTEGER DEFAULT 0;",
+                "ALTER TABLE imports ADD COLUMN provenance_metadata TEXT;",
+                "ALTER TABLE messages ADD COLUMN timestamp_precision TEXT DEFAULT 'ms';",
+                "ALTER TABLE messages ADD COLUMN timezone_offset INTEGER DEFAULT 0;",
+                "ALTER TABLE participants ADD COLUMN aliases TEXT DEFAULT '[]';",
+                "ALTER TABLE participants ADD COLUMN metadata TEXT DEFAULT '{}';"
+            ];
+
+            for (const migration of migrations) {
+                try {
+                    db.exec(migration);
+                } catch (e) {
+                    // Column already exists or already up-to-date, safely ignore
+                }
             }
+
+            try {
+                db.exec("UPDATE threadlines SET owner_id = 'local' WHERE owner_id IS NULL;");
+            } catch (e) {}
 
             // Create FTS5 virtual table for message body full-text search
             db.exec(`

@@ -72,24 +72,73 @@ async function ingestArchive(uid, archive, filename, file_size, targetThreadline
         };
         const computedSha256 = sha256 || crypto.createHash("sha256").update((filename || "archive") + "_" + now).digest("hex");
 
-        db.run(
-            `INSERT INTO imports (id, owner_id, filename, source, platform, file_size, message_count, participant_count, thread_count, earliest_timestamp, latest_timestamp, imported_at, status, errors, sha256, discovered_count, skipped_count, provenance_metadata)
-             VALUES (?, ?, ?, ?, ?, ?, 0, 0, 0, NULL, NULL, ?, 'completed', ?, ?, ?, ?, ?)`,
-            [
-                importId,
-                uid,
-                filename || "Unknown File",
-                archive.source || "SMS Backup & Restore",
-                archive.platform || "SMS",
-                file_size || 0,
-                now,
-                JSON.stringify(archive.errors || []),
-                computedSha256,
-                discoveredInitial,
-                skippedInitial,
-                JSON.stringify(provenanceMeta)
-            ]
-        );
+        try {
+            db.run(
+                `INSERT INTO imports (id, owner_id, filename, source, platform, file_size, message_count, participant_count, thread_count, earliest_timestamp, latest_timestamp, imported_at, status, errors, sha256, discovered_count, skipped_count, provenance_metadata)
+                 VALUES (?, ?, ?, ?, ?, ?, 0, 0, 0, NULL, NULL, ?, 'completed', ?, ?, ?, ?, ?)`,
+                [
+                    importId,
+                    uid,
+                    filename || "Unknown File",
+                    archive.source || "SMS Backup & Restore",
+                    archive.platform || "SMS",
+                    file_size || 0,
+                    now,
+                    JSON.stringify(archive.errors || []),
+                    computedSha256,
+                    discoveredInitial,
+                    skippedInitial,
+                    JSON.stringify(provenanceMeta)
+                ]
+            );
+        } catch (insertErr) {
+            if (insertErr.message && insertErr.message.includes("has no column named")) {
+                console.warn("⚠️ imports table missing provenance columns, executing auto-migration and fallback:", insertErr.message);
+                try {
+                    db.run("ALTER TABLE imports ADD COLUMN sha256 TEXT;");
+                    db.run("ALTER TABLE imports ADD COLUMN discovered_count INTEGER DEFAULT 0;");
+                    db.run("ALTER TABLE imports ADD COLUMN skipped_count INTEGER DEFAULT 0;");
+                    db.run("ALTER TABLE imports ADD COLUMN provenance_metadata TEXT;");
+                    // Retry with new columns
+                    db.run(
+                        `INSERT INTO imports (id, owner_id, filename, source, platform, file_size, message_count, participant_count, thread_count, earliest_timestamp, latest_timestamp, imported_at, status, errors, sha256, discovered_count, skipped_count, provenance_metadata)
+                         VALUES (?, ?, ?, ?, ?, ?, 0, 0, 0, NULL, NULL, ?, 'completed', ?, ?, ?, ?, ?)`,
+                        [
+                            importId,
+                            uid,
+                            filename || "Unknown File",
+                            archive.source || "SMS Backup & Restore",
+                            archive.platform || "SMS",
+                            file_size || 0,
+                            now,
+                            JSON.stringify(archive.errors || []),
+                            computedSha256,
+                            discoveredInitial,
+                            skippedInitial,
+                            JSON.stringify(provenanceMeta)
+                        ]
+                    );
+                } catch (_migrationErr) {
+                    // Fall back to legacy insert
+                    db.run(
+                        `INSERT INTO imports (id, owner_id, filename, source, platform, file_size, message_count, participant_count, thread_count, earliest_timestamp, latest_timestamp, imported_at, status, errors)
+                         VALUES (?, ?, ?, ?, ?, ?, 0, 0, 0, NULL, NULL, ?, 'completed', ?)`,
+                        [
+                            importId,
+                            uid,
+                            filename || "Unknown File",
+                            archive.source || "SMS Backup & Restore",
+                            archive.platform || "SMS",
+                            file_size || 0,
+                            now,
+                            JSON.stringify(archive.errors || [])
+                        ]
+                    );
+                }
+            } else {
+                throw insertErr;
+            }
+        }
 
         // Create or get participant record for the user ("Me")
         let meId;

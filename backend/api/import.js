@@ -1,4 +1,4 @@
-﻿/*======================================================
+/*======================================================
                         IMPORTS
 ======================================================*/
 
@@ -88,7 +88,28 @@ router.get("/", async (request, response) => {
             `;
             params = [request.uid];
         }
-        const rows = db.query(sql, params);
+        let rows;
+        try {
+            rows = db.query(sql, params);
+        } catch (queryErr) {
+            if (queryErr.message && queryErr.message.includes("no such column")) {
+                console.warn("⚠️ imports query failed on missing columns, executing inline migration and fallback:", queryErr.message);
+                try {
+                    db.run("ALTER TABLE imports ADD COLUMN sha256 TEXT;");
+                    db.run("ALTER TABLE imports ADD COLUMN discovered_count INTEGER DEFAULT 0;");
+                    db.run("ALTER TABLE imports ADD COLUMN skipped_count INTEGER DEFAULT 0;");
+                    db.run("ALTER TABLE imports ADD COLUMN provenance_metadata TEXT;");
+                    rows = db.query(sql, params);
+                } catch (_fallbackErr) {
+                    const legacySql = sql
+                        .replace(/i\.sha256, i\.discovered_count AS discoveredCount, i\.skipped_count AS skippedCount,\s*i\.provenance_metadata AS provenanceMetadata/g, "NULL AS sha256, 0 AS discoveredCount, 0 AS skippedCount, NULL AS provenanceMetadata")
+                        .replace(/sha256, discovered_count AS discoveredCount, skipped_count AS skippedCount,\s*provenance_metadata AS provenanceMetadata/g, "NULL AS sha256, 0 AS discoveredCount, 0 AS skippedCount, NULL AS provenanceMetadata");
+                    rows = db.query(legacySql, params);
+                }
+            } else {
+                throw queryErr;
+            }
+        }
         response.json({ status: "success", imports: rows });
     } catch (error) {
         response.status(500).json({ status: "error", message: error.message });
