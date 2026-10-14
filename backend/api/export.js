@@ -68,10 +68,15 @@ router.post("/", async (request, response) => {
             response.setHeader("Content-Type", "application/pdf");
             response.setHeader("Content-Disposition", `attachment; filename="${safeExportId}_READONLY.pdf"`);
             return response.send(pdfBuffer);
+        } else if (format === "csv") {
+            const csvOutput = evidenceExporter.generateCsvTranscript(canonicalExport);
+            response.setHeader("Content-Type", "text/csv; charset=utf-8");
+            response.setHeader("Content-Disposition", `attachment; filename="${safeExportId}.csv"`);
+            return response.send(csvOutput);
         } else {
             return response.status(400).json({
                 status: "error",
-                message: `Unsupported export format '${format}'. Valid options are: 'json', 'pdf', 'watermarked_pdf'.`
+                message: `Unsupported export format '${format}'. Valid options are: 'json', 'pdf', 'watermarked_pdf', 'csv'.`
             });
         }
     } catch (error) {

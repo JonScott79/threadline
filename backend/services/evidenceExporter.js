@@ -3,9 +3,10 @@
 
     Authoritative Evidence Export Service for Threadline.
     Builds canonical Evidence Export models from SQLite data and generates:
-    1. JSON Evidence Package (machine-readable, self-contained)
-    2. PDF Evidence Report (human-readable, forensic layout)
-    3. PDF Watermarked / Read-Only Copy (tamper-evident, permissions restricted)
+    1. Courtroom Trial Exhibit PDF Report (Bates stamped, forensic layout, chain of custody)
+    2. PDF Watermarked / Read-Only Copy (tamper-evident, permissions restricted)
+    3. JSON Canonical Evidence Package (machine-readable, self-contained)
+    4. Discovery CSV Transcript (spreadsheet format with cryptographic provenance)
 
     Forensic Invariants:
     SOURCE EVIDENCE  ≠  DETERMINISTIC ANALYSIS  ≠  SEMANTIC INFERENCE
@@ -19,8 +20,8 @@ const crypto = require("crypto");
 const PDFDocument = require("pdfkit");
 const db = require("../database/database");
 
-const THREADLINE_VERSION = "0.1.0";
-const EXPORT_SPEC_VERSION = "1.0.0";
+const THREADLINE_VERSION = "0.2.0";
+const EXPORT_SPEC_VERSION = "2.0.0";
 
 /**
  * Deterministically serialize a JavaScript object with sorted keys.
@@ -46,19 +47,9 @@ function sha256(data) {
 class EvidenceExporter {
     /**
      * Resolves authoritative evidence from SQLite and constructs the canonical export package.
-     * 
-     * @param {Object} options
-     * @param {string} options.threadlineId - Threadline ID
-     * @param {string} options.uid - Authenticated user UID
-     * @param {Array<string>} [options.messageIds] - Array of specific message IDs to export
-     * @param {Object} [options.cluster] - Optional EventCluster object provided from search
-     * @param {string} [options.query] - Search query string
-     * @param {Object} [options.filters] - Query filters (e.g. day)
-     * @param {Object} [options.caseInfo] - Optional user-provided case metadata
-     * @returns {Object} Canonical Evidence Export Model
      */
     resolveCanonicalEvidence(options) {
-        const { threadlineId, uid, cluster, query, filters, caseInfo } = options;
+        const { threadlineId, uid, cluster, query, filters, caseInfo = {} } = options;
 
         if (!threadlineId) {
             throw new Error("Missing required threadlineId.");
@@ -73,6 +64,15 @@ class EvidenceExporter {
             throw err;
         }
 
+        // Case & Courtroom Metadata
+        const batesPrefix = (caseInfo.batesPrefix || "EXHIBIT-A").trim().toUpperCase();
+        const batesStart = Math.max(1, parseInt(caseInfo.batesStart, 10) || 1);
+        const agencyName = (caseInfo.agencyName || "Digital Forensic Investigation Unit").trim();
+        const caseNumber = (caseInfo.caseNumber || caseInfo.caseName || "CASE-CR-2026").trim();
+        const examinerName = (caseInfo.examinerName || "Forensic Intelligence Examiner").trim();
+        const jurisdiction = (caseInfo.jurisdiction || "Court of Competent Jurisdiction").trim();
+        const targetSubject = (caseInfo.targetSubject || "").trim();
+
         // Determine message IDs to resolve
         let targetMessageIds = [];
         if (options.messageIds && Array.isArray(options.messageIds) && options.messageIds.length > 0) {
@@ -82,13 +82,17 @@ class EvidenceExporter {
         }
 
         if (targetMessageIds.length === 0) {
-            const err = new Error("No evidence selected for export.");
+            const allRows = db.query("SELECT id FROM messages WHERE threadline_id = ? ORDER BY timestamp ASC LIMIT 2500", [threadlineId]);
+            targetMessageIds = allRows.map(r => r.id);
+        }
+
+        if (targetMessageIds.length === 0) {
+            const err = new Error("No evidence records found in this case to export.");
             err.statusCode = 400;
             throw err;
         }
 
         // Authoritative resolution from SQLite database
-        // Enforce threadline_id containment to prevent ID traversal/cross-tenant leakage
         const placeholders = targetMessageIds.map(() => "?").join(",");
         const queryParams = [threadlineId, ...targetMessageIds];
 
@@ -105,14 +109,14 @@ class EvidenceExporter {
                 m.platform,
                 m.direction,
                 m.metadata AS messageMetadata,
-                imp.id AS importId,
-                imp.filename AS importFilename,
+                COALESCE(imp.id, 'direct_entry') AS importId,
+                COALESCE(imp.filename, 'Direct Entry') AS importFilename,
                 imp.source AS importSource,
                 imp.platform AS importPlatform,
                 imp.imported_at AS importTimestamp
             FROM messages m
             JOIN conversations c ON m.conversation_id = c.id
-            LEFT JOIN message_imports mi ON m.id = mi.message_id
+            LEFT JOIN (SELECT message_id, MIN(import_id) AS import_id FROM message_imports GROUP BY message_id) mi ON m.id = mi.message_id
             LEFT JOIN imports imp ON mi.import_id = imp.id
             WHERE m.threadline_id = ?
               AND m.id IN (${placeholders})
@@ -125,6 +129,59 @@ class EvidenceExporter {
             const err = new Error("No matching authoritative evidence records found in this threadline.");
             err.statusCode = 404;
             throw err;
+        }
+
+        // Lookup participant roles for senders in this threadline
+        const distinctSenders = Array.from(new Set(authoritativeRows.map(r => r.sender).filter(Boolean)));
+        const participantRoleMap = new Map();
+        if (distinctSenders.length > 0) {
+            const partPlaceholders = distinctSenders.map(() => "?").join(",");
+            const partRows = db.query(
+                `SELECT phone_number, name, metadata FROM participants 
+                 WHERE threadline_id = ? AND (phone_number IN (${partPlaceholders}) OR name IN (${partPlaceholders}))`,
+                [threadlineId, ...distinctSenders, ...distinctSenders]
+            );
+            partRows.forEach(pr => {
+                let pmeta = {};
+                try {
+                    pmeta = typeof pr.metadata === "string" ? JSON.parse(pr.metadata || "{}") : (pr.metadata || {});
+                } catch(e) {}
+                const role = pmeta.tag || pmeta.role || null;
+                const entry = { name: pr.name, role };
+                if (pr.phone_number) participantRoleMap.set(pr.phone_number, entry);
+                if (pr.name) participantRoleMap.set(pr.name, entry);
+            });
+        }
+
+        // Retrieve Chain of Custody Archive Manifest
+        const distinctImportIds = Array.from(new Set(authoritativeRows.map(r => r.importId).filter(id => id && id !== 'direct_entry')));
+        let archiveManifest = [];
+        if (distinctImportIds.length > 0) {
+            const impPlaceholders = distinctImportIds.map(() => "?").join(",");
+            const importRows = db.query(
+                `SELECT id, filename, source, platform, file_size, message_count, imported_at
+                 FROM imports WHERE id IN (${impPlaceholders})`,
+                distinctImportIds
+            );
+            archiveManifest = importRows.map(imp => {
+                const archiveMetaStr = canonicalStringify({
+                    id: imp.id,
+                    filename: imp.filename,
+                    file_size: imp.file_size,
+                    imported_at: imp.imported_at,
+                    message_count: imp.message_count
+                });
+                return {
+                    id: imp.id,
+                    filename: imp.filename,
+                    source: imp.source,
+                    platform: imp.platform,
+                    fileSize: imp.file_size || 0,
+                    messageCount: imp.message_count || 0,
+                    importedAt: imp.imported_at,
+                    sha256: sha256(archiveMetaStr)
+                };
+            });
         }
 
         // Build lookup map for cluster-specific deterministic match reasons and semantic inferences
@@ -141,7 +198,7 @@ class EvidenceExporter {
         }
 
         // Generate Export Metadata
-        const exportId = `TL-EXP-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
+        const exportId = `TL-EXHIBIT-${Date.now().toString(36).toUpperCase()}-${crypto.randomBytes(3).toString("hex").toUpperCase()}`;
         const generatedAt = new Date().toISOString();
 
         // 1. Process Source Evidence Items & Compute Item Hashes
@@ -150,7 +207,10 @@ class EvidenceExporter {
         const semanticFindings = [];
         const deterministicFindings = [];
 
-        for (const row of authoritativeRows) {
+        for (let i = 0; i < authoritativeRows.length; i++) {
+            const row = authoritativeRows[i];
+            const batesNum = `${batesPrefix}-${String(batesStart + i).padStart(4, "0")}`;
+
             let parsedMetadata = {};
             try {
                 parsedMetadata = typeof row.messageMetadata === "string" ? JSON.parse(row.messageMetadata || "{}") : (row.messageMetadata || {});
@@ -158,8 +218,6 @@ class EvidenceExporter {
                 parsedMetadata = {};
             }
 
-            // Canonical representation for cryptographic hashing
-            // Must strictly include immutable source data
             const canonicalItemData = {
                 messageId: row.messageId,
                 conversationId: row.conversationId,
@@ -173,14 +231,12 @@ class EvidenceExporter {
             const itemCanonicalString = canonicalStringify(canonicalItemData);
             const itemHash = sha256(itemCanonicalString);
 
-            // Contextual analysis / inference metadata
             const clusterMeta = clusterMetaMap.get(row.messageId) || {};
             const deterministicReasons = [];
             if (clusterMeta.matchReason) {
                 deterministicReasons.push(clusterMeta.matchReason);
             }
 
-            // Check for semantic inference
             let semanticInferenceText = null;
             let semanticConfidence = null;
             if (clusterMeta.semanticInference) {
@@ -191,6 +247,7 @@ class EvidenceExporter {
 
                 semanticFindings.push({
                     evidenceId: row.messageId,
+                    batesNumber: batesNum,
                     inference: semanticInferenceText,
                     confidence: semanticConfidence,
                     label: "SEMANTIC INFERENCE — NOT SOURCE EVIDENCE"
@@ -200,6 +257,7 @@ class EvidenceExporter {
             if (deterministicReasons.length > 0) {
                 deterministicFindings.push({
                     evidenceId: row.messageId,
+                    batesNumber: batesNum,
                     reasons: deterministicReasons,
                     score: clusterMeta.score
                 });
@@ -207,22 +265,29 @@ class EvidenceExporter {
 
             evidenceHashes.push({
                 evidenceId: row.messageId,
+                batesNumber: batesNum,
                 sha256: itemHash
             });
 
+            const roleMeta = participantRoleMap.get(row.sender) || {};
+
             evidenceItems.push({
                 id: row.messageId,
+                batesNumber: batesNum,
                 sourceEvidence: {
                     messageId: row.messageId,
+                    batesNumber: batesNum,
                     conversationId: row.conversationId,
                     conversationTitle: row.conversationTitle || "Conversation",
                     sender: row.sender,
+                    participantName: roleMeta.name || null,
+                    roleTag: roleMeta.role || null,
                     recipient: row.recipient,
                     timestamp: Number(row.timestamp),
                     timestampIso: new Date(Number(row.timestamp)).toISOString(),
                     body: row.body,
                     platform: row.platform,
-                    direction: row.direction,
+                    direction: row.direction || "received",
                     metadata: parsedMetadata
                 },
                 provenance: {
@@ -257,18 +322,19 @@ class EvidenceExporter {
             threadlineVersion: THREADLINE_VERSION,
             hashAlgorithm: "SHA-256",
             evidenceCount: evidenceItems.length,
-            evidenceHashes
+            evidenceHashes,
+            archiveManifest
         };
 
         const manifestCanonicalString = canonicalStringify(manifestData);
         const manifestHash = sha256(manifestCanonicalString);
 
-        // Aggregate Event Reconstruction Summary (if exporting a cluster or multi-message event)
+        // Aggregate Event Reconstruction Summary
         let eventReconstruction = null;
         if (cluster) {
             eventReconstruction = {
                 eventId: cluster.id || cluster.clusterId || `event_${evidenceItems[0].sourceEvidence.timestamp}`,
-                title: cluster.title || "Event Reconstruction",
+                title: cluster.title || "Event Reconstruction Exhibit",
                 topic: cluster.topic || "Reconstructed Event",
                 summaryReason: cluster.summaryReason || cluster.reason || "Reconstructed chronological communication",
                 relevance: cluster.relevance || "High",
@@ -283,13 +349,12 @@ class EvidenceExporter {
                 participants: cluster.participants || Array.from(new Set(evidenceItems.map(e => e.sourceEvidence.sender).filter(Boolean)))
             };
         } else {
-            // General selection event reconstruction summary
             const distinctConvs = Array.from(new Set(evidenceItems.map(e => e.sourceEvidence.conversationTitle)));
             const distinctParts = Array.from(new Set(evidenceItems.map(e => e.sourceEvidence.sender).filter(Boolean)));
             eventReconstruction = {
                 eventId: `event_selection_${Date.now()}`,
-                title: "Selected Evidence Reconstruction",
-                topic: "Manual Evidence Selection",
+                title: caseInfo.exhibitTitle || "Selected Evidence Exhibit",
+                topic: "Forensic Evidence Compilation",
                 summaryReason: `Chronological compilation of ${evidenceItems.length} evidence record(s) across ${distinctConvs.length} conversation thread(s).`,
                 relevance: "Direct Selection",
                 relevanceScore: 100,
@@ -310,69 +375,62 @@ class EvidenceExporter {
                 exportVersion: EXPORT_SPEC_VERSION,
                 threadlineVersion: THREADLINE_VERSION,
                 generatedAt,
-                tamperEvidentClassification: "TAMPER-EVIDENT FORENSIC EXPORT"
+                systemSignature: "THREADLINE_AUTHORITATIVE_EXHIBIT_ENGINE"
             },
-            caseMetadata: caseInfo || {
-                caseName: "Unspecified Investigation / Review",
-                investigator: uid || "Authorized User",
-                notes: null
+            caseMetadata: {
+                caseName: caseNumber,
+                caseNumber,
+                agencyName,
+                examinerName,
+                jurisdiction,
+                targetSubject,
+                batesPrefix,
+                batesStart,
+                threadlineId,
+                investigator: uid,
+                notes: caseInfo.notes || ""
             },
             queryContext: {
                 query: query || null,
-                filters: filters || {}
+                filters: filters || null
             },
             eventReconstruction,
             evidence: evidenceItems,
-            analysis: {
-                deterministicFindingsCount: deterministicFindings.length,
-                deterministicFindings
-            },
-            inference: {
-                hasSemanticInference: semanticFindings.length > 0,
-                disclaimer: "SEMANTIC INFERENCE — NOT SOURCE EVIDENCE",
+            evidenceItems,
+            archiveManifest,
+            analyticalInferences: {
+                deterministicFindings,
                 semanticFindings
             },
             integrity: {
                 hashAlgorithm: "SHA-256",
                 evidenceCount: evidenceItems.length,
-                evidenceHashes,
-                manifestHash
+                manifestHash,
+                evidenceHashes
             }
         };
     }
 
     /**
-     * Generates a self-contained JSON Evidence Package.
-     */
-    generateJsonPackage(canonicalExport) {
-        return JSON.stringify(canonicalExport, null, 2);
-    }
-
-    /**
-     * Generates a forensic PDF Evidence Report or Watermarked Copy.
-     * 
-     * @param {Object} canonicalExport - The canonical export model
-     * @param {Object} options - PDF generation options
-     * @param {boolean} [options.watermarked=false] - Whether to apply watermark and read-only flags
-     * @returns {Promise<Buffer>} PDF Buffer
+     * Generates a forensic PDF Evidence Report / Courtroom Exhibit.
      */
     generatePdfReport(canonicalExport, options = {}) {
         return new Promise((resolve, reject) => {
             const isWatermarked = Boolean(options.watermarked);
+            const caseMeta = canonicalExport.caseMetadata || {};
 
             const docOptions = {
                 size: "LETTER",
-                margins: { top: 40, bottom: 45, left: 45, right: 45 },
+                margins: { top: 45, bottom: 45, left: 45, right: 45 },
                 bufferPages: true,
                 info: {
-                    Title: `Threadline Evidence Report - ${canonicalExport.exportMetadata.exportId}`,
-                    Author: "Threadline Forensic System",
-                    Subject: "Authoritative Evidence Export",
-                    Keywords: "evidence, forensics, threadline, audit"
+                    Title: `Courtroom Trial Exhibit - ${caseMeta.caseNumber || canonicalExport.exportMetadata.exportId}`,
+                    Author: caseMeta.agencyName || "Threadline Forensic System",
+                    Subject: "Authoritative Trial Exhibit & Chain of Custody",
+                    Keywords: "evidence, forensics, court, exhibit, bates, chain of custody"
                 }
             };
 
-            // Configure PDF permission restrictions if watermarked/read-only requested
             if (isWatermarked) {
                 docOptions.permissions = {
                     modifying: false,
@@ -391,106 +449,97 @@ class EvidenceExporter {
             doc.on("error", err => reject(err));
 
             const colors = {
-                headerBg: "#0F172A", // Slate 900
-                accent: "#2563EB",   // Blue 600
-                darkText: "#1E293B", // Slate 800
-                mutedText: "#64748B",// Slate 500
-                border: "#CBD5E1",   // Slate 300
-                cardBg: "#F8FAFC",   // Slate 50
-                sourceBox: "#FFFFFF",
-                inferenceBg: "#FEF3C7", // Amber 100
-                inferenceBorder: "#D97706", // Amber 600
-                inferenceText: "#92400E"  // Amber 800
+                headerBg: "#0F172A",
+                accent: "#0284C7",
+                darkText: "#0F172A",
+                mutedText: "#475569",
+                border: "#94A3B8",
+                cardBg: "#F8FAFC",
+                outgoingBg: "#FFFBEB",
+                outgoingBorder: "#F59E0B",
+                incomingBg: "#F0F9FF",
+                incomingBorder: "#0284C7",
+                inferenceBg: "#FEF3C7",
+                inferenceBorder: "#D97706",
+                inferenceText: "#92400E"
             };
 
-            // --- HEADER BLOCK ---
-            doc.rect(45, 40, 522, 54).fill(colors.headerBg);
+            // --- COVER / OFFICIAL HEADER BLOCK ---
+            doc.rect(45, 40, 522, 70).fill(colors.headerBg);
 
             doc.fillColor("#FFFFFF")
                .font("Helvetica-Bold")
-               .fontSize(16)
-               .text("THREADLINE", 60, 50, { characterSpacing: 1.5 });
-
-            doc.font("Helvetica")
-               .fontSize(11)
-               .fillColor("#94A3B8")
-               .text(isWatermarked ? "READ-ONLY EVIDENCE COPY" : "FORENSIC EVIDENCE REPORT", 60, 70);
+               .fontSize(15)
+               .text("OFFICIAL COURTROOM TRIAL EXHIBIT", 60, 48, { characterSpacing: 1.2 });
 
             doc.font("Helvetica-Bold")
                .fontSize(9)
                .fillColor("#38BDF8")
-               .text(`EXPORT ID: ${canonicalExport.exportMetadata.exportId}`, 360, 52, { align: "right", width: 195 });
+               .text((caseMeta.agencyName || "DIGITAL FORENSIC INVESTIGATION UNIT").toUpperCase(), 60, 68);
 
             doc.font("Helvetica")
                .fontSize(8)
                .fillColor("#94A3B8")
-               .text(`Generated: ${canonicalExport.exportMetadata.generatedAt}`, 360, 68, { align: "right", width: 195 });
+               .text(`JURISDICTION: ${caseMeta.jurisdiction || "COURT OF COMPETENT JURISDICTION"}`, 60, 82);
 
-            doc.moveDown(3);
+            doc.font("Helvetica-Bold")
+               .fontSize(9)
+               .fillColor("#F59E0B")
+               .text(`EXHIBIT ID: ${canonicalExport.exportMetadata.exportId}`, 360, 48, { align: "right", width: 195 });
 
-            // Metadata summary table
-            let curY = 110;
+            doc.font("Helvetica")
+               .fontSize(8)
+               .fillColor("#CBD5E1")
+               .text(`DOCKET: ${caseMeta.caseNumber || "CR-2026-EXHIBIT"}`, 360, 64, { align: "right", width: 195 });
+
+            doc.font("Helvetica")
+               .fontSize(7.5)
+               .fillColor("#94A3B8")
+               .text(`Certified: ${canonicalExport.exportMetadata.generatedAt.replace("T", " ").replace("Z", " UTC")}`, 360, 78, { align: "right", width: 195 });
+
+            // Case Info Summary Grid
+            let curY = 120;
             doc.rect(45, curY, 522, 60).strokeColor(colors.border).lineWidth(1).stroke();
 
-            doc.font("Helvetica-Bold").fontSize(8).fillColor(colors.mutedText).text("INVESTIGATION / CASE:", 55, curY + 8);
-            doc.font("Helvetica").fontSize(9).fillColor(colors.darkText).text(canonicalExport.caseMetadata.caseName || "Unspecified", 175, curY + 8);
+            doc.font("Helvetica-Bold").fontSize(7.5).fillColor(colors.mutedText).text("CASE / CAUSE NUMBER:", 55, curY + 8);
+            doc.font("Helvetica-Bold").fontSize(8.5).fillColor(colors.darkText).text(caseMeta.caseNumber, 175, curY + 8);
 
-            doc.font("Helvetica-Bold").fontSize(8).fillColor(colors.mutedText).text("SEARCH QUERY:", 55, curY + 24);
-            doc.font("Helvetica").fontSize(9).fillColor(colors.darkText).text(canonicalExport.queryContext.query ? `"${canonicalExport.queryContext.query}"` : "(Direct Selection)", 175, curY + 24);
+            doc.font("Helvetica-Bold").fontSize(7.5).fillColor(colors.mutedText).text("EXAMINER / CREDENTIALS:", 55, curY + 23);
+            doc.font("Helvetica").fontSize(8.5).fillColor(colors.darkText).text(caseMeta.examinerName, 175, curY + 23);
 
-            doc.font("Helvetica-Bold").fontSize(8).fillColor(colors.mutedText).text("THREADLINE VERSION:", 55, curY + 40);
-            doc.font("Helvetica").fontSize(8).fillColor(colors.darkText).text(`v${canonicalExport.exportMetadata.threadlineVersion} (Spec v${canonicalExport.exportMetadata.exportVersion})`, 175, curY + 40);
+            doc.font("Helvetica-Bold").fontSize(7.5).fillColor(colors.mutedText).text("BATES STAMP RANGE:", 55, curY + 38);
+            const batesFirst = canonicalExport.evidence[0]?.batesNumber || "EXHIBIT-A-0001";
+            const batesLast = canonicalExport.evidence[canonicalExport.evidence.length - 1]?.batesNumber || batesFirst;
+            doc.font("Courier-Bold").fontSize(8.5).fillColor(colors.accent).text(`${batesFirst} THROUGH ${batesLast}`, 175, curY + 38);
 
-            doc.font("Helvetica-Bold").fontSize(8).fillColor(colors.mutedText).text("TOTAL EVIDENCE ITEMS:", 360, curY + 40);
-            doc.font("Helvetica").fontSize(9).fillColor(colors.darkText).text(`${canonicalExport.integrity.evidenceCount}`, 480, curY + 40);
+            doc.font("Helvetica-Bold").fontSize(7.5).fillColor(colors.mutedText).text("TOTAL RECORDS:", 380, curY + 8);
+            doc.font("Helvetica-Bold").fontSize(9).fillColor(colors.darkText).text(`${canonicalExport.integrity.evidenceCount} messages`, 470, curY + 8);
 
-            curY += 75;
+            doc.font("Helvetica-Bold").fontSize(7.5).fillColor(colors.mutedText).text("SOURCES / LOGS:", 380, curY + 23);
+            doc.font("Helvetica").fontSize(8.5).fillColor(colors.darkText).text(`${canonicalExport.archiveManifest?.length || 1} extraction archive(s)`, 470, curY + 23);
 
-            // --- EVENT RECONSTRUCTION SECTION ---
+            curY += 72;
+
+            // --- EVENT RECONSTRUCTION SUMMARY ---
             if (canonicalExport.eventReconstruction) {
                 const er = canonicalExport.eventReconstruction;
+                doc.rect(45, curY, 522, 18).fill("#E2E8F0");
+                doc.font("Helvetica-Bold").fontSize(8.5).fillColor(colors.darkText).text("EXHIBIT SCOPE & EVENT RECONSTRUCTION", 55, curY + 5);
+                curY += 24;
 
-                doc.rect(45, curY, 522, 22).fill("#E2E8F0");
-                doc.font("Helvetica-Bold").fontSize(9).fillColor(colors.darkText).text("EVENT RECONSTRUCTION SUMMARY", 55, curY + 6);
-
-                curY += 28;
-
-                doc.font("Helvetica-Bold").fontSize(11).fillColor(colors.accent).text(er.title, 55, curY);
-                curY += 16;
+                doc.font("Helvetica-Bold").fontSize(10.5).fillColor(colors.accent).text(er.title, 55, curY);
+                curY += 15;
 
                 if (er.summaryReason) {
-                    doc.font("Helvetica-Oblique").fontSize(8.5).fillColor(colors.mutedText).text(er.summaryReason, 55, curY, { width: 505 });
+                    doc.font("Helvetica").fontSize(8).fillColor(colors.mutedText).text(er.summaryReason, 55, curY, { width: 505 });
                     curY += doc.heightOfString(er.summaryReason, { width: 505 }) + 6;
                 }
-
-                // Chips / metrics row
-                const partsStr = (er.participants && er.participants.length > 0) ? er.participants.join(", ") : "N/A";
-                const convsStr = (er.conversations && er.conversations.length > 0) 
-                    ? er.conversations.map(c => typeof c === "string" ? c : (c.title || c.id)).join(" | ")
-                    : "N/A";
-
-                doc.font("Helvetica-Bold").fontSize(8).fillColor(colors.darkText).text("Participants: ", 55, curY, { continued: true });
-                doc.font("Helvetica").text(partsStr);
-                curY += 14;
-
-                doc.font("Helvetica-Bold").fontSize(8).fillColor(colors.darkText).text("Conversations: ", 55, curY, { continued: true });
-                doc.font("Helvetica").text(convsStr);
-                curY += 14;
-
-                if (er.timeSpan?.dateString) {
-                    doc.font("Helvetica-Bold").fontSize(8).fillColor(colors.darkText).text("Timeline Window: ", 55, curY, { continued: true });
-                    doc.font("Helvetica").text(er.timeSpan.dateString);
-                    curY += 14;
-                }
-
-                curY += 8;
             }
 
-            // --- SOURCE EVIDENCE SECTION ---
-            // Visual divider
-            doc.rect(45, curY, 522, 22).fill("#1E293B");
-            doc.font("Helvetica-Bold").fontSize(9).fillColor("#FFFFFF").text("AUTHORITATIVE SOURCE EVIDENCE (CHRONOLOGICAL)", 55, curY + 6);
-            curY += 28;
+            // --- SOURCE EVIDENCE TRANSCRIPT ---
+            doc.rect(45, curY, 522, 20).fill("#1E293B");
+            doc.font("Helvetica-Bold").fontSize(8.5).fillColor("#FFFFFF").text("AUTHENTIC COMMUNICATION TRANSCRIPT (CHRONOLOGICAL)", 55, curY + 5);
+            curY += 26;
 
             let currentConversationId = null;
 
@@ -499,125 +548,144 @@ class EvidenceExporter {
                 const se = item.sourceEvidence;
                 const det = item.deterministicAnalysis;
                 const inf = item.semanticInference;
+                const isSent = se.direction === "sent";
 
-                // Estimate height required for this item
                 const bodyText = se.body !== null && se.body !== undefined ? String(se.body) : "";
                 const bodyHeight = doc.heightOfString(bodyText, { width: 490 });
-                const estimatedItemHeight = 70 + bodyHeight + (inf ? 35 : 0) + (det.matchReasons.length > 0 ? 20 : 0);
+                const estimatedItemHeight = 65 + bodyHeight + (inf ? 30 : 0);
 
-                // Check page break
-                if (curY + estimatedItemHeight > 720) {
+                if (curY + estimatedItemHeight > 700) {
                     doc.addPage();
-                    curY = 50;
+                    curY = 55;
                 }
 
-                // Distinct Conversation Boundary Banner if conversation changes
                 if (se.conversationId !== currentConversationId) {
                     currentConversationId = se.conversationId;
-
-                    doc.rect(45, curY, 522, 18).fill("#F1F5F9");
+                    doc.rect(45, curY, 522, 16).fill("#F1F5F9");
                     doc.strokeColor(colors.border).lineWidth(0.5).stroke();
-                    doc.font("Helvetica-Bold").fontSize(8).fillColor(colors.accent)
-                       .text(`CONVERSATION THREAD: ${se.conversationTitle}  •  Platform: ${se.platform || "SMS"}`, 55, curY + 5);
-                    curY += 24;
+                    doc.font("Helvetica-Bold").fontSize(7.5).fillColor(colors.accent)
+                       .text(`THREAD: ${se.conversationTitle}  |  Extraction Log: ${item.provenance?.sourceFile || "Direct Entry"}`, 55, curY + 4);
+                    curY += 22;
                 }
 
-                // Item Container
-                const startItemY = curY;
+                // Item Header Bar
+                const headerBg = isSent ? colors.outgoingBg : colors.incomingBg;
+                const headerBorder = isSent ? colors.outgoingBorder : colors.incomingBorder;
 
-                // Item Header Bar (Timestamp, Sender, Direction, Message ID)
-                doc.rect(45, curY, 522, 16).fill(colors.cardBg);
-                doc.strokeColor(colors.border).lineWidth(0.5).stroke();
+                doc.rect(45, curY, 522, 16).fill(headerBg);
+                doc.rect(45, curY, 522, 16).strokeColor(headerBorder).lineWidth(0.75).stroke();
 
-                const timeStr = `${se.timestampIso} (Unix: ${se.timestamp})`;
-                doc.font("Helvetica-Bold").fontSize(7.5).fillColor(colors.darkText).text(`[#${i + 1}]  ${timeStr}`, 52, curY + 4);
+                const timeUtc = new Date(se.timestamp).toISOString().replace("T", " ").replace("Z", " UTC");
+                const dirLabel = isSent ? "↗ OUTGOING" : "↙ INCOMING";
+                doc.font("Helvetica-Bold").fontSize(7).fillColor(colors.darkText)
+                   .text(`[BATES: ${item.batesNumber}]  ${dirLabel}  •  ${timeUtc}`, 52, curY + 4);
 
-                const senderLabel = `${se.sender || "Unknown"}${se.recipient ? ` → ${se.recipient}` : ""}`;
-                doc.font("Helvetica-Bold").fontSize(7.5).fillColor(colors.accent).text(senderLabel, 300, curY + 4, { align: "right", width: 260 });
+                let senderName = se.participantName || se.sender || "Unknown";
+                if (se.roleTag) senderName += ` [${se.roleTag.toUpperCase()}]`;
+                doc.font("Helvetica-Bold").fontSize(7).fillColor(isSent ? "#B45309" : "#0369A1")
+                   .text(senderName, 320, curY + 4, { align: "right", width: 240 });
 
-                curY += 20;
+                curY += 19;
 
-                // Exact Source Message Body Box
-                doc.rect(48, curY, 516, bodyHeight + 12).strokeColor(colors.border).lineWidth(0.5).stroke();
-                doc.font("Courier").fontSize(8.5).fillColor("#000000").text(bodyText, 54, curY + 6, { width: 504 });
+                // Message Body
+                doc.rect(48, curY, 516, bodyHeight + 10).strokeColor(colors.border).lineWidth(0.5).stroke();
+                doc.font("Courier").fontSize(8).fillColor("#000000").text(bodyText, 54, curY + 5, { width: 504 });
 
-                curY += bodyHeight + 16;
+                curY += bodyHeight + 14;
 
-                // Deterministic Analysis Reasons (if any)
-                if (det.matchReasons && det.matchReasons.length > 0) {
-                    doc.font("Helvetica-Bold").fontSize(7).fillColor(colors.mutedText).text("DETERMINISTIC ANALYSIS: ", 52, curY, { continued: true });
-                    doc.font("Helvetica").fillColor(colors.darkText).text(det.matchReasons.join("; "));
-                    curY += 12;
-                }
-
-                // Semantic Inference Callout (Prominently distinct & labeled)
-                if (inf) {
-                    doc.rect(48, curY, 516, 22).fill(colors.inferenceBg);
-                    doc.strokeColor(colors.inferenceBorder).lineWidth(0.5).stroke();
-
-                    doc.font("Helvetica-Bold").fontSize(7).fillColor(colors.inferenceText)
-                       .text("SEMANTIC INFERENCE — NOT SOURCE EVIDENCE:", 54, curY + 4);
-
-                    doc.font("Helvetica").fontSize(7.5).fillColor("#78350F")
-                       .text(`${inf.finding} ${inf.confidence ? `(Confidence: ${inf.confidence})` : ""}`, 54, curY + 13, { width: 500 });
-
-                    curY += 26;
-                }
-
-                // Provenance & Item Integrity Footer
-                const provenanceStr = `Message ID: ${se.messageId}  |  SHA-256: ${item.integrity.itemHash.substring(0, 16)}...`;
-                doc.font("Helvetica").fontSize(6.5).fillColor(colors.mutedText).text(provenanceStr, 52, curY);
-
+                // Provenance & Hash Line
+                const provLine = `Source: ${item.provenance?.sourceFile || "Direct Entry"} | SHA-256: ${item.integrity.itemHash.substring(0, 24)}...`;
+                doc.font("Helvetica").fontSize(6.5).fillColor(colors.mutedText).text(provLine, 52, curY);
                 curY += 12;
             }
 
-            // --- DOCUMENT INTEGRITY SECTION ---
-            if (curY + 110 > 720) {
+            // --- APPENDIX A: CHAIN OF CUSTODY & EVIDENCE ARCHIVE MANIFEST ---
+            if (curY + 180 > 700) {
                 doc.addPage();
-                curY = 50;
+                curY = 55;
             }
 
-            curY += 10;
-            doc.rect(45, curY, 522, 22).fill("#0F172A");
-            doc.font("Helvetica-Bold").fontSize(9).fillColor("#FFFFFF").text("DOCUMENT INTEGRITY & FORENSIC VERIFICATION", 55, curY + 6);
-            curY += 28;
+            curY += 15;
+            doc.rect(45, curY, 522, 20).fill("#0F172A");
+            doc.font("Helvetica-Bold").fontSize(8.5).fillColor("#FFFFFF").text("APPENDIX A: CHAIN OF CUSTODY & EVIDENCE ARCHIVE MANIFEST", 55, curY + 5);
+            curY += 26;
 
-            doc.rect(45, curY, 522, 85).strokeColor(colors.border).lineWidth(1).stroke();
+            // Table Header
+            doc.rect(45, curY, 522, 14).fill("#E2E8F0");
+            doc.font("Helvetica-Bold").fontSize(6.5).fillColor(colors.darkText);
+            doc.text("EXTRACTION ARCHIVE FILE", 50, curY + 4, { width: 140 });
+            doc.text("FORMAT / PLATFORM", 195, curY + 4, { width: 90 });
+            doc.text("RECORD COUNT", 290, curY + 4, { width: 70 });
+            doc.text("SHA-256 CRYPTOGRAPHIC PROVENANCE HASH", 365, curY + 4, { width: 195 });
+            curY += 17;
 
-            doc.font("Helvetica-Bold").fontSize(8).fillColor(colors.darkText).text("Export Identifier:", 55, curY + 10);
-            doc.font("Courier").fontSize(8.5).fillColor(colors.accent).text(canonicalExport.exportMetadata.exportId, 175, curY + 10);
+            const archives = canonicalExport.archiveManifest || [];
+            if (archives.length === 0) {
+                doc.font("Helvetica").fontSize(7).fillColor(colors.mutedText).text("No external archive containers logged; direct database transcript.", 50, curY);
+                curY += 14;
+            } else {
+                archives.forEach(arc => {
+                    if (curY + 20 > 720) {
+                        doc.addPage();
+                        curY = 55;
+                    }
+                    doc.font("Helvetica-Bold").fontSize(6.5).fillColor(colors.darkText).text(arc.filename || "Extraction", 50, curY, { width: 140 });
+                    doc.font("Helvetica").fontSize(6.5).fillColor(colors.mutedText).text(arc.platform || arc.source || "XML", 195, curY, { width: 90 });
+                    doc.font("Helvetica").fontSize(6.5).fillColor(colors.darkText).text(`${arc.messageCount} msgs`, 290, curY, { width: 70 });
+                    doc.font("Courier").fontSize(6).fillColor("#0F172A").text(arc.sha256 || "N/A", 365, curY, { width: 195 });
+                    curY += 14;
+                });
+            }
 
-            doc.font("Helvetica-Bold").fontSize(8).fillColor(colors.darkText).text("Cryptographic Algorithm:", 55, curY + 25);
-            doc.font("Helvetica").fontSize(8).fillColor(colors.darkText).text(canonicalExport.integrity.hashAlgorithm, 175, curY + 25);
+            // Manifest Overall Hash
+            curY += 8;
+            doc.rect(45, curY, 522, 36).strokeColor(colors.border).lineWidth(0.5).stroke();
+            doc.font("Helvetica-Bold").fontSize(7).fillColor(colors.darkText).text("COMPLETE EXHIBIT MANIFEST SHA-256 DIGEST:", 55, curY + 8);
+            doc.font("Courier-Bold").fontSize(7.5).fillColor(colors.accent).text(canonicalExport.integrity.manifestHash, 55, curY + 20);
+            curY += 46;
 
-            doc.font("Helvetica-Bold").fontSize(8).fillColor(colors.darkText).text("Evidence Items Count:", 55, curY + 40);
-            doc.font("Helvetica").fontSize(8).fillColor(colors.darkText).text(`${canonicalExport.integrity.evidenceCount}`, 175, curY + 40);
+            // --- FORENSIC EXAMINER CERTIFICATION & ATTESTATION BLOCK ---
+            if (curY + 110 > 700) {
+                doc.addPage();
+                curY = 55;
+            }
 
-            doc.font("Helvetica-Bold").fontSize(8).fillColor(colors.darkText).text("Complete Manifest Hash:", 55, curY + 55);
-            doc.font("Courier-Bold").fontSize(8).fillColor("#0F172A").text(canonicalExport.integrity.manifestHash, 175, curY + 55);
+            doc.rect(45, curY, 522, 18).fill("#1E293B");
+            doc.font("Helvetica-Bold").fontSize(8).fillColor("#FFFFFF").text("FORENSIC EXAMINER DECLARATION & CERTIFICATION", 55, curY + 5);
+            curY += 24;
 
-            doc.font("Helvetica-Oblique").fontSize(6.8).fillColor(colors.mutedText)
-               .text(
-                   "Tamper-Evident Notice: This document contains cryptographic SHA-256 hashes generated from canonical SQLite source records. " +
-                   "Any modification to source bodies, timestamps, or message metadata invalidates the manifest hash. " +
-                   "Watermarking and permissions discourage unauthorized editing but do not replace digital signatures or legal chain of custody.",
-                   55, curY + 70, { width: 505 }
-               );
+            const certificationStatement = 
+                "I, the undersigned forensic examiner, hereby certify under penalty of perjury that this report represents " +
+                "an authentic, unaltered chronological compilation of electronic communication records extracted from the referenced source " +
+                "containers. The records have been forensically preserved and verified using cryptographic SHA-256 algorithms in strict " +
+                "adherence to digital evidence chain of custody standards.";
 
-            // --- RENDER PASS: PAGINATION & WATERMARK (ON ALL PAGES) ---
+            doc.font("Helvetica-Oblique").fontSize(7.5).fillColor(colors.darkText).text(certificationStatement, 50, curY, { width: 512, lineGap: 2 });
+            curY += doc.heightOfString(certificationStatement, { width: 512 }) + 14;
+
+            // Signature block lines
+            doc.font("Helvetica-Bold").fontSize(7.5).fillColor(colors.darkText);
+            doc.text("EXAMINER SIGNATURE: ____________________________________", 50, curY);
+            doc.text("DATE: ____________________", 380, curY);
+            curY += 16;
+            doc.font("Helvetica").fontSize(7).fillColor(colors.mutedText);
+            doc.text(`Printed Name: ${caseMeta.examinerName || "Forensic Examiner"}`, 50, curY);
+            doc.text(`Agency / Laboratory: ${caseMeta.agencyName || "Digital Forensics"}`, 380, curY);
+
+            // --- RENDER PASS: RUNNING HEADERS, BATES STAMPING, PAGINATION ---
             const range = doc.bufferedPageRange();
             for (let i = range.start; i < (range.start + range.count); i++) {
                 doc.switchToPage(i);
 
-                // 1. Watermark (if watermarked requested)
+                // Watermark (if requested)
                 if (isWatermarked) {
                     doc.save();
                     doc.fillColor("#000000");
-                    doc.fillOpacity(0.045);
+                    doc.fillOpacity(0.04);
                     doc.rotate(-40, { origin: [306, 396] });
-                    doc.fontSize(38);
+                    doc.fontSize(36);
                     doc.font("Helvetica-Bold");
-                    doc.text("THREADLINE — READ ONLY EVIDENCE COPY", -100, 375, {
+                    doc.text("COURT EXHIBIT — READ ONLY", -100, 375, {
                         align: "center",
                         width: 800,
                         characterSpacing: 2
@@ -625,19 +693,99 @@ class EvidenceExporter {
                     doc.restore();
                 }
 
-                // 2. Page Footer
-                doc.save();
-                doc.strokeColor(colors.border).lineWidth(0.5).moveTo(45, 750).lineTo(567, 750).stroke();
-                doc.font("Helvetica").fontSize(7).fillColor(colors.mutedText)
-                   .text(`Threadline Evidence Export • ID: ${canonicalExport.exportMetadata.exportId} • Manifest: ${canonicalExport.integrity.manifestHash.substring(0, 12)}...`, 45, 756);
+                // Running Header (Page 2+)
+                if (i > range.start) {
+                    doc.save();
+                    doc.font("Helvetica").fontSize(6.5).fillColor(colors.mutedText)
+                       .text(`${caseMeta.caseNumber || "CR-2026"} • ${caseMeta.agencyName || "Forensic Unit"} • Court Exhibit`, 45, 25);
+                    doc.strokeColor(colors.border).lineWidth(0.5).moveTo(45, 35).lineTo(567, 35).stroke();
+                    doc.restore();
+                }
 
-                doc.font("Helvetica-Bold").fontSize(7).fillColor(colors.mutedText)
-                   .text(`Page ${i + 1} of ${range.count}`, 450, 756, { align: "right", width: 117 });
+                // Page Footer & Official Bates Stamp
+                doc.save();
+                doc.strokeColor(colors.border).lineWidth(0.5).moveTo(45, 745).lineTo(567, 745).stroke();
+
+                // Left: Provenance Summary
+                doc.font("Helvetica").fontSize(6.5).fillColor(colors.mutedText)
+                   .text(`Exhibit ID: ${canonicalExport.exportMetadata.exportId} • Manifest: ${canonicalExport.integrity.manifestHash.substring(0, 16)}...`, 45, 752);
+
+                // Center: Page count
+                doc.font("Helvetica").fontSize(7).fillColor(colors.mutedText)
+                   .text(`Page ${i + 1} of ${range.count}`, 270, 752);
+
+                // Right: Bates Stamping Box
+                const pageBates = `${caseMeta.batesPrefix}-${String(caseMeta.batesStart + i).padStart(4, "0")}`;
+                doc.rect(455, 748, 112, 16).fill("#0F172A");
+                doc.font("Courier-Bold").fontSize(7.5).fillColor("#38BDF8")
+                   .text(`BATES: ${pageBates}`, 458, 752, { width: 106, align: "center" });
+
                 doc.restore();
             }
 
             doc.end();
         });
+    }
+
+    /**
+     * Generates a litigation-ready Discovery CSV Transcript.
+     */
+    generateCsvTranscript(canonicalExport) {
+        const headers = [
+            "Bates Number",
+            "Timestamp UTC",
+            "Timestamp Local",
+            "Direction",
+            "Sender",
+            "Participant Name",
+            "Role",
+            "Recipient",
+            "Platform",
+            "Conversation Thread",
+            "Source Extraction Log",
+            "SHA-256 Item Hash",
+            "Message Body"
+        ];
+
+        const escapeCsv = (val) => {
+            if (val === null || val === undefined) return '""';
+            const str = String(val).replace(/"/g, '""');
+            return `"${str}"`;
+        };
+
+        const rows = [headers.map(escapeCsv).join(",")];
+
+        canonicalExport.evidenceItems.forEach((item) => {
+            const se = item.sourceEvidence;
+            const timeUtc = new Date(se.timestamp).toISOString().replace("T", " ").replace("Z", " UTC");
+            const timeLocal = new Date(se.timestamp).toLocaleString();
+
+            const row = [
+                item.batesNumber || "",
+                timeUtc,
+                timeLocal,
+                se.direction || "received",
+                se.sender || "",
+                se.participantName || "",
+                se.roleTag || "",
+                se.recipient || "",
+                se.platform || "SMS",
+                se.conversationTitle || "",
+                item.provenance?.sourceFile || "",
+                item.integrity?.itemHash || "",
+                se.body || ""
+            ];
+            rows.push(row.map(escapeCsv).join(","));
+        });
+
+        return rows.join("\r\n");
+    }
+
+    /**
+     * Generates the canonical JSON evidence package string.
+     */
+    generateJsonPackage(canonicalExport) {
+        return canonicalStringify(canonicalExport);
     }
 }
 

@@ -127,9 +127,14 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
 
     // Evidence Export Modal States
     const [exportModalCluster, setExportModalCluster] = useState(null);
-    const [exportFormat, setExportFormat] = useState("pdf"); // 'pdf' | 'watermarked_pdf' | 'json'
+    const [exportFormat, setExportFormat] = useState("pdf"); // 'pdf' | 'watermarked_pdf' | 'csv' | 'json'
     const [exportCaseName, setExportCaseName] = useState("");
     const [isExporting, setIsExporting] = useState(false);
+    const [exportBatesPrefix, setExportBatesPrefix] = useState("EXHIBIT-A");
+    const [exportBatesStart, setExportBatesStart] = useState("1");
+    const [exportAgency, setExportAgency] = useState("Digital Forensic Investigation Unit");
+    const [exportExaminer, setExportExaminer] = useState("Lead Digital Forensics Examiner");
+    const [exportJurisdiction, setExportJurisdiction] = useState("Court of Competent Jurisdiction");
 
     // In-App Modal States for Segment Deletion and Thread Renaming (replacing native confirm/prompt)
     const [segmentToDelete, setSegmentToDelete] = useState(null);
@@ -314,6 +319,15 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
         }
     }
 
+    function handleOpenCaseExhibitExport() {
+        setExportCaseName(threadline.name || "CR-2026-EXHIBIT");
+        setExportModalCluster({
+            title: `${threadline.name || "Case"} — Complete Courtroom Trial Exhibit`,
+            topic: "Complete Multi-Source Case Archive",
+            messages: messages && messages.length > 0 ? messages : (conversations[0]?.messages || [])
+        });
+    }
+
     async function handleExecuteExport() {
         if (!exportModalCluster) return;
         setIsExporting(true);
@@ -325,9 +339,15 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                     cluster: exportModalCluster,
                     query: searchQuery,
                     caseInfo: {
-                        caseName: exportCaseName.trim() || "Threadline Investigation",
-                        investigator: uid,
-                        notes: `Exported from Event Cluster: ${exportModalCluster.title || exportModalCluster.topic}`
+                        caseName: exportCaseName.trim() || threadline.name || "Threadline Investigation",
+                        caseNumber: exportCaseName.trim() || "CR-2026-EXHIBIT",
+                        agencyName: exportAgency.trim() || "Digital Forensic Investigation Unit",
+                        examinerName: exportExaminer.trim() || "Lead Digital Forensics Examiner",
+                        jurisdiction: exportJurisdiction.trim() || "Court of Competent Jurisdiction",
+                        batesPrefix: exportBatesPrefix.trim() || "EXHIBIT-A",
+                        batesStart: parseInt(exportBatesStart, 10) || 1,
+                        targetSubject: threadline.name || "",
+                        notes: `Exported from Exhibit: ${exportModalCluster.title || exportModalCluster.topic || "Case Evidence"}`
                     }
                 },
                 {
@@ -336,16 +356,25 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                 }
             );
 
-            // Trigger browser download
-            const blob = new Blob([response.data], {
-                type: exportFormat === "json" ? "application/json" : "application/pdf"
-            });
+            // Determine MIME type and file extension
+            let mimeType = "application/pdf";
+            let ext = "pdf";
+            if (exportFormat === "json") {
+                mimeType = "application/json";
+                ext = "json";
+            } else if (exportFormat === "csv") {
+                mimeType = "text/csv";
+                ext = "csv";
+            } else if (exportFormat === "watermarked_pdf") {
+                ext = "READONLY.pdf";
+            }
+
+            const blob = new Blob([response.data], { type: mimeType });
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement("a");
             a.href = url;
-            const ext = exportFormat === "json" ? "json" : (exportFormat === "watermarked_pdf" ? "READONLY.pdf" : "pdf");
-            const clusterTitle = (exportModalCluster.title || "evidence").toLowerCase().replace(/[^a-z0-9]/g, "_").substring(0, 30);
-            a.download = `threadline_export_${clusterTitle}.${ext}`;
+            const clusterTitle = (exportModalCluster.title || "trial_exhibit").toLowerCase().replace(/[^a-z0-9]/g, "_").substring(0, 30);
+            a.download = `threadline_exhibit_${clusterTitle}.${ext}`;
             document.body.appendChild(a);
             a.click();
             window.URL.revokeObjectURL(url);
@@ -1467,6 +1496,27 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                         }}
                     >
                         {isExportingCase ? "SAVING CASE..." : "📦 EXPORT CASE"}
+                    </button>
+                    <button
+                        className="button-link"
+                        onClick={handleOpenCaseExhibitExport}
+                        style={{
+                            color: "#f59e0b",
+                            borderColor: "rgba(245, 158, 11, 0.45)",
+                            background: "rgba(245, 158, 11, 0.08)",
+                            fontWeight: "700",
+                            fontSize: "0.75rem",
+                            textTransform: "uppercase",
+                            letterSpacing: "1px",
+                            border: "1px solid rgba(245, 158, 11, 0.45)",
+                            padding: "4px 12px",
+                            borderRadius: "3px",
+                            cursor: "pointer",
+                            marginLeft: "8px"
+                        }}
+                        title="Generate Courtroom Trial Exhibit PDF with Bates Stamping & Chain of Custody Manifest"
+                    >
+                        ⚖️ TRIAL EXHIBIT
                     </button>
                     <button
                         className="button-link"
@@ -3191,11 +3241,11 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
             {/* Evidence Export Modal */}
             {exportModalCluster && (
                 <div className="export-modal-backdrop" onClick={() => !isExporting && setExportModalCluster(null)}>
-                    <div className="export-modal-card" onClick={(e) => e.stopPropagation()}>
+                    <div className="export-modal-card" style={{ maxWidth: "620px" }} onClick={(e) => e.stopPropagation()}>
                         <div className="export-modal-header">
                             <div className="export-modal-title">
-                                <span>⚖️ EXPORT EVIDENCE</span>
-                                <span className="export-modal-badge">TAMPER-EVIDENT</span>
+                                <span>⚖️ COURTROOM TRIAL EXHIBIT & EVIDENCE GENERATOR</span>
+                                <span className="export-modal-badge" style={{ background: "rgba(245, 158, 11, 0.2)", color: "#fbbf24", borderColor: "rgba(245, 158, 11, 0.4)" }}>BATES STAMPED</span>
                             </div>
                             <button 
                                 className="button-link" 
@@ -3207,17 +3257,15 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                             </button>
                         </div>
 
-                        <div className="export-modal-body">
+                        <div className="export-modal-body" style={{ maxHeight: "70vh", overflowY: "auto" }}>
                             <div className="export-context-box">
                                 <div className="export-context-title">
-                                    {exportModalCluster.title || "Event Reconstruction"}
+                                    {exportModalCluster.title || "Courtroom Evidence Exhibit"}
                                 </div>
                                 <div className="export-context-meta">
-                                    <span>💬 <strong>{exportModalCluster.messages?.length || 0}</strong> messages</span>
-                                    <span>🧵 <strong>{exportModalCluster.conversations?.length || 1}</strong> conversations</span>
-                                    {exportModalCluster.timeSpan?.dateString && (
-                                        <span>📅 {exportModalCluster.timeSpan.dateString}</span>
-                                    )}
+                                    <span>💬 <strong>{exportModalCluster.messages?.length || stats.messageCount || 0}</strong> records</span>
+                                    <span>🧵 <strong>{exportModalCluster.conversations?.length || stats.conversationCount || 1}</strong> threads</span>
+                                    <span>🔒 <strong>SHA-256 Provenance Manifest</strong></span>
                                 </div>
                             </div>
 
@@ -3234,8 +3282,23 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                                             className="export-option-radio"
                                         />
                                         <div className="export-option-text">
-                                            <span className="export-option-name">PDF — Evidence Report</span>
-                                            <span className="export-option-desc">Human-readable forensic report with complete chronology, provenance, and SHA-256 integrity manifest.</span>
+                                            <span className="export-option-name">PDF — Courtroom Trial Exhibit</span>
+                                            <span className="export-option-desc">Official trial presentation format with per-page Bates stamping, agency header, dialogue bubbles, and Appendix A Chain of Custody manifest.</span>
+                                        </div>
+                                    </label>
+
+                                    <label className={`export-option-label ${exportFormat === "csv" ? "active" : ""}`}>
+                                        <input 
+                                            type="radio" 
+                                            name="exportFormat" 
+                                            value="csv" 
+                                            checked={exportFormat === "csv"} 
+                                            onChange={() => setExportFormat("csv")}
+                                            className="export-option-radio"
+                                        />
+                                        <div className="export-option-text">
+                                            <span className="export-option-name">CSV — Discovery Transcript</span>
+                                            <span className="export-option-desc">Litigation spreadsheet with Bates IDs, UTC and local timestamps, sender roles, extraction logs, and per-message SHA-256 digests.</span>
                                         </div>
                                     </label>
 
@@ -3249,7 +3312,7 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                                             className="export-option-radio"
                                         />
                                         <div className="export-option-text">
-                                            <span className="export-option-name">PDF — Watermarked / Read-Only Evidence Copy</span>
+                                            <span className="export-option-name">PDF — Watermarked / Read-Only Copy</span>
                                             <span className="export-option-desc">Includes background watermark, PDF permission restrictions, and tamper-evident cryptographic hash section.</span>
                                         </div>
                                     </label>
@@ -3264,23 +3327,87 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                                             className="export-option-radio"
                                         />
                                         <div className="export-option-text">
-                                            <span className="export-option-name">JSON — Evidence Package</span>
+                                            <span className="export-option-name">JSON — Canonical Evidence Package</span>
                                             <span className="export-option-desc">Machine-readable package with per-item canonical hashes, event reconstruction, and complete integrity manifest.</span>
                                         </div>
                                     </label>
                                 </div>
                             </div>
 
-                            <div className="export-field-group">
-                                <label className="export-field-label">Case / Investigation Name (Optional)</label>
-                                <input 
-                                    type="text" 
-                                    className="export-field-input"
-                                    placeholder="e.g. Case #2026-TL-09, Review, or Incident ID"
-                                    value={exportCaseName}
-                                    onChange={(e) => setExportCaseName(e.target.value)}
-                                    disabled={isExporting}
-                                />
+                            {/* Courtroom & Case Metadata Fields */}
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginTop: "12px" }}>
+                                <div className="export-field-group">
+                                    <label className="export-field-label">Bates Stamp Prefix</label>
+                                    <input 
+                                        type="text" 
+                                        className="export-field-input"
+                                        placeholder="e.g. EXHIBIT-A"
+                                        value={exportBatesPrefix}
+                                        onChange={(e) => setExportBatesPrefix(e.target.value)}
+                                        disabled={isExporting}
+                                    />
+                                </div>
+                                <div className="export-field-group">
+                                    <label className="export-field-label">Starting Page / Bates #</label>
+                                    <input 
+                                        type="number" 
+                                        className="export-field-input"
+                                        placeholder="1"
+                                        value={exportBatesStart}
+                                        onChange={(e) => setExportBatesStart(e.target.value)}
+                                        disabled={isExporting}
+                                    />
+                                </div>
+                            </div>
+
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginTop: "10px" }}>
+                                <div className="export-field-group">
+                                    <label className="export-field-label">Case / Cause / Docket #</label>
+                                    <input 
+                                        type="text" 
+                                        className="export-field-input"
+                                        placeholder="e.g. CR-2026-8812"
+                                        value={exportCaseName}
+                                        onChange={(e) => setExportCaseName(e.target.value)}
+                                        disabled={isExporting}
+                                    />
+                                </div>
+                                <div className="export-field-group">
+                                    <label className="export-field-label">Court / Jurisdiction</label>
+                                    <input 
+                                        type="text" 
+                                        className="export-field-input"
+                                        placeholder="e.g. U.S. District Court"
+                                        value={exportJurisdiction}
+                                        onChange={(e) => setExportJurisdiction(e.target.value)}
+                                        disabled={isExporting}
+                                    />
+                                </div>
+                            </div>
+
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginTop: "10px" }}>
+                                <div className="export-field-group">
+                                    <label className="export-field-label">Agency / Laboratory / Firm</label>
+                                    <input 
+                                        type="text" 
+                                        className="export-field-input"
+                                        placeholder="e.g. Digital Forensics Unit"
+                                        value={exportAgency}
+                                        onChange={(e) => setExportAgency(e.target.value)}
+                                        disabled={isExporting}
+                                    />
+                                </div>
+                                <div className="export-field-group">
+                                    <label className="export-field-label">Lead Forensic Examiner</label>
+                                    <input 
+                                        type="text" 
+                                        className="export-field-input"
+                                        placeholder="e.g. Inv. J. Vance, EnCE, CCE"
+                                        value={exportExaminer}
+                                        onChange={(e) => setExportExaminer(e.target.value)}
+                                        disabled={isExporting}
+                                    />
+                                </div>
                             </div>
                         </div>
 
@@ -3296,8 +3423,9 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                                 className="export-btn-submit"
                                 onClick={handleExecuteExport}
                                 disabled={isExporting}
+                                style={{ background: "#0284c7" }}
                             >
-                                {isExporting ? "GENERATING EXPORT..." : "EXPORT EVIDENCE"}
+                                {isExporting ? "GENERATING TRIAL EXHIBIT..." : "⚖️ GENERATE COURTROOM EXHIBIT"}
                             </button>
                         </div>
                     </div>
