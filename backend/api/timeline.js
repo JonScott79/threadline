@@ -562,6 +562,211 @@ router.get("/messages", (request, response) => {
     }
 });
 
+/**
+ * GET /api/threadlines/:id/timeline/correlate
+ * Contemporaneous Activity Finder & Cross-Conversation Co-occurrence Scanner.
+ * Queries all messages across devices/conversations within a +/- deltaSeconds window around a pivot message or timestamp.
+ * 
+ * Query parameters:
+ *   - messageId: ID of pivot message (optional if timestamp provided)
+ *   - timestamp: Unix timestamp ms (optional if messageId provided)
+ *   - deltaSeconds: window radius in seconds (default: 60, e.g. 15, 30, 60, 120, 300, 900)
+ *   - excludeSameConversation: 'true' to only show cross-conversation activity
+ */
+router.get("/correlate", (request, response) => {
+    try {
+        const { threadlineIds, error } = resolveThreadlineIds(request);
+        if (error) {
+            return response.status(threadlineIds.length === 0 && error.includes("Access") ? 403 : 400).json({
+                status: "error",
+                message: error
+            });
+        }
+
+        const messageId = request.query.messageId;
+        let pivotTimestamp = request.query.timestamp ? Number(request.query.timestamp) : null;
+        let pivotMessage = null;
+
+        if (messageId) {
+            const pivotSql = `
+                SELECT m.id,
+                       m.conversation_id AS conversationId,
+                       c.title AS conversationTitle,
+                       m.sender,
+                       m.recipient,
+                       m.timestamp,
+                       m.body,
+                       m.direction,
+                       m.platform,
+                       COALESCE(imp.id, 'default_log') AS importId,
+                       COALESCE(imp.filename, 'Direct Entry') AS importFilename,
+                       p.name AS participantName,
+                       p.metadata AS participantMetadata
+                FROM messages m
+                LEFT JOIN conversations c ON m.conversation_id = c.id
+                LEFT JOIN (SELECT message_id, MIN(import_id) AS import_id FROM message_imports GROUP BY message_id) mi ON m.id = mi.message_id
+                LEFT JOIN imports imp ON mi.import_id = imp.id
+                LEFT JOIN participants p ON p.threadline_id = m.threadline_id AND (p.phone_number = m.sender OR p.name = m.sender)
+                WHERE m.id = ?;
+            `;
+            pivotMessage = db.queryOne(pivotSql, [messageId]);
+            if (pivotMessage) {
+                pivotTimestamp = Number(pivotMessage.timestamp);
+                let meta = {};
+                try {
+                    meta = typeof pivotMessage.participantMetadata === "string" ? JSON.parse(pivotMessage.participantMetadata || "{}") : (pivotMessage.participantMetadata || {});
+                } catch (e) {
+                    meta = {};
+                }
+                pivotMessage.roleTag = meta.tag || meta.role || null;
+                pivotMessage.participantNotes = meta.notes || null;
+            }
+        }
+
+        if (!pivotTimestamp || isNaN(pivotTimestamp)) {
+            return response.status(400).json({
+                status: "error",
+                message: "A valid messageId or timestamp is required for correlation."
+            });
+        }
+
+        const deltaSeconds = Math.max(5, Math.min(3600, Number(request.query.deltaSeconds) || 60));
+        const deltaMs = deltaSeconds * 1000;
+        const windowStart = pivotTimestamp - deltaMs;
+        const windowEnd = pivotTimestamp + deltaMs;
+        const excludeSameConv = request.query.excludeSameConversation === "true";
+
+        // Build scope clauses across threadlineIds
+        const scopeClauses = [];
+        const queryParams = [];
+
+        threadlineIds.forEach(id => {
+            if (id.startsWith("archive_")) {
+                scopeClauses.push(" m.threadline_id = ? ");
+                queryParams.push(id);
+            } else {
+                const archiveId = `archive_${request.uid}`;
+                scopeClauses.push(` (m.threadline_id = ? OR (m.threadline_id = ? AND m.id IN (SELECT ssm.message_id FROM saved_segment_messages ssm JOIN threadline_segments ts ON ssm.saved_segment_id = ts.saved_segment_id WHERE ts.threadline_id = ?))) `);
+                queryParams.push(id, archiveId, id);
+            }
+        });
+
+        const scopeClause = `( ${scopeClauses.join(" OR ")} )`;
+        let extraFilter = "";
+
+        queryParams.push(windowStart, windowEnd);
+
+        if (excludeSameConv && pivotMessage && pivotMessage.conversationId) {
+            extraFilter += " AND m.conversation_id != ? ";
+            queryParams.push(pivotMessage.conversationId);
+        }
+
+        const correlateSql = `
+            SELECT m.id,
+                   m.conversation_id AS conversationId,
+                   c.title AS conversationTitle,
+                   m.sender,
+                   m.recipient,
+                   m.timestamp,
+                   m.body,
+                   m.direction,
+                   m.platform,
+                   COALESCE(imp.id, 'default_log') AS importId,
+                   COALESCE(imp.filename, 'Direct Entry') AS importFilename,
+                   p.name AS participantName,
+                   p.metadata AS participantMetadata
+            FROM messages m
+            JOIN conversations c ON m.conversation_id = c.id
+            LEFT JOIN (SELECT message_id, MIN(import_id) AS import_id FROM message_imports GROUP BY message_id) mi ON m.id = mi.message_id
+            LEFT JOIN imports imp ON mi.import_id = imp.id
+            LEFT JOIN participants p ON p.threadline_id = m.threadline_id AND (p.phone_number = m.sender OR p.name = m.sender)
+            WHERE ${scopeClause}
+              AND m.timestamp >= ? AND m.timestamp <= ?
+              ${extraFilter}
+            ORDER BY m.timestamp ASC
+            LIMIT 500;
+        `;
+
+        const rows = db.query(correlateSql, queryParams);
+
+        const distinctConvs = new Set();
+        const distinctDevices = new Set();
+        const distinctParticipants = new Set();
+        const roleBreakdown = {};
+        let prePivotCount = 0;
+        let postPivotCount = 0;
+
+        const contemporaneous = rows.map(row => {
+            const rowTime = Number(row.timestamp);
+            const offsetMs = rowTime - pivotTimestamp;
+            const offsetSec = (offsetMs / 1000).toFixed(1);
+
+            if (offsetMs < 0) prePivotCount++;
+            else if (offsetMs > 0) postPivotCount++;
+
+            let meta = {};
+            try {
+                meta = typeof row.participantMetadata === "string" ? JSON.parse(row.participantMetadata || "{}") : (row.participantMetadata || {});
+            } catch (e) {
+                meta = {};
+            }
+
+            const role = meta.tag || meta.role || null;
+            if (role) {
+                roleBreakdown[role] = (roleBreakdown[role] || 0) + 1;
+            }
+
+            distinctConvs.add(row.conversationId);
+            distinctDevices.add(row.importFilename);
+            if (row.participantName) distinctParticipants.add(row.participantName);
+            else if (row.sender) distinctParticipants.add(row.sender);
+
+            return {
+                id: row.id,
+                conversationId: row.conversationId,
+                conversationTitle: row.conversationTitle,
+                importId: row.importId,
+                importFilename: row.importFilename,
+                sender: row.sender,
+                recipient: row.recipient,
+                participantName: row.participantName,
+                roleTag: role,
+                direction: row.direction,
+                platform: row.platform,
+                body: row.body,
+                timestamp: rowTime,
+                offsetSeconds: Number(offsetSec),
+                isPivot: Boolean(pivotMessage && row.id === pivotMessage.id)
+            };
+        });
+
+        response.json({
+            status: "success",
+            pivotMessage,
+            pivotTimestamp,
+            deltaSeconds,
+            windowStart,
+            windowEnd,
+            contemporaneous,
+            summary: {
+                totalCount: contemporaneous.length,
+                prePivotCount,
+                postPivotCount,
+                conversationCount: distinctConvs.size,
+                deviceCount: distinctDevices.size,
+                participantCount: distinctParticipants.size,
+                roleBreakdown
+            }
+        });
+    } catch (error) {
+        console.error("Contemporaneous activity correlation failed:", error);
+        response.status(500).json({
+            status: "error",
+            message: error.message
+        });
+    }
+});
+
 // =====================================
 // Exports
 // =====================================

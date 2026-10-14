@@ -33,6 +33,7 @@ import Timeline from "./Timeline";
 import DeleteThreadlineModal from "./DeleteThreadlineModal";
 import { uploadArchive } from "../js/imports/upload";
 import PersonTagModal from "./PersonTagModal";
+import ContemporaneousActivityModal from "./ContemporaneousActivityModal";
 
 // =====================================
 // Constants
@@ -139,6 +140,21 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
     // Forensic Person & Phone Tagging Modal State
     const [tagModalTarget, setTagModalTarget] = useState(null);
     const [isSavingTag, setIsSavingTag] = useState(false);
+
+    // Contemporaneous Activity Correlation Modal State
+    const [correlatePivotMessage, setCorrelatePivotMessage] = useState(null);
+    const [correlatePivotTimestamp, setCorrelatePivotTimestamp] = useState(null);
+
+    const handleLaunchCorrelation = (msgOrEvent) => {
+        if (!msgOrEvent) return;
+        if (msgOrEvent.id) {
+            setCorrelatePivotMessage(msgOrEvent);
+            setCorrelatePivotTimestamp(Number(msgOrEvent.timestamp));
+        } else if (msgOrEvent.timestamp) {
+            setCorrelatePivotMessage(null);
+            setCorrelatePivotTimestamp(Number(msgOrEvent.timestamp));
+        }
+    };
 
     // Lookup participant by sender string, phone number, name, or aliases
     const getParticipantForSender = (senderOrPhone) => {
@@ -2636,6 +2652,21 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                                                 <div className="day-event-title-line">
                                                     <span className="day-event-title">{e.title}</span>
                                                     <span className="day-event-platform">{e.platform || "SMS"}</span>
+                                                    <button
+                                                        className="correlate-trigger-icon-only"
+                                                        onClick={(ev) => {
+                                                            ev.stopPropagation();
+                                                            handleLaunchCorrelation({
+                                                                id: e.source_id || e.id,
+                                                                timestamp: e.timestamp,
+                                                                body: e.body || e.description,
+                                                                sender: e.title
+                                                            });
+                                                        }}
+                                                        title="Correlate Contemporaneous Activity (±Δt across all devices)"
+                                                    >
+                                                        ⚡
+                                                    </button>
                                                 </div>
                                                 <div className="day-event-text">
                                                     {e.body || e.description}
@@ -2786,6 +2817,13 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                                                 <span className="message-time">
                                                     {formatFullTimestamp(m.timestamp)}
                                                 </span>
+                                                <button
+                                                    className="correlate-trigger-btn"
+                                                    onClick={() => handleLaunchCorrelation(m)}
+                                                    title="Correlate Contemporaneous Activity (±Δt across all devices)"
+                                                >
+                                                    ⚡ Correlate
+                                                </button>
                                             </div>
                                             <div className="message-body">
                                                 {m.body}
@@ -3442,6 +3480,26 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                 onClose={() => setTagModalTarget(null)}
                 isSaving={isSavingTag}
             />
+
+            {/* Contemporaneous Activity Correlation Modal */}
+            {(correlatePivotMessage || correlatePivotTimestamp) && (
+                <ContemporaneousActivityModal
+                    threadlineId={threadline.id}
+                    pivotMessageId={correlatePivotMessage?.id}
+                    pivotTimestamp={correlatePivotTimestamp}
+                    uid={uid}
+                    onClose={() => {
+                        setCorrelatePivotMessage(null);
+                        setCorrelatePivotTimestamp(null);
+                    }}
+                    onJumpToMessage={(targetMsg) => {
+                        handleTimelineMessageSelect(targetMsg);
+                    }}
+                    onSegmentSaved={() => {
+                        fetchSegmentsData();
+                    }}
+                />
+            )}
         </div>
     );
 }
