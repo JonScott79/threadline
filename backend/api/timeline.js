@@ -6,13 +6,18 @@
     (years, months, weeks, days, hours, minutes, seconds)
     for high-performance rendering of the Temporal Explorer visualization.
 
+    Multi-track support:
+    - trackMode: 'log' (default: parallel swimlanes per uploaded log file / extraction)
+    - trackMode: 'conversation' (parallel swimlanes per conversation thread)
+    - trackMode: 'unified' (single consolidated timeline stream)
+
     Responsibilities:
     - Query events for a specific threadline.
     - Support date/time filtering (start and end timestamps).
     - Support filtering by specific conversation IDs via JOIN on messages table.
-    - Group events by temporal buckets using SQLite date functions.
+    - Group events by temporal buckets using SQLite date functions and track groups.
     - Auto-select the appropriate bucket granularity based on visible range (autoZoom).
-    - Return a lightweight list of bucket periods and counts.
+    - Return a lightweight list of bucket periods, counts, and group associations.
     - Provide metadata (earliest/latest timestamps) for initial range calculation.
 */
 
@@ -41,8 +46,6 @@ const MAX_BUCKETS = 500;
 
 /**
  * Zoom levels ordered from coarsest to finest.
- * Each entry contains the SQLite strftime format and an approximate
- * duration in milliseconds used for estimating bucket count.
  */
 const ZOOM_LEVELS = [
     { name: "year",   format: "%Y",              approxMs: 365.25 * 24 * 60 * 60 * 1000 },
@@ -54,13 +57,23 @@ const ZOOM_LEVELS = [
     { name: "second", format: "%Y-%m-%d %H:%M:%S", approxMs: 1000                        }
 ];
 
+const TRACK_PALETTE = [
+    "#00D0FF", // Electric Cyan
+    "#FF9500", // Amber Gold
+    "#A855F7", // Purple / Violet
+    "#10B981", // Emerald Green
+    "#EC4899", // Neon Rose / Pink
+    "#06B6D4", // Sky Blue
+    "#F59E0B", // Bright Amber
+    "#8B5CF6", // Lavender
+];
+
 // =====================================
 // Helpers
 // =====================================
 
 /**
  * Returns the SQLite strftime expression for a given zoom level.
- * "week" requires special handling using strftime('%Y-W%W').
  */
 function getStrftimeExpr(zoomName) {
     if (zoomName === "week") {
@@ -68,7 +81,6 @@ function getStrftimeExpr(zoomName) {
     }
     const level = ZOOM_LEVELS.find(z => z.name === zoomName);
     if (!level || !level.format) {
-        // Fallback to day
         return `strftime('%Y-%m-%d', datetime(t.timestamp / 1000, 'unixepoch'))`;
     }
     return `strftime('${level.format}', datetime(t.timestamp / 1000, 'unixepoch'))`;
@@ -76,12 +88,11 @@ function getStrftimeExpr(zoomName) {
 
 /**
  * Given a time range (in ms), pick the finest zoom level that would produce
- * at most MAX_BUCKETS buckets. Falls back to "year" if all are too fine.
+ * at most MAX_BUCKETS buckets.
  */
 function selectAutoZoom(rangeMs) {
     if (!rangeMs || rangeMs <= 0) return "day";
 
-    // Check from finest to coarsest so the user gets optimal resolution without exceeding MAX_BUCKETS
     for (let i = ZOOM_LEVELS.length - 1; i >= 0; i--) {
         const level = ZOOM_LEVELS[i];
         const estimatedBuckets = Math.ceil(rangeMs / level.approxMs);
@@ -94,7 +105,6 @@ function selectAutoZoom(rangeMs) {
 
 /**
  * Build the common WHERE clause and query params for threadline+filter constraints.
- * Returns { inClause, filterSql, fromClause, queryParams }.
  */
 function buildQueryConstraints(request, threadlineIds) {
     const clauses = [];
@@ -140,7 +150,6 @@ function buildQueryConstraints(request, threadlineIds) {
 
 /**
  * Resolve and validate threadline IDs from the request.
- * Returns { threadlineIds, error }.
  */
 function resolveThreadlineIds(request) {
     const idParam = request.params.id;
@@ -157,7 +166,6 @@ function resolveThreadlineIds(request) {
         return { threadlineIds: [], error: "No threadline IDs specified." };
     }
 
-    // Validate threadlines exist and belong to the user
     const nonArchiveIds = threadlineIds.filter(id => id !== `archive_${request.uid}`);
     if (nonArchiveIds.length > 0) {
         const placeholders = nonArchiveIds.map(() => "?").join(",");
@@ -179,9 +187,6 @@ function resolveThreadlineIds(request) {
 
 /**
  * GET /api/threadlines/:id/timeline/metadata
- *
- * Returns the earliest and latest timestamps for the threadline's data span.
- * Used by the frontend to set the initial visible range.
  */
 router.get("/metadata", (request, response) => {
     try {
@@ -220,12 +225,13 @@ router.get("/metadata", (request, response) => {
 /**
  * GET /api/threadlines/:id/timeline
  * Query parameters:
+ *   - trackMode: 'log' | 'conversation' | 'unified' (default: 'log')
  *   - zoom: 'year' | 'month' | 'week' | 'day' | 'hour' | 'minute' | 'second' (default: 'day')
  *   - autoZoom: 'true' — server auto-selects zoom based on visible range
  *   - start: unix timestamp ms
  *   - end: unix timestamp ms
  *   - conversations: comma-separated list of conversation IDs
- *   - ids: comma-separated threadline IDs (when :id is "compare" or "multi")
+ *   - ids: comma-separated threadline IDs
  */
 router.get("/", (request, response) => {
     try {
@@ -240,6 +246,7 @@ router.get("/", (request, response) => {
         const start = request.query.start ? Number(request.query.start) : null;
         const end = request.query.end ? Number(request.query.end) : null;
         const autoZoom = request.query.autoZoom === "true";
+        const trackMode = request.query.trackMode || "log"; // 'log' | 'conversation' | 'unified'
 
         // Determine zoom level
         let zoom;
@@ -249,7 +256,6 @@ router.get("/", (request, response) => {
             zoom = request.query.zoom || "day";
         }
 
-        // Validate zoom level
         const validZooms = ZOOM_LEVELS.map(z => z.name);
         if (!validZooms.includes(zoom)) {
             zoom = "day";
@@ -257,8 +263,51 @@ router.get("/", (request, response) => {
 
         const { inClause, filterSql, fromClause, queryParams } = buildQueryConstraints(request, threadlineIds);
 
-        // If zoom is at finest level ("second") or range is narrow (<= 5 minutes),
-        // return individual events with source message details so they are directly actionable
+        // 1. Resolve distinct groups (swimlanes) for this scope
+        let rawGroups = [];
+        if (trackMode === "conversation") {
+            const groupsSql = `
+                SELECT COALESCE(c.id, 'default_conv') AS groupId,
+                       COALESCE(c.title, 'General') AS title,
+                       COUNT(t.id) AS count
+                FROM timeline_events t
+                LEFT JOIN messages m ON t.source_id = m.id
+                LEFT JOIN conversations c ON m.conversation_id = c.id
+                ${inClause} ${filterSql}
+                GROUP BY 1, 2
+                ORDER BY count DESC;
+            `;
+            rawGroups = db.query(groupsSql, queryParams);
+        } else if (trackMode === "log") {
+            const groupsSql = `
+                SELECT COALESCE(imp.id, 'default_log') AS groupId,
+                       COALESCE(imp.filename, 'Direct / Manual Entry') AS title,
+                       COUNT(t.id) AS count
+                FROM timeline_events t
+                LEFT JOIN messages m ON t.source_id = m.id
+                LEFT JOIN (SELECT message_id, MIN(import_id) AS import_id FROM message_imports GROUP BY message_id) mi ON m.id = mi.message_id
+                LEFT JOIN imports imp ON mi.import_id = imp.id
+                ${inClause} ${filterSql}
+                GROUP BY 1, 2
+                ORDER BY count DESC;
+            `;
+            rawGroups = db.query(groupsSql, queryParams);
+        } else {
+            // Unified mode
+            rawGroups = [{ groupId: "unified", title: "Unified Stream", count: 0 }];
+        }
+
+        const groups = rawGroups.map((g, idx) => ({
+            id: String(g.groupId),
+            title: g.title,
+            count: g.count,
+            color: TRACK_PALETTE[idx % TRACK_PALETTE.length]
+        }));
+
+        const groupColorMap = {};
+        groups.forEach(g => { groupColorMap[g.id] = g.color; });
+
+        // 2. Individual events query (seconds or narrow range <= 5 min)
         if (zoom === "second" || (start && end && (end - start) <= 300000)) {
             const eventSql = `
                 SELECT t.id,
@@ -272,49 +321,131 @@ router.get("/", (request, response) => {
                        m.body,
                        m.direction,
                        m.platform,
-                       c.title AS conversationTitle
+                       c.title AS conversationTitle,
+                       COALESCE(imp.id, 'default_log') AS importId,
+                       COALESCE(imp.filename, 'Direct / Manual Entry') AS importFilename,
+                       p.name AS participantName,
+                       p.metadata AS participantMetadata
                 FROM timeline_events t
                 LEFT JOIN messages m ON t.source_id = m.id
                 LEFT JOIN conversations c ON m.conversation_id = c.id
+                LEFT JOIN (SELECT message_id, MIN(import_id) AS import_id FROM message_imports GROUP BY message_id) mi ON m.id = mi.message_id
+                LEFT JOIN imports imp ON mi.import_id = imp.id
+                LEFT JOIN participants p ON p.threadline_id = t.threadline_id AND (p.phone_number = t.sender OR p.name = t.sender)
                 ${inClause} ${filterSql}
                 ORDER BY t.timestamp ASC
-                LIMIT 500;
+                LIMIT 600;
             `;
 
-            const events = db.query(eventSql, queryParams);
+            const rawEvents = db.query(eventSql, queryParams);
+
+            const events = rawEvents.map(ev => {
+                let groupId = "unified";
+                let groupTitle = "Unified";
+
+                if (trackMode === "log") {
+                    groupId = String(ev.importId || "default_log");
+                    groupTitle = ev.importFilename || "Direct Entry";
+                } else if (trackMode === "conversation") {
+                    groupId = String(ev.conversationId || "default_conv");
+                    groupTitle = ev.conversationTitle || "General";
+                }
+
+                let meta = {};
+                try {
+                    meta = typeof ev.participantMetadata === "string" ? JSON.parse(ev.participantMetadata || "{}") : (ev.participantMetadata || {});
+                } catch (e) {
+                    meta = {};
+                }
+
+                return {
+                    ...ev,
+                    groupId,
+                    groupTitle,
+                    color: groupColorMap[groupId] || TRACK_PALETTE[0],
+                    roleTag: meta.tag || meta.role || null,
+                    participantNotes: meta.notes || null
+                };
+            });
 
             return response.json({
                 status: "success",
                 zoom: "second",
+                trackMode,
                 isIndividualEvents: true,
                 threadlineId: request.params.id,
+                groups,
                 events,
                 buckets: []
             });
         }
 
-        // Build the aggregation query
+        // 3. Aggregated Buckets Query
         const strftimeExpr = getStrftimeExpr(zoom);
 
-        const sql = `
-            SELECT ${strftimeExpr} AS period,
-                   COUNT(*) AS count,
-                   MIN(t.timestamp) AS minTimestamp,
-                   MAX(t.timestamp) AS maxTimestamp
-            ${fromClause}
-            ${inClause} ${filterSql}
-            GROUP BY period
-            ORDER BY period ASC;
-        `;
+        let aggSql = "";
+        if (trackMode === "conversation") {
+            aggSql = `
+                SELECT ${strftimeExpr} AS period,
+                       COUNT(*) AS count,
+                       MIN(t.timestamp) AS minTimestamp,
+                       MAX(t.timestamp) AS maxTimestamp,
+                       COALESCE(c.id, 'default_conv') AS groupId,
+                       COALESCE(c.title, 'General') AS groupTitle
+                FROM timeline_events t
+                LEFT JOIN messages m ON t.source_id = m.id
+                LEFT JOIN conversations c ON m.conversation_id = c.id
+                ${inClause} ${filterSql}
+                GROUP BY 1, 5
+                ORDER BY period ASC;
+            `;
+        } else if (trackMode === "log") {
+            aggSql = `
+                SELECT ${strftimeExpr} AS period,
+                       COUNT(*) AS count,
+                       MIN(t.timestamp) AS minTimestamp,
+                       MAX(t.timestamp) AS maxTimestamp,
+                       COALESCE(imp.id, 'default_log') AS groupId,
+                       COALESCE(imp.filename, 'Direct / Manual Entry') AS groupTitle
+                FROM timeline_events t
+                LEFT JOIN messages m ON t.source_id = m.id
+                LEFT JOIN (SELECT message_id, MIN(import_id) AS import_id FROM message_imports GROUP BY message_id) mi ON m.id = mi.message_id
+                LEFT JOIN imports imp ON mi.import_id = imp.id
+                ${inClause} ${filterSql}
+                GROUP BY 1, 5
+                ORDER BY period ASC;
+            `;
+        } else {
+            aggSql = `
+                SELECT ${strftimeExpr} AS period,
+                       COUNT(*) AS count,
+                       MIN(t.timestamp) AS minTimestamp,
+                       MAX(t.timestamp) AS maxTimestamp,
+                       'unified' AS groupId,
+                       'Unified Stream' AS groupTitle
+                ${fromClause}
+                ${inClause} ${filterSql}
+                GROUP BY period
+                ORDER BY period ASC;
+            `;
+        }
 
-        const data = db.query(sql, queryParams);
+        const data = db.query(aggSql, queryParams);
+
+        const buckets = data.map(b => ({
+            ...b,
+            groupId: String(b.groupId),
+            color: groupColorMap[String(b.groupId)] || TRACK_PALETTE[0]
+        }));
 
         response.json({
             status: "success",
             zoom,
+            trackMode,
             isIndividualEvents: false,
             threadlineId: request.params.id,
-            buckets: data
+            groups,
+            buckets
         });
 
     } catch (error) {
@@ -328,12 +459,6 @@ router.get("/", (request, response) => {
 
 /**
  * GET /api/threadlines/:id/timeline/messages
- * Retrieves all chronological messages across conversations within a temporal range.
- * Supports:
- *   - start: unix timestamp ms (inclusive: >= start)
- *   - end: unix timestamp ms (inclusive: <= end)
- *   - conversations: comma-separated list of conversation IDs (for layer filtering)
- *   - ids: comma-separated list of threadline IDs (for multi/compare)
  */
 router.get("/messages", (request, response) => {
     try {
@@ -349,7 +474,6 @@ router.get("/messages", (request, response) => {
         const end = request.query.end ? Number(request.query.end) : null;
         const conversationsParam = request.query.conversations;
 
-        // Build message-level constraint across threadlineIds
         const scopeClauses = [];
         const queryParams = [];
 
@@ -411,7 +535,6 @@ router.get("/messages", (request, response) => {
             metadata: typeof m.metadata === "string" ? JSON.parse(m.metadata || "{}") : (m.metadata || {})
         }));
 
-        // Compute summary metadata
         const distinctConvs = new Set(formatted.map(m => m.conversationId));
         const distinctParticipants = new Set();
         formatted.forEach(m => {

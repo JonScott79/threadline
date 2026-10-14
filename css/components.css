@@ -764,7 +764,8 @@
 
 .timeline-wave-container {
     position: relative;
-    height: 100px;
+    height: auto;
+    min-height: 220px;
     width: 100%;
     background: rgba(16, 24, 32, 0.5);
     border: 1px solid rgba(63, 216, 255, 0.05);
@@ -2655,4 +2656,365 @@
     border-color: #ef4444;
     color: #fca5a5;
 }
+
+/* =========================================================================
+   Threadline Multi-Track Swimlanes & Forensic HUD Styling
+   ========================================================================= */
+
+/* Swimlane Left Panel */
+.vis-panel.vis-left {
+    background: rgba(10, 16, 26, 0.95) !important;
+    border-right: 1px solid var(--border) !important;
+    width: 220px !important;
+}
+
+.vis-panel.vis-left .vis-label {
+    border-bottom: 1px solid rgba(36, 52, 69, 0.4) !important;
+    color: var(--text-light) !important;
+    padding: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+}
+
+.vis-panel.vis-center .vis-group {
+    border-bottom: 1px dashed rgba(36, 52, 69, 0.35) !important;
+}
+
+.tl-group-lane-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    width: 100%;
+    font-family: var(--font-mono);
+    font-size: 0.74rem;
+    box-sizing: border-box;
+    background: rgba(15, 23, 36, 0.6);
+    height: 100%;
+}
+
+.tl-group-lane-header.unified {
+    border-left: 3px solid var(--accent);
+}
+
+.tl-group-lane-icon {
+    font-size: 0.85rem;
+    flex-shrink: 0;
+}
+
+.tl-group-lane-badge {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.tl-group-lane-title {
+    color: #fff;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+}
+
+.tl-group-lane-count {
+    font-size: 0.68rem;
+    color: var(--text-muted);
+    background: rgba(0, 0, 0, 0.3);
+    padding: 1px 5px;
+    border-radius: 3px;
+    flex-shrink: 0;
+}
+
+/* Track Selector Bar in Timeline Header */
+.tl-track-selector-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 12px;
+}
+
+.tl-track-selector-label {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    letter-spacing: 0.05em;
+}
+
+.tl-track-pills {
+    display: flex;
+    gap: 4px;
+    background: rgba(10, 16, 26, 0.95);
+    padding: 3px;
+    border-radius: 6px;
+    border: 1px solid rgba(36, 52, 69, 0.8);
+}
+
+.tl-track-pill {
+    background: rgba(15, 23, 36, 0.7) !important;
+    border: 1px solid rgba(36, 52, 69, 0.5) !important;
+    color: var(--text-light) !important;
+    font-family: var(--font-mono) !important;
+    font-size: 0.72rem !important;
+    font-weight: 700 !important;
+    padding: 4px 10px !important;
+    border-radius: 4px !important;
+    cursor: pointer !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 5px !important;
+    transition: all 0.15s ease !important;
+    user-select: none !important;
+    line-height: 1.2 !important;
+}
+
+.tl-track-pill:hover {
+    color: #fff !important;
+    background: rgba(63, 216, 255, 0.12) !important;
+    border-color: rgba(63, 216, 255, 0.4) !important;
+}
+
+.tl-track-pill.active {
+    background: rgba(0, 208, 255, 0.2) !important;
+    border-color: var(--accent) !important;
+    color: #00d0ff !important;
+    box-shadow: 0 0 12px rgba(0, 208, 255, 0.35) !important;
+}
+
+/* Event Pills inside Timeline Lanes */
+.tl-event-pill {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 4px;
+    font-family: var(--font-sans);
+    font-size: 0.72rem;
+    white-space: nowrap;
+    line-height: 1.2;
+}
+
+.tl-event-pill .tl-pill-dir {
+    font-weight: 900;
+    font-size: 0.78rem;
+}
+
+.tl-event-pill.sent .tl-pill-dir {
+    color: #ff9500;
+}
+
+.tl-event-pill.received .tl-pill-dir {
+    color: #00d0ff;
+}
+
+.tl-event-pill .tl-pill-sender {
+    font-weight: 700;
+    color: #fff;
+}
+
+.tl-event-pill.sent .tl-pill-sender {
+    color: #ffd180;
+}
+
+.tl-event-pill .tl-pill-snippet {
+    color: var(--text-light);
+    opacity: 0.9;
+}
+
+.tl-pill-role-badge {
+    font-size: 0.62rem;
+    font-weight: 800;
+    padding: 1px 4px;
+    border-radius: 3px;
+    letter-spacing: 0.04em;
+    background: rgba(255, 75, 75, 0.2);
+    border: 1px solid rgba(255, 75, 75, 0.6);
+    color: #ff7676;
+}
+
+/* Forensic Hover Popover HUD */
+.tl-forensic-hud {
+    position: fixed;
+    pointer-events: none;
+    z-index: 99999;
+    animation: hud-fade-in 0.12s ease-out;
+}
+
+@keyframes hud-fade-in {
+    from { opacity: 0; transform: translateY(4px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.tl-hud-card {
+    width: 320px;
+    background: rgba(9, 15, 25, 0.96);
+    backdrop-filter: blur(14px);
+    border: 1px solid var(--border);
+    border-top: 3px solid var(--hud-accent, var(--accent));
+    border-radius: 8px;
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.8), 0 0 25px rgba(0, 208, 255, 0.15);
+    padding: 12px 14px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.tl-hud-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(36, 52, 69, 0.5);
+    padding-bottom: 6px;
+}
+
+.tl-hud-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    overflow: hidden;
+}
+
+.tl-hud-platform {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    font-weight: 800;
+    background: rgba(0, 208, 255, 0.12);
+    border: 1px solid rgba(0, 208, 255, 0.35);
+    color: var(--accent);
+    padding: 1px 5px;
+    border-radius: 3px;
+}
+
+.tl-hud-source {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--text-light);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 170px;
+}
+
+.tl-hud-time {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    color: var(--text-muted);
+}
+
+.tl-hud-participants-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.tl-hud-dir-badge {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    font-weight: 800;
+    padding: 2px 5px;
+    border-radius: 3px;
+}
+
+.tl-hud-dir-badge.sent {
+    background: rgba(255, 149, 0, 0.15);
+    border: 1px solid rgba(255, 149, 0, 0.5);
+    color: #ff9500;
+}
+
+.tl-hud-dir-badge.received {
+    background: rgba(0, 208, 255, 0.15);
+    border: 1px solid rgba(0, 208, 255, 0.5);
+    color: #00d0ff;
+}
+
+.tl-hud-sender-name {
+    font-weight: 700;
+    color: #fff;
+}
+
+.tl-hud-role-tag {
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    font-weight: 800;
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: rgba(255, 68, 68, 0.18);
+    border: 1px solid rgba(255, 68, 68, 0.5);
+    color: #ff6e6e;
+    text-transform: uppercase;
+}
+
+.tl-hud-arrow {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+}
+
+.tl-hud-message-body {
+    background: rgba(14, 23, 36, 0.8);
+    border-left: 2px solid var(--hud-accent, var(--accent));
+    padding: 8px 10px;
+    border-radius: 4px;
+    color: #e2e8f0;
+    font-size: 0.78rem;
+    line-height: 1.35;
+    font-style: italic;
+    max-height: 90px;
+    overflow-y: auto;
+    word-break: break-word;
+}
+
+.tl-hud-bucket-body {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 6px 0;
+}
+
+.tl-hud-bucket-period {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--text-light);
+}
+
+.tl-hud-bucket-stat {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+
+.tl-hud-count {
+    font-family: var(--font-mono);
+    font-size: 1.3rem;
+    font-weight: 800;
+    color: var(--hud-accent, var(--accent));
+}
+
+.tl-hud-count-label {
+    font-size: 0.74rem;
+    color: var(--text-muted);
+}
+
+.tl-hud-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-top: 1px solid rgba(36, 52, 69, 0.4);
+    padding-top: 6px;
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+}
+
+.tl-hud-action {
+    color: var(--accent);
+    font-weight: 600;
+}
+
+.tl-hud-date {
+    color: var(--text-muted);
+}
+
 
