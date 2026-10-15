@@ -4,10 +4,11 @@
     Local-first SQLite database initialization and connection manager.
 
     Responsibilities:
-    - Establish connection to local SQLite database.
+    - Establish connection to local SQLite database or Railway persistent volume.
     - Run schema migrations on startup.
     - Enable WAL mode for high performance.
     - Provide query execution helper handles.
+    - Provide clean shutdown with WAL checkpointing on container restart/exit.
 */
 
 // =====================================
@@ -17,12 +18,13 @@
 const Database = require("better-sqlite3");
 const path = require("path");
 const fs = require("fs");
+const storageConfig = require("../config/storage");
 
 // =====================================
 // Variables
 // =====================================
 
-const dbPath = path.join(__dirname, "threadline.db");
+const dbPath = storageConfig.databasePath;
 let db = null;
 
 // =====================================
@@ -31,6 +33,9 @@ let db = null;
 
 function initializeDatabase() {
     try {
+        // Ensure storage directory is initialized and safe
+        storageConfig.ensureStorageReady();
+
         console.log(`Connecting to SQLite database at: ${dbPath}`);
         
         // Open the SQLite database file
@@ -38,6 +43,9 @@ function initializeDatabase() {
             // Can add verbose logging if helpful for debugging
             // verbose: console.log
         });
+
+        // Set busy timeout to prevent immediate lock errors under concurrent operations
+        db.pragma("busy_timeout = 5000");
 
         // Enable write-ahead logging (WAL) for faster writes and concurrent reads
         db.pragma("journal_mode = WAL");
@@ -84,7 +92,7 @@ function initializeDatabase() {
                     threadline_id UNINDEXED,
                     body
                 );
-            `)
+            `);
 
             // Create FTS5 virtual table for conversation chunks
             db.exec(`
@@ -94,7 +102,6 @@ function initializeDatabase() {
                     chunk_text
                 );
             `);
-;
 
             // Create FTS triggers to keep index in sync
             db.exec(`
@@ -107,7 +114,7 @@ function initializeDatabase() {
                     DELETE FROM messages_fts WHERE message_id = old.id;
                 END;
 
-                                CREATE TRIGGER IF NOT EXISTS trg_chunks_ad AFTER DELETE ON conversation_chunks BEGIN
+                CREATE TRIGGER IF NOT EXISTS trg_chunks_ad AFTER DELETE ON conversation_chunks BEGIN
                     DELETE FROM chunks_fts WHERE chunk_id = old.id;
                 END;
 
@@ -116,7 +123,7 @@ function initializeDatabase() {
                 END;
             `);
 
-                        // Clean up any historical orphaned FTS chunks from deleted threadlines
+            // Clean up any historical orphaned FTS chunks from deleted threadlines
             try {
                 const pruned = db.prepare("DELETE FROM chunks_fts WHERE chunk_id NOT IN (SELECT id FROM conversation_chunks)").run();
                 if (pruned.changes > 0) {
@@ -152,6 +159,38 @@ initializeDatabase();
 // =====================================
 // Public Methods
 // =====================================
+
+/**
+ * Cleanly closes the active SQLite database instance with a WAL checkpoint.
+ */
+function closeDatabase() {
+    if (db) {
+        try {
+            console.log("Checkpointing SQLite WAL before closing...");
+            db.pragma("wal_checkpoint(TRUNCATE)");
+        } catch (e) {
+            console.error("Error checkpointing WAL:", e.message);
+        }
+        try {
+            db.close();
+            console.log("SQLite database connection closed cleanly.");
+        } catch (e) {
+            console.error("Error closing database:", e.message);
+        }
+        db = null;
+    }
+}
+
+// Clean shutdown handlers for container redeployments
+process.on("SIGTERM", () => {
+    console.log("Received SIGTERM. Cleaning up SQLite connection...");
+    closeDatabase();
+});
+
+process.on("SIGINT", () => {
+    console.log("Received SIGINT. Cleaning up SQLite connection...");
+    closeDatabase();
+});
 
 /**
  * Returns the active SQLite database instance.
@@ -204,5 +243,7 @@ module.exports = {
     query,
     queryOne,
     run,
-    transaction
+    transaction,
+    closeDatabase,
+    dbPath
 };

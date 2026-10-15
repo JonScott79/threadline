@@ -3,21 +3,21 @@
 ======================================================*/
 
 const express = require("express");
-
 const cors = require("cors");
+const storageConfig = require("./config/storage");
 
 const importRoutes = require("./api/import");
 const threadlineRoutes = require("./api/threadlines");
 const timelineRoutes = require("./api/timeline");
 const searchRoutes = require("./api/search");
 const segmentRoutes = require("./api/segments");
+const exportRoutes = require("./api/export");
 
 /*======================================================
                         VARIABLES
 ======================================================*/
 
 const app = express();
-
 const PORT = process.env.PORT || 3001;
 
 /*======================================================
@@ -51,20 +51,16 @@ const authMiddleware = require("./middleware/auth");
 ======================================================*/
 
 app.get("/", (request, response) => {
-
     response.json({
-
         application: "Threadline",
-
         version: "0.1.0",
-
-        status: "Backend Online"
-
+        status: "Backend Online",
+        storage: {
+            databaseConfigured: !!storageConfig.databasePath,
+            mode: storageConfig.isProduction ? "production_volume" : "local_development"
+        }
     });
-
 });
-
-const exportRoutes = require("./api/export");
 
 app.use("/api/import", authMiddleware, importRoutes);
 app.use("/api/threadlines", authMiddleware, threadlineRoutes);
@@ -78,17 +74,14 @@ app.use("/api", authMiddleware, segmentRoutes);
 ======================================================*/
 
 app.listen(PORT, () => {
-
     console.log("");
-
     console.log("==========================================");
-
     console.log(" Threadline Backend Started");
-
     console.log("==========================================");
-
-    console.log(` Server : http://localhost:${PORT}`);
-
+    console.log(` Server        : http://localhost:${PORT}`);
+    console.log(` Database Path : ${storageConfig.databasePath}`);
+    console.log(` Uploads Path  : ${storageConfig.uploadsDir}`);
+    console.log(` Storage Mode  : ${storageConfig.isProduction ? 'Production Volume' : 'Local Development'}`);
+    console.log("==========================================");
     console.log("");
-
 });

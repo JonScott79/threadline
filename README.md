@@ -60,10 +60,31 @@ Threadline can be deployed using a split architecture while maintaining its loca
 - **Frontend**: Hosted on Netlify (`https://threadline.lanzar.me`)
 - **Backend**: Hosted on Railway (`https://threadline-production.up.railway.app`)
 
-### Railway Persistence Warning
-If deploying to Railway, be aware that Railway's default filesystem is **ephemeral**. 
-The SQLite database (`backend/database/threadline.db`) and uploaded files are stored locally on the container's disk. 
-**You MUST provision a Railway Volume** and mount it to the database directory, otherwise all data will be destroyed every time the backend service restarts or redeploys.
+### Railway Persistent Storage Configuration
+Threadline uses an attached Railway persistent volume for the SQLite database and durable user uploads so data persists across deployments and container restarts.
+
+#### 1. Provision Persistent Volume
+1. In the Railway dashboard for the `threadline` backend service, navigate to **Volumes**.
+2. Click **+ Add Volume**.
+3. Set the **Mount Path** to:
+   `/data`
+
+#### 2. Configure Environment Variables
+In the service's **Variables** tab, set:
+- `THREADLINE_DATA_DIR=/data`
+- `NODE_ENV=production`
+
+#### 3. Storage Paths & Safety Guards
+- **Database Path**: `/data/threadline.db`
+- **Uploads Path**: `/data/uploads`
+- **Anti-Data Loss Guard**: In production (`NODE_ENV=production`), if the volume is detached or the database file is missing, the backend will fail loudly with a `[CRITICAL STORAGE ERROR]` rather than silently initializing an empty database. Set `ALLOW_EMPTY_DB=true` only if intentionally provisioning a fresh database.
+- **Graceful Shutdown**: On container restarts, the backend intercepts `SIGTERM` and runs `PRAGMA wal_checkpoint(TRUNCATE)` before closing SQLite connections cleanly.
+
+#### 4. Migration Script
+To migrate or verify data on the persistent volume:
+```bash
+node scripts/migrateToPersistentVolume.js
+```
 
 ### Frontend Configuration
 When deploying the frontend to Netlify, you must set the following environment variable so the browser communicates with the public Railway domain:

@@ -41,7 +41,8 @@ function exportCaseToFile(threadlineId, uid, destinationPath = null) {
 
     const safeTitle = (tlRow.name || "case").replace(/[^a-z0-9_-]/gi, "_");
     const filename = `${safeTitle}_${Date.now()}.tl`;
-    const targetPath = destinationPath || path.resolve(__dirname, `../uploads/${filename}`);
+    const { uploadsDir } = require("../config/storage");
+    const targetPath = destinationPath || path.join(uploadsDir, filename);
 
     const targetDir = path.dirname(targetPath);
     if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });

@@ -25,7 +25,7 @@ const router = express.Router();
                         STORAGE
 ======================================================*/
 
-const uploadDir = path.resolve(__dirname, "../uploads");
+const { uploadsDir: uploadDir } = require("../config/storage");
 if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir, { recursive: true });
 }

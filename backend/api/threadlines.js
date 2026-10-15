@@ -27,7 +27,7 @@ const path = require("path");
 const multer = require("multer");
 const caseManager = require("../services/caseManager");
 
-const caseUploadDir = path.resolve(__dirname, "../uploads");
+const { uploadsDir: caseUploadDir } = require("../config/storage");
 if (!fs.existsSync(caseUploadDir)) fs.mkdirSync(caseUploadDir, { recursive: true });
 
 const caseUpload = multer({
