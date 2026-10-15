@@ -36,6 +36,11 @@ function initializeDatabase() {
         // Ensure storage directory is initialized and safe
         storageConfig.ensureStorageReady();
 
+        if (storageConfig.isPendingRestore()) {
+            console.warn("Database initialization deferred: Server is in RESTORE_READY maintenance mode.");
+            return;
+        }
+
         console.log(`Connecting to SQLite database at: ${dbPath}`);
         
         // Open the SQLite database file
@@ -199,6 +204,11 @@ function getDb() {
     if (!db) {
         initializeDatabase();
     }
+    if (storageConfig.isPendingRestore() || !db) {
+        const err = new Error("Database is currently uninitialized or awaiting restore onto persistent volume.");
+        err.statusCode = 503;
+        throw err;
+    }
     return db;
 }
 
@@ -240,6 +250,7 @@ function transaction(callback) {
 
 module.exports = {
     getDb,
+    initializeDatabase,
     query,
     queryOne,
     run,

@@ -15,12 +15,12 @@
       - Database: path.resolve(__dirname, "../database/threadline.db")
       - Uploads: path.resolve(__dirname, "../uploads")
 
-    Production Safety:
+    Production Safety & Maintenance Mode:
     - If in production (NODE_ENV === 'production' or RAILWAY_ENVIRONMENT),
       verifies that the persistent volume directory exists.
     - If the configured production database file is missing and ALLOW_EMPTY_DB !== 'true',
-      fails explicitly with a prominent error instead of silently creating an empty database
-      and making user data appear to have vanished.
+      enters pendingRestore mode: starts Express to allow health checks and admin database
+      restoration without crashing, while guarding user endpoints with 503.
 */
 
 const path = require("path");
@@ -54,16 +54,17 @@ if (!uploadsDir) {
     }
 }
 
+let pendingRestore = false;
+
 // 4. Validate and initialize directories safely
 function ensureStorageReady() {
     const dbDir = path.dirname(databasePath);
 
-    // If a persistent data directory or custom db directory is configured, verify it exists or can be created
     if (dataDir && !fs.existsSync(dbDir)) {
         try {
             fs.mkdirSync(dbDir, { recursive: true });
         } catch (err) {
-            throw new Error(`[CRITICAL STORAGE ERROR] Failed to create database directory at '${dbDir}': ${err.message}`);
+            console.error(`[CRITICAL STORAGE ERROR] Failed to create database directory at '${dbDir}': ${err.message}`);
         }
     }
 
@@ -71,30 +72,37 @@ function ensureStorageReady() {
         try {
             fs.mkdirSync(uploadsDir, { recursive: true });
         } catch (err) {
-            throw new Error(`[CRITICAL STORAGE ERROR] Failed to create uploads directory at '${uploadsDir}': ${err.message}`);
+            console.error(`[CRITICAL STORAGE ERROR] Failed to create uploads directory at '${uploadsDir}': ${err.message}`);
         }
     }
 
     // Safety check against silent data loss:
     // If in production and a persistent dataDir or custom DATABASE_PATH is configured:
-    // Do not silently create a new empty database if the expected database is missing,
-    // unless explicitly authorized via ALLOW_EMPTY_DB='true'.
+    // If the database does not exist, enter pendingRestore mode unless ALLOW_EMPTY_DB === "true"
     if (isProduction && (dataDir || process.env.DATABASE_PATH)) {
         const dbExists = fs.existsSync(databasePath);
         const allowEmpty = process.env.ALLOW_EMPTY_DB === "true";
         if (!dbExists && !allowEmpty) {
-            const errMsg = `[CRITICAL STORAGE ERROR] Production database not found at '${databasePath}'. ` +
-                           `The persistent volume may not be mounted or migration has not completed. ` +
-                           `To prevent accidental data loss, the application will not automatically initialize an empty database. ` +
-                           `Set ALLOW_EMPTY_DB=true only if initializing a brand-new deployment.`;
-            console.error("");
-            console.error("================================================================================");
-            console.error(errMsg);
-            console.error("================================================================================");
-            console.error("");
-            throw new Error(errMsg);
+            pendingRestore = true;
+            console.warn("");
+            console.warn("================================================================================");
+            console.warn(`[STORAGE NOTICE] Production database not found at '${databasePath}'.`);
+            console.warn(`Server starting in RESTORE_READY maintenance mode to accept database restoration.`);
+            console.warn(`User endpoints will return 503 until /api/admin/restore-database completes.`);
+            console.warn("================================================================================");
+            console.warn("");
+            return;
         }
     }
+    pendingRestore = false;
+}
+
+function isPendingRestore() {
+    return pendingRestore;
+}
+
+function clearPendingRestore() {
+    pendingRestore = false;
 }
 
 module.exports = {
@@ -102,5 +110,7 @@ module.exports = {
     dataDir,
     databasePath,
     uploadsDir,
-    ensureStorageReady
+    ensureStorageReady,
+    isPendingRestore,
+    clearPendingRestore
 };

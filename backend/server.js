@@ -45,6 +45,18 @@ app.use(cors({
 app.use(express.json({ limit: "100mb" }));
 app.use(express.urlencoded({ extended: true, limit: "100mb" }));
 
+// Maintenance mode guard: allows health checks and admin restore endpoint while holding user traffic
+app.use((req, res, next) => {
+    if (storageConfig.isPendingRestore() && !req.path.startsWith("/api/admin") && req.path !== "/") {
+        return res.status(503).json({
+            status: "error",
+            code: 503,
+            message: "Threadline is running in Maintenance Mode awaiting database restore onto persistent volume. Please restore database via /api/admin/restore-database."
+        });
+    }
+    next();
+});
+
 const authMiddleware = require("./middleware/auth");
 
 /*======================================================
@@ -55,10 +67,12 @@ app.get("/", (request, response) => {
     response.json({
         application: "Threadline",
         version: "0.1.0",
-        status: "Backend Online",
+        status: storageConfig.isPendingRestore() ? "Backend Online (Awaiting Database Restore)" : "Backend Online",
         storage: {
             databaseConfigured: !!storageConfig.databasePath,
-            mode: storageConfig.isProduction ? "production_volume" : "local_development"
+            mode: storageConfig.isProduction ? "production_volume" : "local_development",
+            pendingRestore: storageConfig.isPendingRestore(),
+            dataDir: storageConfig.dataDir
         }
     });
 });
@@ -84,6 +98,7 @@ app.listen(PORT, () => {
     console.log(` Database Path : ${storageConfig.databasePath}`);
     console.log(` Uploads Path  : ${storageConfig.uploadsDir}`);
     console.log(` Storage Mode  : ${storageConfig.isProduction ? 'Production Volume' : 'Local Development'}`);
+    console.log(` Status        : ${storageConfig.isPendingRestore() ? 'RESTORE_READY (Maintenance Mode)' : 'Ready'}`);
     console.log("==========================================");
     console.log("");
 });

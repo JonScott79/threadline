@@ -5,7 +5,7 @@
     Validates:
     1. Local development path resolution (default fallback).
     2. Explicit environment variables (THREADLINE_DATA_DIR, DATABASE_PATH, UPLOADS_DIR).
-    3. Production safety guard (refusing to silently create blank DB when volume is missing).
+    3. Production safety guard & maintenance mode (refusing silent DB wipe, requiring restore).
     4. SQLite WAL checkpoint and graceful shutdown handler.
     5. Database consistency, integrity, and foreign key checks.
 */
@@ -63,37 +63,39 @@ assert.strictEqual(customStorage.databasePath, customDb, "DATABASE_PATH should o
 assert.strictEqual(customStorage.uploadsDir, customUploads, "UPLOADS_DIR should override THREADLINE_DATA_DIR");
 console.log("✓ Explicit path overrides respected.");
 
-// Test 4: Verify production safety guard against silent empty DB creation
+// Test 4: Verify production safety guard enters pendingRestore maintenance mode
 console.log("\n4. Testing production safety guard against uninitialized volume / silent data wipe...");
 process.env.NODE_ENV = "production";
 const missingDb = path.join(tempVolumeDir, "missing_store.db");
 process.env.DATABASE_PATH = missingDb;
 delete require.cache[require.resolve("../config/storage")];
+delete require.cache[require.resolve("../database/database")];
 const prodStorage = require("../config/storage");
 
-let guardFailedAsExpected = false;
+prodStorage.ensureStorageReady();
+assert.strictEqual(prodStorage.isPendingRestore(), true, "Production mode MUST enter pendingRestore mode when DB is missing without ALLOW_EMPTY_DB=true");
+
+const dbModulePending = require("../database/database");
+let getDbFailed503 = false;
 try {
-    prodStorage.ensureStorageReady();
+    dbModulePending.getDb();
 } catch (err) {
-    if (err.message.includes("[CRITICAL STORAGE ERROR]")) {
-        guardFailedAsExpected = true;
-        console.log("✓ Guard successfully threw:", err.message.split("\n")[0]);
+    if (err.statusCode === 503) {
+        getDbFailed503 = true;
+        console.log("✓ getDb() correctly rejected with 503 Maintenance Mode:", err.message);
     }
 }
-assert.ok(guardFailedAsExpected, "Production mode MUST throw error when configured DB file is missing without ALLOW_EMPTY_DB=true");
+assert.ok(getDbFailed503, "getDb() must throw 503 when awaiting database restore");
+console.log("✓ Production safety guard successfully held application in maintenance mode.");
 
 // Test 5: Verify ALLOW_EMPTY_DB allows initialization when intentionally starting fresh
 console.log("\n5. Testing intentional initial startup with ALLOW_EMPTY_DB=true...");
 process.env.ALLOW_EMPTY_DB = "true";
-let allowedEmpty = false;
-try {
-    prodStorage.ensureStorageReady();
-    allowedEmpty = true;
-} catch (err) {
-    allowedEmpty = false;
-}
-assert.ok(allowedEmpty, "Production mode should allow initialization when ALLOW_EMPTY_DB=true");
-console.log("✓ ALLOW_EMPTY_DB=true permits initial setup as expected.");
+delete require.cache[require.resolve("../config/storage")];
+const prodStorageAllow = require("../config/storage");
+prodStorageAllow.ensureStorageReady();
+assert.strictEqual(prodStorageAllow.isPendingRestore(), false, "Production mode should not be pending restore when ALLOW_EMPTY_DB=true");
+console.log("✓ ALLOW_EMPTY_DB=true permits fresh initialization as expected.");
 
 // Test 6: Verify WAL checkpoint and clean close API
 console.log("\n6. Testing WAL checkpointing and clean close function...");

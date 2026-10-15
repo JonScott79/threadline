@@ -33,9 +33,9 @@ router.get("/storage-status", (req, res) => {
         let counts = null;
         let integrity = null;
 
-        if (dbExists) {
-            stat = fs.statSync(storageConfig.databasePath);
+        if (dbExists && !storageConfig.isPendingRestore()) {
             try {
+                stat = fs.statSync(storageConfig.databasePath);
                 const db = dbModule.getDb();
                 integrity = db.pragma("integrity_check");
                 counts = {
@@ -54,6 +54,7 @@ router.get("/storage-status", (req, res) => {
             status: "success",
             storage: {
                 isProduction: storageConfig.isProduction,
+                pendingRestore: storageConfig.isPendingRestore(),
                 dataDir: storageConfig.dataDir,
                 databasePath: storageConfig.databasePath,
                 uploadsDir: storageConfig.uploadsDir,
@@ -134,7 +135,11 @@ router.post("/restore-database", upload.single("database"), (req, res) => {
         if (fs.existsSync(walPath)) { try { fs.unlinkSync(walPath); } catch (e) {} }
         if (fs.existsSync(shmPath)) { try { fs.unlinkSync(shmPath); } catch (e) {} }
 
+        // Clear maintenance mode
+        storageConfig.clearPendingRestore();
+
         // 5. Reopen database connection
+        dbModule.initializeDatabase();
         const newDb = dbModule.getDb();
         const postIntegrity = newDb.pragma("integrity_check");
 
