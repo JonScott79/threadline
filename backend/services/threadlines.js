@@ -416,16 +416,29 @@ async function createThreadline(uid, archive) {
 }
 
 /**
+ * Returns list of authorized UIDs for a user, linking local guest sessions
+ * with the primary developer/user Firebase account.
+ */
+function getAuthorizedUids(uid) {
+    if (uid === "local" || uid === "hogUXhgQVEMRu3jgEIeEAQsBhz33" || uid === "user_jonny_live_2_5gb") {
+        return ["local", "hogUXhgQVEMRu3jgEIeEAQsBhz33", "user_jonny_live_2_5gb"];
+    }
+    return [uid];
+}
+
+/**
  * Returns a list of all threadlines.
  */
 async function getThreadlines(uid) {
     try {
+        const uids = getAuthorizedUids(uid);
+        const placeholders = uids.map(() => "?").join(",");
         const rows = db.query(
             `SELECT id, name, source, platform, created_at, updated_at, message_count, conversation_count
              FROM threadlines
-             WHERE owner_id = ?
+             WHERE owner_id IN (${placeholders})
              ORDER BY updated_at DESC`,
-            [uid]
+            uids
         );
         return rows.map(row => ({
             firestoreId: row.id,
@@ -449,11 +462,13 @@ async function getThreadlines(uid) {
  */
 async function getThreadline(uid, id) {
     try {
+        const uids = getAuthorizedUids(uid);
+        const placeholders = uids.map(() => "?").join(",");
         const row = db.queryOne(
             `SELECT id, name, source, platform, created_at, updated_at, message_count, conversation_count
              FROM threadlines
-             WHERE id = ? AND owner_id = ?`,
-            [id, uid]
+             WHERE id = ? AND owner_id IN (${placeholders})`,
+            [id, ...uids]
         );
         if (!row) {
             return null;
@@ -481,11 +496,13 @@ async function getThreadline(uid, id) {
  */
 async function deleteThreadline(uid, id) {
     try {
-        const existing = db.queryOne("SELECT id FROM threadlines WHERE id = ? AND owner_id = ?", [id, uid]);
+        const uids = getAuthorizedUids(uid);
+        const placeholders = uids.map(() => "?").join(",");
+        const existing = db.queryOne(`SELECT id, owner_id FROM threadlines WHERE id = ? AND owner_id IN (${placeholders})`, [id, ...uids]);
         if (!existing) {
             throw new Error("Threadline not found or you are not the owner.");
         }
-        db.run(`DELETE FROM threadlines WHERE id = ? AND owner_id = ?`, [id, uid]);
+        db.run(`DELETE FROM threadlines WHERE id = ? AND owner_id = ?`, [id, existing.owner_id]);
         console.log(`✓ Deleted threadline ${id} and all cascaded child records.`);
     } catch (error) {
         console.error(`Error deleting threadline ${id}:`, error);
@@ -498,5 +515,6 @@ module.exports = {
     getThreadlines,
     getThreadline,
     deleteThreadline,
-    ingestArchive
+    ingestArchive,
+    getAuthorizedUids
 };

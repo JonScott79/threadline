@@ -76,6 +76,10 @@ router.get("/", async (request, response) => {
         let sql = "";
         let params = [];
         
+        const { getAuthorizedUids } = require("../services/threadlines");
+        const uids = getAuthorizedUids ? getAuthorizedUids(request.uid) : [request.uid];
+        const placeholders = uids.map(() => "?").join(",");
+
         if (threadlineId) {
             sql = `
                 SELECT DISTINCT i.id, i.filename, i.source, i.platform, i.file_size AS fileSize, 
@@ -87,10 +91,10 @@ router.get("/", async (request, response) => {
                 FROM imports i
                 JOIN message_imports mi ON i.id = mi.import_id
                 JOIN messages m ON mi.message_id = m.id
-                WHERE i.owner_id = ? AND m.threadline_id = ?
+                WHERE i.owner_id IN (${placeholders}) AND m.threadline_id = ?
                 ORDER BY i.imported_at DESC
             `;
-            params = [request.uid, threadlineId];
+            params = [...uids, threadlineId];
         } else {
             sql = `
                 SELECT id, filename, source, platform, file_size AS fileSize, 
@@ -100,10 +104,10 @@ router.get("/", async (request, response) => {
                        sha256, discovered_count AS discoveredCount, skipped_count AS skippedCount,
                        provenance_metadata AS provenanceMetadata
                 FROM imports
-                WHERE owner_id = ?
+                WHERE owner_id IN (${placeholders})
                 ORDER BY imported_at DESC
             `;
-            params = [request.uid];
+            params = [...uids];
         }
         let rows;
         try {

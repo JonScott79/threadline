@@ -42,6 +42,19 @@ const caseUpload = multer({
 
 const router = express.Router();
 
+function isAuthorizedOwner(rowOwner, reqUid) {
+    if (!rowOwner || !reqUid) return false;
+    if (rowOwner === reqUid) return true;
+    const authUids = threadlineService.getAuthorizedUids ? threadlineService.getAuthorizedUids(reqUid) : [reqUid];
+    return authUids.includes(rowOwner);
+}
+
+function isAuthorizedArchive(id, reqUid) {
+    if (id === `archive_${reqUid}`) return true;
+    if (id === "archive_local" && isAuthorizedOwner("local", reqUid)) return true;
+    return false;
+}
+
 // =====================================
 // Routes
 // =====================================
@@ -197,9 +210,9 @@ router.get("/:id/participants", (request, response) => {
     try {
         const { id } = request.params;
         // Verify ownership
-        const isArchive = id === `archive_${request.uid}`;
+        const isArchive = isAuthorizedArchive(id, request.uid);
         const row = db.queryOne("SELECT owner_id FROM threadlines WHERE id = ?", [id]);
-        if (!isArchive && (!row || row.owner_id !== request.uid)) {
+        if (!isArchive && (!row || !isAuthorizedOwner(row.owner_id, request.uid))) {
             return response.status(403).json({ status: "error", message: "Access denied." });
         }
         const rows = db.query(
@@ -293,9 +306,9 @@ router.put("/:id/participants/:participantId", (request, response) => {
         }
 
         // Verify ownership
-        const isArchive = id === `archive_${request.uid}`;
+        const isArchive = isAuthorizedArchive(id, request.uid);
         const row = db.queryOne("SELECT owner_id FROM threadlines WHERE id = ?", [id]);
-        if (!isArchive && (!row || row.owner_id !== request.uid)) {
+        if (!isArchive && (!row || !isAuthorizedOwner(row.owner_id, request.uid))) {
             return response.status(403).json({ status: "error", message: "Access denied." });
         }
 
@@ -383,9 +396,9 @@ router.post("/:id/participants/tag", (request, response) => {
             return response.status(400).json({ status: "error", message: "Identifier and Name are required." });
         }
 
-        const isArchive = id === `archive_${request.uid}`;
+        const isArchive = isAuthorizedArchive(id, request.uid);
         const row = db.queryOne("SELECT owner_id FROM threadlines WHERE id = ?", [id]);
-        if (!isArchive && (!row || row.owner_id !== request.uid)) {
+        if (!isArchive && (!row || !isAuthorizedOwner(row.owner_id, request.uid))) {
             return response.status(403).json({ status: "error", message: "Access denied." });
         }
 
@@ -487,9 +500,9 @@ router.post("/:id/participants/:participantId/link", (request, response) => {
             return response.status(400).json({ status: "error", message: "Identifier is required." });
         }
 
-        const isArchive = id === `archive_${request.uid}`;
+        const isArchive = isAuthorizedArchive(id, request.uid);
         const row = db.queryOne("SELECT owner_id FROM threadlines WHERE id = ?", [id]);
-        if (!isArchive && (!row || row.owner_id !== request.uid)) {
+        if (!isArchive && (!row || !isAuthorizedOwner(row.owner_id, request.uid))) {
             return response.status(403).json({ status: "error", message: "Access denied." });
         }
 
@@ -580,9 +593,9 @@ router.post("/:id/participants/:participantId/unlink", (request, response) => {
             return response.status(400).json({ status: "error", message: "Identifier is required." });
         }
 
-        const isArchive = id === `archive_${request.uid}`;
+        const isArchive = isAuthorizedArchive(id, request.uid);
         const row = db.queryOne("SELECT owner_id FROM threadlines WHERE id = ?", [id]);
-        if (!isArchive && (!row || row.owner_id !== request.uid)) {
+        if (!isArchive && (!row || !isAuthorizedOwner(row.owner_id, request.uid))) {
             return response.status(403).json({ status: "error", message: "Access denied." });
         }
 
@@ -655,9 +668,9 @@ router.get("/:id/participants/:participantId/messages", (request, response) => {
         const end = request.query.end ? Number(request.query.end) : null;
         const limit = request.query.limit ? Math.min(2000, Number(request.query.limit)) : 1000;
 
-        const isArchive = id === `archive_${request.uid}`;
+        const isArchive = isAuthorizedArchive(id, request.uid);
         const row = db.queryOne("SELECT owner_id FROM threadlines WHERE id = ?", [id]);
-        if (!isArchive && (!row || row.owner_id !== request.uid)) {
+        if (!isArchive && (!row || !isAuthorizedOwner(row.owner_id, request.uid))) {
             return response.status(403).json({ status: "error", message: "Access denied." });
         }
 
@@ -742,9 +755,9 @@ router.put("/:id/conversations/:convId", (request, response) => {
             return response.status(400).json({ status: "error", message: "Conversation title cannot be empty." });
         }
 
-        const isArchive = id === `archive_${request.uid}`;
+        const isArchive = isAuthorizedArchive(id, request.uid);
         const row = db.queryOne("SELECT owner_id FROM threadlines WHERE id = ?", [id]);
-        if (!isArchive && (!row || row.owner_id !== request.uid)) {
+        if (!isArchive && (!row || !isAuthorizedOwner(row.owner_id, request.uid))) {
             return response.status(403).json({ status: "error", message: "Access denied." });
         }
 
@@ -796,9 +809,9 @@ router.get("/:id/conversations", (request, response) => {
 
         // Verify ownership for all requested threadlines
         for (const id of threadlineIds) {
-            const isArchive = id === `archive_${request.uid}`;
+            const isArchive = isAuthorizedArchive(id, request.uid);
             const row = db.queryOne("SELECT owner_id FROM threadlines WHERE id = ?", [id]);
-            if (!isArchive && (!row || row.owner_id !== request.uid)) {
+            if (!isArchive && (!row || !isAuthorizedOwner(row.owner_id, request.uid))) {
                 return response.status(403).json({ status: "error", message: "Access denied." });
             }
         }
@@ -907,7 +920,7 @@ router.get("/:id/conversations/:convId/messages", (request, response) => {
         const end = request.query.end ? Number(request.query.end) : null;
 
         // Verify conversation ownership.
-        const isArchive = id === `archive_${request.uid}`;
+        const isArchive = isAuthorizedArchive(id, request.uid);
         let checkOwner;
         if (isArchive) {
             checkOwner = db.queryOne(
@@ -915,11 +928,13 @@ router.get("/:id/conversations/:convId/messages", (request, response) => {
                 [id, convId]
             );
         } else {
+            const uids = threadlineService.getAuthorizedUids ? threadlineService.getAuthorizedUids(request.uid) : [request.uid];
+            const placeholders = uids.map(() => "?").join(",");
             checkOwner = db.queryOne(
                 `SELECT c.id FROM conversations c 
                  JOIN threadlines t ON c.threadline_id = t.id 
-                 WHERE t.id = ? AND t.owner_id = ? AND c.id = ?`,
-                [id, request.uid, convId]
+                 WHERE t.id = ? AND t.owner_id IN (${placeholders}) AND c.id = ?`,
+                [id, ...uids, convId]
             );
         }
         if (!checkOwner) {
@@ -985,9 +1000,9 @@ router.get("/:id/days/:dateString", (request, response) => {
 
         // Verify ownership for all requested threadline IDs
         for (const id of threadlineIds) {
-            const isArchive = id === `archive_${request.uid}`;
+            const isArchive = isAuthorizedArchive(id, request.uid);
             const row = db.queryOne("SELECT owner_id FROM threadlines WHERE id = ?", [id]);
-            if (!isArchive && (!row || row.owner_id !== request.uid)) {
+            if (!isArchive && (!row || !isAuthorizedOwner(row.owner_id, request.uid))) {
                 return response.status(403).json({ status: "error", message: "Access denied." });
             }
         }
