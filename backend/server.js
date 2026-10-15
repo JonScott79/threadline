@@ -12,6 +12,7 @@ const timelineRoutes = require("./api/timeline");
 const searchRoutes = require("./api/search");
 const segmentRoutes = require("./api/segments");
 const exportRoutes = require("./api/export");
+const adminRoutes = require("./api/admin");
 
 /*======================================================
                         VARIABLES
@@ -67,6 +68,7 @@ app.use("/api/threadlines", authMiddleware, threadlineRoutes);
 app.use("/api/threadlines/:id/timeline", authMiddleware, timelineRoutes);
 app.use("/api/threadlines/:id/search", authMiddleware, searchRoutes);
 app.use("/api/threadlines/:id/export", authMiddleware, exportRoutes);
+app.use("/api/admin", authMiddleware, adminRoutes);
 app.use("/api", authMiddleware, segmentRoutes);
 
 /*======================================================
