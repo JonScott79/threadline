@@ -502,6 +502,12 @@ async function deleteThreadline(uid, id) {
         if (!existing) {
             throw new Error("Threadline not found or you are not the owner.");
         }
+        // Clean up unconstrained FTS5 virtual tables explicitly
+        try {
+            db.run("DELETE FROM chunks_fts WHERE threadline_id = ?", [id]);
+            db.run("DELETE FROM messages_fts WHERE threadline_id = ?", [id]);
+        } catch (_ftsErr) {}
+
         db.run(`DELETE FROM threadlines WHERE id = ? AND owner_id = ?`, [id, existing.owner_id]);
         console.log(`✓ Deleted threadline ${id} and all cascaded child records.`);
     } catch (error) {

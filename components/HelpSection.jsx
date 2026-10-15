@@ -21,6 +21,7 @@ function HelpSection({ onBack = null }) {
     const tabs = [
         { id: "workflow", icon: "🧭", label: "Investigative Workflow" },
         { id: "timeline", icon: "⏱️", label: "Timeline, Swimlanes & Laser" },
+        { id: "search", icon: "🧠", label: "Multi-Tier AI & Simple Search" },
         { id: "cooccurrence", icon: "⚡", label: "Contemporaneous Matrix" },
         { id: "disambiguation", icon: "👤", label: "Disambiguation & Entities" },
         { id: "audit", icon: "🔍", label: "Ingestion Audit & Hashes" },
@@ -168,12 +169,12 @@ function HelpSection({ onBack = null }) {
 
                     <div className="preview-card" style={{ textAlign: "left", padding: "20px", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "8px" }}>
                         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
-                            <span style={{ fontSize: "1.6rem" }}>🔍</span>
+                            <span style={{ fontSize: "1.6rem" }}>🧠</span>
                             <span style={{ fontSize: "0.75rem", fontFamily: "var(--font-mono)", color: "var(--accent)", background: "rgba(63,216,255,0.1)", padding: "2px 8px", borderRadius: "4px" }}>PHASE 4</span>
                         </div>
-                        <h4 style={{ color: "var(--accent)", fontSize: "0.95rem", marginBottom: "8px", fontWeight: "700" }}>4. Plain-Language Evidence Search</h4>
+                        <h4 style={{ color: "var(--accent)", fontSize: "0.95rem", marginBottom: "8px", fontWeight: "700" }}>4. Multi-Tier Simple & AI Contextual Search</h4>
                         <p style={{ fontSize: "0.84rem", color: "var(--text-light)", lineHeight: "1.5" }}>
-                            Query keywords and natural phrases (e.g. <em>"drop location"</em>, <em>"wire transfer"</em>, <em>"meet at 10"</em>). Matches highlight in pulsing gold across timeline tracks with complete contextual surrounding dialog preserved.
+                            Toggle between <strong>⚡ Simple Search</strong> (instant, deterministic, 100% offline FTS5 keyword & phrase matching) and <strong>🧠 AI Search</strong> (staged "Retrieve First, Analyze Second" pipeline for multi-turn requests, refusals, and conditional constraints with verifiable source quotes).
                         </p>
                     </div>
 
@@ -269,6 +270,219 @@ function HelpSection({ onBack = null }) {
                             <li>Click and drag across the timeline over the incident duration.</li>
                             <li>The selected period is locked as the active <strong>Temporal Window</strong>, filtering search queries and day activities across all suspect phones.</li>
                         </ol>
+                    </div>
+                </div>
+            )}
+
+            {/* TAB: MULTI-TIER SEARCH & CONTEXTUAL AI */}
+            {activeTab === "search" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+                    {/* Header Banner */}
+                    <div style={{ padding: "22px", background: "var(--panel)", border: "1px solid var(--border)", borderLeft: "4px solid var(--accent)", borderRadius: "8px" }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
+                            <h4 style={{ color: "var(--accent)", fontSize: "1.1rem", fontWeight: "700", margin: 0, display: "flex", alignItems: "center", gap: "8px" }}>
+                                <span>🧠</span> Multi-Tier Search: Simple Deterministic & AI Contextual Intelligence
+                            </h4>
+                            <span style={{ fontSize: "0.72rem", fontFamily: "var(--font-mono)", color: "#34d399", background: "rgba(52,211,153,0.12)", border: "1px solid rgba(52,211,153,0.3)", padding: "2px 8px", borderRadius: "4px" }}>
+                                RETRIEVE FIRST, ANALYZE SECOND
+                            </span>
+                        </div>
+                        <p style={{ color: "var(--text-light)", fontSize: "0.88rem", lineHeight: "1.6", margin: "0 0 10px 0" }}>
+                            Threadline completely separates conventional keyword matching from language model analysis. The archive is searched deterministically on local SQLite chunks first, assembling relevant multi-turn conversation exchanges. Large Language Models (LLMs) are invoked exclusively for the bounded candidate batch that requires contextual language understanding.
+                        </p>
+                    </div>
+
+                    {/* Side-by-Side: Two Search Modes */}
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", gap: "16px" }}>
+                        {/* Mode 1: Simple Search */}
+                        <div style={{ padding: "18px", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "8px" }}>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
+                                <span style={{ fontSize: "1.2rem" }}>⚡</span>
+                                <span style={{ fontSize: "0.7rem", fontFamily: "var(--font-mono)", color: "#38bdf8", background: "rgba(56,189,248,0.12)", padding: "2px 6px", borderRadius: "3px" }}>
+                                    100% OFFLINE / DETERMINISTIC
+                                </span>
+                            </div>
+                            <h5 style={{ color: "var(--text-light)", fontSize: "0.95rem", fontWeight: "700", margin: "0 0 8px 0" }}>
+                                Simple Search (Local FTS5)
+                            </h5>
+                            <p style={{ color: "var(--text-muted)", fontSize: "0.82rem", lineHeight: "1.5", margin: "0 0 12px 0" }}>
+                                Fast, deterministic full-text search utilizing SQLite FTS5 index. Operates completely independent of AI providers and requires zero network traffic.
+                            </p>
+                            <ul style={{ color: "var(--text-light)", fontSize: "0.8rem", lineHeight: "1.6", paddingLeft: "18px", margin: 0 }}>
+                                <li><strong>Keywords & Exact Phrases:</strong> Search single words or quoted exact phrases like <code>"drop location"</code>.</li>
+                                <li><strong>Participant & Contact Filtering:</strong> Automatically matches participant names and contact handles.</li>
+                                <li><strong>Temporal Window Scoping:</strong> Integrates with active date ranges and day selections.</li>
+                                <li><strong>Chronological Surrounding Context:</strong> Preserves adjacent preceding and succeeding messages for complete context.</li>
+                            </ul>
+                        </div>
+
+                        {/* Mode 2: AI Contextual Search */}
+                        <div style={{ padding: "18px", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "8px" }}>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
+                                <span style={{ fontSize: "1.2rem" }}>🧠</span>
+                                <span style={{ fontSize: "0.7rem", fontFamily: "var(--font-mono)", color: "#c084fc", background: "rgba(192,132,252,0.12)", padding: "2px 6px", borderRadius: "3px" }}>
+                                    OPT-IN CONTEXTUAL INFERENCE
+                                </span>
+                            </div>
+                            <h5 style={{ color: "var(--text-light)", fontSize: "0.95rem", fontWeight: "700", margin: "0 0 8px 0" }}>
+                                AI Contextual Search (Exchange Analysis)
+                            </h5>
+                            <p style={{ color: "var(--text-muted)", fontSize: "0.82rem", lineHeight: "1.5", margin: "0 0 12px 0" }}>
+                                Searches across multi-turn conversational exchanges (e.g. requests made on Turn 1, followed by responses, conditions, or denials on subsequent turns).
+                            </p>
+                            <ul style={{ color: "var(--text-light)", fontSize: "0.8rem", lineHeight: "1.6", paddingLeft: "18px", margin: 0 }}>
+                                <li><strong>Natural Language Questions:</strong> Query questions like <em>"Find times she refused parenting time or said no to the kids"</em>.</li>
+                                <li><strong>Cross-Turn Temporal Merging:</strong> Merges messages occurring within 45-minute windows into cohesive dialogue units.</li>
+                                <li><strong>Bounded Batch Processing:</strong> Only the top 8–12 retrieved candidates are evaluated, ensuring token efficiency and sub-second responses.</li>
+                                <li><strong>Verifiable Provenance:</strong> Extracts verbatim evidence quotes and highlights matching source messages.</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    {/* The 7 Discrete Outcome Categories */}
+                    <div style={{ padding: "20px", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "8px" }}>
+                        <h5 style={{ color: "var(--text-light)", fontSize: "0.95rem", fontWeight: "700", margin: "0 0 12px 0", display: "flex", alignItems: "center", gap: "8px" }}>
+                            <span>⚖️</span> The 7 Discrete Conversational Outcome Categories
+                        </h5>
+                        <p style={{ color: "var(--text-muted)", fontSize: "0.82rem", lineHeight: "1.5", margin: "0 0 14px 0" }}>
+                            Threadline strictly avoids presenting model interpretations as established legal facts. Every evaluated dialogue exchange is categorized using discrete, versioned schemas:
+                        </p>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "10px" }}>
+                            <div style={{ padding: "10px 12px", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: "6px" }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "4px" }}>
+                                    <span style={{ fontSize: "1rem" }}>🛑</span>
+                                    <strong style={{ color: "#ef4444", fontSize: "0.82rem" }}>Explicit Refusal</strong>
+                                </div>
+                                <span style={{ color: "var(--text-light)", fontSize: "0.76rem", lineHeight: "1.4" }}>
+                                    Direct, categorical denial of a request (e.g. <em>"No, absolutely not"</em>, <em>"You cannot take them"</em>). Paramount priority in refusal queries.
+                                </span>
+                            </div>
+
+                            <div style={{ padding: "10px 12px", background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: "6px" }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "4px" }}>
+                                    <span style={{ fontSize: "1rem" }}>⚠️</span>
+                                    <strong style={{ color: "#f59e0b", fontSize: "0.82rem" }}>Conditional Response</strong>
+                                </div>
+                                <span style={{ color: "var(--text-light)", fontSize: "0.76rem", lineHeight: "1.4" }}>
+                                    Agreement coupled with contingencies, constraints, or demands (e.g. <em>"Only if you pay the daycare bill first"</em>).
+                                </span>
+                            </div>
+
+                            <div style={{ padding: "10px 12px", background: "rgba(168,85,247,0.08)", border: "1px solid rgba(168,85,247,0.3)", borderRadius: "6px" }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "4px" }}>
+                                    <span style={{ fontSize: "1rem" }}>🟣</span>
+                                    <strong style={{ color: "#c084fc", fontSize: "0.82rem" }}>Indirect Objection</strong>
+                                </div>
+                                <span style={{ color: "var(--text-light)", fontSize: "0.76rem", lineHeight: "1.4" }}>
+                                    Non-committal pushback, topic changes, passive delay, or reluctance without an overt verbal "no".
+                                </span>
+                            </div>
+
+                            <div style={{ padding: "10px 12px", background: "rgba(59,130,246,0.08)", border: "1px solid rgba(59,130,246,0.3)", borderRadius: "6px" }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "4px" }}>
+                                    <span style={{ fontSize: "1rem" }}>⏳</span>
+                                    <strong style={{ color: "#60a5fa", fontSize: "0.82rem" }}>Unanswered Request</strong>
+                                </div>
+                                <span style={{ color: "var(--text-light)", fontSize: "0.76rem", lineHeight: "1.4" }}>
+                                    An outgoing request message followed by complete silence or non-response from the counterparty.
+                                </span>
+                            </div>
+
+                            <div style={{ padding: "10px 12px", background: "rgba(20,184,166,0.08)", border: "1px solid rgba(20,184,166,0.3)", borderRadius: "6px" }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "4px" }}>
+                                    <span style={{ fontSize: "1rem" }}>🔄</span>
+                                    <strong style={{ color: "#2dd4bf", fontSize: "0.82rem" }}>Changed Response</strong>
+                                </div>
+                                <span style={{ color: "var(--text-light)", fontSize: "0.76rem", lineHeight: "1.4" }}>
+                                    An initial agreement or commitment followed later by a reversal, modification, or cancellation.
+                                </span>
+                            </div>
+
+                            <div style={{ padding: "10px 12px", background: "rgba(148,163,184,0.08)", border: "1px solid rgba(148,163,184,0.3)", borderRadius: "6px" }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "4px" }}>
+                                    <span style={{ fontSize: "1rem" }}>❓</span>
+                                    <strong style={{ color: "#cbd5e1", fontSize: "0.82rem" }}>Ambiguous Outcome</strong>
+                                </div>
+                                <span style={{ color: "var(--text-light)", fontSize: "0.76rem", lineHeight: "1.4" }}>
+                                    Unclear, fragmented, or open-ended dialogue requiring human investigator scrutiny.
+                                </span>
+                            </div>
+
+                            <div style={{ padding: "10px 12px", background: "rgba(100,116,139,0.08)", border: "1px solid rgba(100,116,139,0.25)", borderRadius: "6px" }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "4px" }}>
+                                    <span style={{ fontSize: "1rem" }}>⚪</span>
+                                    <strong style={{ color: "#94a3b8", fontSize: "0.82rem" }}>Unrelated Exchange</strong>
+                                </div>
+                                <span style={{ color: "var(--text-light)", fontSize: "0.76rem", lineHeight: "1.4" }}>
+                                    Dialogue that touches incidental query keywords but does not bear upon the requested outcome.
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Privacy Boundaries & Provider Controls */}
+                    <div style={{ padding: "20px", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "8px" }}>
+                        <h5 style={{ color: "var(--accent)", fontSize: "0.95rem", fontWeight: "700", margin: "0 0 10px 0", display: "flex", alignItems: "center", gap: "8px" }}>
+                            <span>🛡️</span> Privacy Boundaries & Cryptographic Provider Isolation
+                        </h5>
+                        <p style={{ color: "var(--text-light)", fontSize: "0.84rem", lineHeight: "1.5", margin: "0 0 14px 0" }}>
+                            Forensic communications investigations often involve sensitive legal, custody, or criminal evidence. Threadline enforces strict privacy controls at the provider boundary:
+                        </p>
+
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "14px" }}>
+                            <div style={{ padding: "14px", background: "rgba(52,211,153,0.05)", border: "1px solid rgba(52,211,153,0.25)", borderRadius: "6px" }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "6px" }}>
+                                    <span style={{ color: "#34d399", fontWeight: "700", fontSize: "0.85rem" }}>Local Ollama (Default & 100% Private)</span>
+                                </div>
+                                <p style={{ color: "var(--text-light)", fontSize: "0.8rem", lineHeight: "1.5", margin: 0 }}>
+                                    Runs entirely on your local hardware via <code>http://localhost:11434</code> (Llama 3). Zero search queries, message text, or metadata ever leave your computer. 100% air-gapped forensic capability.
+                                </p>
+                            </div>
+
+                            <div style={{ padding: "14px", background: "rgba(251,191,36,0.05)", border: "1px solid rgba(251,191,36,0.25)", borderRadius: "6px" }}>
+                                <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "6px" }}>
+                                    <span style={{ color: "#fbbf24", fontWeight: "700", fontSize: "0.85rem" }}>Groq Cloud API (Explicit Opt-In Only)</span>
+                                </div>
+                                <p style={{ color: "var(--text-light)", fontSize: "0.8rem", lineHeight: "1.5", margin: 0 }}>
+                                    Utilizes Llama 3.3 70B for near-instant inference. <strong>Transmission Boundary:</strong> ONLY the top 8–10 candidate snippets retrieved locally for your specific query are sent. Threadline <u>never</u> uploads your database, entire archive, or contact records. Keys are saved strictly in your local browser storage.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div style={{ marginTop: "12px", padding: "10px 14px", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)", borderRadius: "6px", fontSize: "0.78rem", color: "#fca5a5" }}>
+                            <strong>No Silent Fallback Invariant:</strong> If local Ollama is offline or times out, Threadline falls back to <em>deterministic local heuristics</em>. It will <strong>NEVER</strong> silently route local evidence to Groq Cloud without explicit user consent and configuration.
+                        </div>
+                    </div>
+
+                    {/* Archive Coverage & Verifiable Provenance */}
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "16px" }}>
+                        <div style={{ padding: "18px", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "8px" }}>
+                            <h5 style={{ color: "var(--accent)", fontSize: "0.9rem", fontWeight: "700", margin: "0 0 8px 0", display: "flex", alignItems: "center", gap: "6px" }}>
+                                <span>📜</span> Verifiable Evidence & Provenance
+                            </h5>
+                            <p style={{ color: "var(--text-light)", fontSize: "0.8rem", lineHeight: "1.5", margin: "0 0 10px 0" }}>
+                                Every AI classification is accompanied by an interpretive rationale and direct verifiable quotation from the record:
+                            </p>
+                            <ul style={{ color: "var(--text-muted)", fontSize: "0.78rem", lineHeight: "1.5", paddingLeft: "16px", margin: 0 }}>
+                                <li><strong>Quoted Evidence Highlight:</strong> Matching raw SQLite messages in the chronological timeline are badged with <code style={{ color: "#fbbf24" }}>★ QUOTED EVIDENCE</code> and framed in gold.</li>
+                                <li><strong>Forensic Date & Speaker:</strong> Displays verified message timestamps and counterparty participant identification.</li>
+                                <li><strong>Timeline Navigation:</strong> Click any message or result card to jump the laser crosshair to that exact chronological moment.</li>
+                            </ul>
+                        </div>
+
+                        <div style={{ padding: "18px", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "8px" }}>
+                            <h5 style={{ color: "var(--accent)", fontSize: "0.9rem", fontWeight: "700", margin: "0 0 8px 0", display: "flex", alignItems: "center", gap: "6px" }}>
+                                <span>📊</span> Archive Coverage & Bounded Batches
+                            </h5>
+                            <p style={{ color: "var(--text-light)", fontSize: "0.8rem", lineHeight: "1.5", margin: "0 0 10px 0" }}>
+                                To ensure transparent representation and avoid misleading claims of total archive evaluation:
+                            </p>
+                            <ul style={{ color: "var(--text-muted)", fontSize: "0.78rem", lineHeight: "1.5", paddingLeft: "16px", margin: 0 }}>
+                                <li><strong>Coverage Card:</strong> Displays total candidate exchanges retrieved from the archive, candidates evaluated in the current batch, and unevaluated candidates remaining.</li>
+                                <li><strong>Completeness Indicators:</strong> Flags results as <code>✓ Full Archive Evaluated</code> only when all eligible candidates have been classified, and <code>⚠️ Partial Bounded Evaluation</code> when candidates remain.</li>
+                                <li><strong>Batch Pagination:</strong> Use <strong>◀ Previous Batch</strong> and <strong>Next 10 Candidates ▶</strong> to inspect further candidates.</li>
+                            </ul>
+                        </div>
                     </div>
                 </div>
             )}

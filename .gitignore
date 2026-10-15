@@ -79,3 +79,9 @@ backend/tests/*.tl*
 uploads/
 *.tl-wal
 *.tl-shm
+
+*.bak
+backend/database/*.bak
+*.bak*
+backend/database/*.pre_*_bak
+backend/database/threadline.db.*

@@ -146,3 +146,26 @@ CREATE INDEX IF NOT EXISTS idx_message_imports_msg ON message_imports(message_id
 CREATE INDEX IF NOT EXISTS idx_saved_segments_owner ON saved_segments(owner_id);
 CREATE INDEX IF NOT EXISTS idx_saved_segment_messages_seg ON saved_segment_messages(saved_segment_id);
 CREATE INDEX IF NOT EXISTS idx_threadline_segments_tl ON threadline_segments(threadline_id);
+
+
+-- Conversation Chunks for Dialogue Exchange Indexing
+CREATE TABLE IF NOT EXISTS conversation_chunks (
+    id TEXT PRIMARY KEY,
+    conversation_id TEXT NOT NULL,
+    threadline_id TEXT NOT NULL,
+    start_timestamp INTEGER NOT NULL,
+    end_timestamp INTEGER NOT NULL,
+    message_count INTEGER NOT NULL,
+    participant_ids TEXT NOT NULL,
+    message_ids TEXT NOT NULL,
+    chunk_text TEXT NOT NULL,
+    has_turn_alternation INTEGER DEFAULT 0,
+    has_request INTEGER DEFAULT 0,
+    has_response INTEGER DEFAULT 0,
+    metadata TEXT,
+    FOREIGN KEY (conversation_id) REFERENCES conversations (id) ON DELETE CASCADE,
+    FOREIGN KEY (threadline_id) REFERENCES threadlines (id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_chunks_tl_time ON conversation_chunks(threadline_id, start_timestamp);
+CREATE INDEX IF NOT EXISTS idx_chunks_conv ON conversation_chunks(conversation_id);

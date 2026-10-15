@@ -3,14 +3,15 @@
 
     Orchestrator and bridge between Threadline SearchEngine and Semantic Providers.
     Responsibilities:
-    - Manage feature flag (THREADLINE_SEMANTIC_ENABLED, default: false)
-    - Instantiate the configured SemanticProvider (Ollama)
-    - Enforce request timeouts, bounded context, and error isolation
-    - Maintain pure deterministic fallback on any error, timeout, or flag disablement
-    - Provide structured logging and diagnostic telemetry
+    - Manage provider selection: Local Ollama vs Explicit Cloud Groq.
+    - Privacy Guarantee: Never silently falls back from local to cloud or vice versa.
+    - Enforce request timeouts, bounded candidate batches (8-12), and error isolation.
+    - Pure deterministic fallback if AI is disabled, times out, or errors.
+    - Strict JSON validation adhering to versioned SemanticSchemaValidator.
 */
 
 const OllamaSemanticProvider = require("./ollamaProvider");
+const GroqSemanticProvider = require("./groqProvider");
 
 class SemanticAdapter {
     constructor() {
@@ -18,16 +19,22 @@ class SemanticAdapter {
     }
 
     init() {
-        // Auto-enable semantic intelligence if explicitly set to true OR default true when Ollama url is present
         this.enabled = process.env.THREADLINE_SEMANTIC_ENABLED !== "false";
         this.providerName = process.env.THREADLINE_SEMANTIC_PROVIDER || "ollama";
 
-        if (this.providerName === "ollama") {
+        if (this.providerName === "groq" && process.env.GROQ_API_KEY) {
+            this.provider = new GroqSemanticProvider({
+                apiKey: process.env.GROQ_API_KEY,
+                model: process.env.THREADLINE_GROQ_MODEL || "llama-3.3-70b-versatile",
+                timeoutMs: Number(process.env.THREADLINE_GROQ_TIMEOUT_MS || 5000),
+                maxCandidates: 12
+            });
+        } else if (this.providerName === "ollama") {
             this.provider = new OllamaSemanticProvider({
                 url: process.env.THREADLINE_OLLAMA_URL || "http://localhost:11434",
                 model: process.env.THREADLINE_OLLAMA_MODEL || "llama3:latest",
-                timeoutMs: Number(process.env.THREADLINE_SEMANTIC_TIMEOUT_MS || 4000), // Bounded 4s timeout for responsive UI
-                maxCandidates: Number(process.env.THREADLINE_SEMANTIC_MAX_CANDIDATES || 25)
+                timeoutMs: Number(process.env.THREADLINE_SEMANTIC_TIMEOUT_MS || 8000),
+                maxCandidates: 12
             });
         } else {
             this.provider = null;
@@ -35,146 +42,158 @@ class SemanticAdapter {
     }
 
     /**
-     * Check if semantic intelligence is enabled.
+     * Dynamically configure provider (e.g. when user enables cloud Groq or local Ollama).
      */
+    /**
+     * Creates an isolated provider instance for testing or sandboxed inference.
+     */
+    createIsolatedProvider(type, config = {}) {
+        if (type === "ollama") {
+            return new OllamaSemanticProvider(config);
+        } else if (type === "groq") {
+            return new GroqSemanticProvider(config);
+        }
+        return null;
+    }
+
+    configureProvider(name, options = {}) {
+        if (name === "groq") {
+            if (!options.apiKey && !process.env.GROQ_API_KEY) {
+                throw new Error("Cannot configure Groq provider without an API key.");
+            }
+            this.providerName = "groq";
+            this.provider = new GroqSemanticProvider({
+                apiKey: options.apiKey || process.env.GROQ_API_KEY,
+                model: options.model || "llama-3.3-70b-versatile",
+                timeoutMs: options.timeoutMs || 5000,
+                maxCandidates: 12
+            });
+            this.enabled = true;
+        } else if (name === "ollama") {
+            this.providerName = "ollama";
+            this.provider = new OllamaSemanticProvider({
+                url: options.url || "http://localhost:11434",
+                model: options.model || "llama3:latest",
+                timeoutMs: options.timeoutMs || 8000,
+                maxCandidates: 12
+            });
+            this.enabled = true;
+        } else if (name === "disabled") {
+            this.enabled = false;
+            this.provider = null;
+            this.providerName = "none";
+        }
+    }
+
     isEnabled() {
         return Boolean(this.enabled && this.provider);
     }
 
-    /**
-     * Propose semantic vocabulary expansion terms for a user search query.
-     * Controlled by THREADLINE_SEMANTIC_EXPANSION_ENABLED (defaults to true if semantic is enabled).
-     */
-    async expandQuery(query, options = {}) {
-        const expansionFlag = process.env.THREADLINE_SEMANTIC_EXPANSION_ENABLED !== "false";
-        if (!this.isEnabled() || !expansionFlag || !query || !query.trim()) {
-            return { concepts: [], applied: false };
-        }
-
-        const t0 = Date.now();
-        try {
-            const maxExpansions = Number(options.maxExpansions || process.env.THREADLINE_SEMANTIC_MAX_EXPANSIONS || 6);
-            const minConfidence = Number(options.minConfidence || process.env.THREADLINE_SEMANTIC_MIN_CONFIDENCE || 0.65);
-
-            const res = await this.provider.expandQuery(query, {
-                ...options,
-                maxExpansions,
-                minConfidence
-            });
-            const elapsed = Date.now() - t0;
-
-            const concepts = res && Array.isArray(res.concepts) ? res.concepts : [];
-            return {
-                applied: concepts.length > 0,
-                concepts,
-                diagnostics: {
-                    model: this.provider.model,
-                    elapsed,
-                    expansionCount: concepts.length
-                },
-                error: res.error || null
-            };
-        } catch (error) {
-            return {
-                applied: false,
-                concepts: [],
-                error: error.message,
-                diagnostics: { elapsed: Date.now() - t0 }
-            };
-        }
+    getProviderInfo() {
+        return {
+            enabled: this.isEnabled(),
+            providerName: this.providerName,
+            model: this.provider ? this.provider.model : "none",
+            isLocal: this.providerName === "ollama"
+        };
     }
 
     /**
-     * Re-rank and score bounded candidates semantically.
-     * Guaranteed: Pure deterministic fallback if disabled or on error.
+     * Classify conversational outcomes for a bounded batch of candidate exchanges (Phase 3).
+     * 
+     * Requirements:
+     * - Only bounded candidate batch (max 12) is evaluated.
+     * - Distinguishes retrieval score from outcome classification.
+     * - Preserves original messages, timestamps, and provenance unaltered.
+     * - Model outputs are attached as annotations.
+     * - Complete deterministic fallback if provider times out, fails, or is disabled.
      */
-    async scoreCandidates(query, candidates, options = {}) {
-        if (!this.isEnabled() || !candidates || candidates.length === 0) {
+    async classifyExchanges(query, candidateExchanges, options = {}) {
+        if (!this.isEnabled() || !candidateExchanges || candidateExchanges.length === 0) {
             return {
                 applied: false,
-                relevanceMap: new Map(),
-                diagnostics: { reason: "Semantic intelligence disabled or empty candidates" }
+                evaluationsMap: new Map(),
+                diagnostics: { reason: "AI classifier disabled or empty candidates", provider: "none" }
             };
         }
 
         const t0 = Date.now();
         try {
-            const rawCandidates = candidates.map(c => c.message || c);
-            const res = await this.provider.scoreRelevance(query, rawCandidates, options);
+            const res = await this.provider.classifyExchangeOutcomes(query, candidateExchanges, options);
             const elapsed = Date.now() - t0;
 
-            const relevanceMap = new Map();
-            if (res && Array.isArray(res.results)) {
-                res.results.forEach(item => {
-                    relevanceMap.set(item.messageId, item);
+            const evaluationsMap = new Map();
+            if (res && Array.isArray(res.evaluations)) {
+                res.evaluations.forEach(ev => {
+                    evaluationsMap.set(ev.exchangeId, ev);
                 });
             }
 
+            const isSuccess = evaluationsMap.size > 0 && !res.error;
             return {
-                applied: true,
-                relevanceMap,
+                applied: isSuccess,
+                evaluationsMap,
                 diagnostics: {
+                    provider: this.providerName,
                     model: this.provider.model,
-                    candidateCount: rawCandidates.length,
-                    semanticMatches: relevanceMap.size,
+                    candidatesSubmitted: candidateExchanges.length,
+                    evaluationsReturned: evaluationsMap.size,
                     elapsedMs: elapsed,
-                    error: res.error || null
+                    usage: res.usage || null,
+                    error: res.error || null,
+                    fallback: isSuccess ? null : "deterministic"
                 }
             };
         } catch (error) {
             const elapsed = Date.now() - t0;
+            // Clean error message without leaking keys
+            const cleanError = String(error.message || "Unknown error").replace(/Bearer\s+[a-zA-Z0-9_-]+/gi, "Bearer ***");
             return {
                 applied: false,
-                relevanceMap: new Map(),
+                evaluationsMap: new Map(),
                 diagnostics: {
+                    provider: this.providerName,
                     model: this.provider ? this.provider.model : "none",
                     elapsedMs: elapsed,
-                    error: error.message,
+                    error: cleanError,
                     fallback: "deterministic"
                 }
             };
         }
     }
 
-    /**
-     * Analyze cross-thread relationships between bounded candidates.
-     */
-    async analyzeRelationships(query, candidates, options = {}) {
-        if (!this.isEnabled() || !candidates || candidates.length < 2) {
-            return { relationships: [], applied: false };
+    async expandQuery(query, options = {}) {
+        if (!this.isEnabled() || !query || !query.trim()) {
+            return { concepts: [], applied: false };
         }
-
+        const t0 = Date.now();
         try {
-            const rawCandidates = candidates.map(c => c.message || c);
-            const res = await this.provider.analyzeRelationships(query, rawCandidates, options);
+            const res = await this.provider.expandQuery(query, options);
             return {
-                applied: true,
-                relationships: res.relationships || [],
+                applied: res && res.concepts && res.concepts.length > 0,
+                concepts: res.concepts || [],
+                diagnostics: { elapsed: Date.now() - t0, model: this.provider.model },
                 error: res.error || null
             };
-        } catch (error) {
-            return { relationships: [], applied: false, error: error.message };
+        } catch (err) {
+            return { applied: false, concepts: [], error: err.message };
         }
     }
 
-    /**
-     * Resolve coreferences within bounded candidates.
-     */
-    async resolveCoreferences(query, candidates, knownParticipants = [], options = {}) {
+    async scoreCandidates(query, candidates, options = {}) {
         if (!this.isEnabled() || !candidates || candidates.length === 0) {
-            return { coreferences: [], applied: false };
+            return { applied: false, relevanceMap: new Map() };
         }
-
         try {
             const rawCandidates = candidates.map(c => c.message || c);
-            const res = await this.provider.resolveCoreferences(query, rawCandidates, knownParticipants, options);
-            return {
-                applied: true,
-                coreferences: res.coreferences || [],
-                error: res.error || null
-            };
-        } catch (error) {
-            return { coreferences: [], applied: false, error: error.message };
+            const res = await this.provider.scoreRelevance(query, rawCandidates, options);
+            const relevanceMap = new Map();
+            if (res && Array.isArray(res.results)) {
+                res.results.forEach(item => relevanceMap.set(item.messageId, item));
+            }
+            return { applied: true, relevanceMap };
+        } catch (err) {
+            return { applied: false, relevanceMap: new Map(), error: err.message };
         }
     }
 }

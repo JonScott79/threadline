@@ -17,6 +17,7 @@
 
 const express = require("express");
 const db = require("../database/database");
+const { getAuthorizedUids } = require("../services/threadlines");
 
 const searchEngine = require("../search/searchEngine");
 
@@ -68,11 +69,12 @@ router.get("/", async (request, response) => {
             });
         }
 
-        // Verify ownership of all threadline IDs
+        // Verify ownership of all threadline IDs with multi-alias authorization
+        const authorizedUids = getAuthorizedUids(request.uid);
         for (const id of threadlineIds) {
-            const isArchive = id === `archive_${request.uid}`;
+            const isArchive = id.startsWith("archive_") && authorizedUids.some(u => id === `archive_${u}`);
             const row = db.queryOne("SELECT owner_id FROM threadlines WHERE id = ?", [id]);
-            if (!isArchive && (!row || row.owner_id !== request.uid)) {
+            if (!isArchive && (!row || !authorizedUids.includes(row.owner_id))) {
                 return response.status(403).json({
                     status: "error",
                     message: "Access denied."
@@ -80,7 +82,58 @@ router.get("/", async (request, response) => {
             }
         }
 
-        // Execute hybrid search engine
+        // Mode dispatch: 'simple' (Fast, 100% offline, keyword/metadata) vs 'ai' (Contextual exchange retriever)
+        const searchMode = request.query.mode || "simple";
+        const page = parseInt(request.query.page || "1", 10);
+        const batchSize = parseInt(request.query.batchSize || "10", 10);
+        const aiProvider = request.query.aiProvider || null; // 'ollama' | 'groq'
+        const groqApiKey = request.headers["x-groq-api-key"] || null;
+
+        // If Cloud AI is explicitly chosen, strictly verify API key at provider boundary
+        if (searchMode === "ai" && aiProvider === "groq") {
+            if (!groqApiKey || typeof groqApiKey !== "string" || !groqApiKey.trim().startsWith("gsk_")) {
+                return response.status(400).json({
+                    status: "error",
+                    message: "Groq Cloud AI requires a valid API key in x-groq-api-key header (starting with 'gsk_')."
+                });
+            }
+            const semanticAdapter = require("../search/semantic/semanticAdapter");
+            semanticAdapter.configureProvider("groq", { apiKey: groqApiKey });
+        } else if (searchMode === "ai" && aiProvider === "ollama") {
+            const semanticAdapter = require("../search/semantic/semanticAdapter");
+            semanticAdapter.configureProvider("ollama");
+        }
+
+        if (searchMode === "ai") {
+            const ExchangeRetriever = require("../search/exchangeRetriever");
+            const retriever = new ExchangeRetriever(db, searchEngine);
+
+            const exchangeResults = await retriever.retrieveExchanges(threadlineIds, queryText, {
+                page,
+                batchSize,
+                mode: "ai",
+                useAI: true,
+                uid: request.uid,
+                filters: {
+                    day,
+                    start,
+                    end,
+                    conversations: conversationsParam
+                }
+            });
+
+            return response.json({
+                status: "success",
+                mode: "ai",
+                query: queryText,
+                day,
+                archiveCoverage: exchangeResults.archiveCoverage,
+                aiDiagnostics: exchangeResults.aiDiagnostics,
+                results: exchangeResults.results
+            });
+        }
+
+        // Mode: 'simple' (Local, Deterministic, 0 AI calls, 0 network)
         const results = await searchEngine.search(threadlineId, queryText, {
             day,
             start,
@@ -92,6 +145,7 @@ router.get("/", async (request, response) => {
 
         response.json({
             status: "success",
+            mode: "simple",
             query: queryText,
             day,
             results

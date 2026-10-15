@@ -125,6 +125,13 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
     const [searchQuery, setSearchQuery] = useState("");
     const [searchResults, setSearchResults] = useState([]);
     const [searchLoading, setSearchLoading] = useState(false);
+    const [searchMode, setSearchMode] = useState("simple"); // 'simple' | 'ai'
+    const [aiProvider, setAiProvider] = useState("ollama"); // 'ollama' | 'groq'
+    const [groqApiKey, setGroqApiKey] = useState(() => localStorage.getItem("threadline_groq_key") || "");
+    const [showPrivacyModal, setShowPrivacyModal] = useState(false);
+    const [searchArchiveCoverage, setSearchArchiveCoverage] = useState(null);
+    const [searchAiDiagnostics, setSearchAiDiagnostics] = useState(null);
+    const [aiSearchPage, setAiSearchPage] = useState(1);
     const [isDraggingOver, setIsDraggingOver] = useState(false);
     const [timelineUploading, setTimelineUploading] = useState(false);
 
@@ -1011,24 +1018,33 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                 const effectiveStart = temporalRange?.start || (startTimestamp && endTimestamp && startTimestamp > endTimestamp ? undefined : startTimestamp);
                 const effectiveEnd = temporalRange?.end || (startTimestamp && endTimestamp && startTimestamp > endTimestamp ? undefined : endTimestamp);
 
+                const headers = { "x-user-uid": uid };
+                if (searchMode === "ai" && aiProvider === "groq" && groqApiKey) {
+                    headers["x-groq-api-key"] = groqApiKey;
+                }
+
                 const response = await axios.get(
                     `${API_BASE_URL}/threadlines/${threadline.id}/search`,
                     { 
                         params: { 
                             q: searchQuery,
+                            mode: searchMode,
+                            page: searchMode === "ai" ? aiSearchPage : 1,
+                            batchSize: searchMode === "ai" ? 10 : undefined,
+                            aiProvider: searchMode === "ai" ? aiProvider : undefined,
                             start: effectiveStart,
                             end: effectiveEnd,
                             day: selectedDay,
                             conversations: pinnedConversationIds.join(","),
                             ids: threadline.isCompare ? threadline.ids.join(",") : undefined
                         },
-                        headers: {
-                            "x-user-uid": uid
-                        }
+                        headers
                     }
                 );
                 if (response.data && response.data.status === "success") {
                     setSearchResults(response.data.results || []);
+                    setSearchArchiveCoverage(response.data.archiveCoverage || null);
+                    setSearchAiDiagnostics(response.data.aiDiagnostics || null);
                 }
             } catch (error) {
                 console.error("Search query failed:", error);
@@ -1038,7 +1054,7 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
         }, 300); // 300ms debounce to prevent spamming backend
 
         return () => clearTimeout(delayDebounce);
-    }, [searchQuery, threadline.id, selectedDay, pinnedConversationIds, uid, startTimestamp, endTimestamp, temporalRange]);
+    }, [searchQuery, threadline.id, selectedDay, pinnedConversationIds, uid, startTimestamp, endTimestamp, temporalRange, searchMode, aiProvider, groqApiKey, aiSearchPage]);
 
     /*==============================================
                     EVENT HANDLERS
@@ -1844,16 +1860,82 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
 
                     {activeTab === "search" && (
                         <div className="explorer-search-box">
+                            {/* Search Mode Toggle */}
+                            <div style={{ display: "flex", gap: "6px", marginBottom: "8px" }}>
+                                <button
+                                    className={`pane-tab-btn ${searchMode === "simple" ? "active" : ""}`}
+                                    style={{ flex: 1, padding: "5px 8px", fontSize: "0.74rem", textAlign: "center" }}
+                                    onClick={() => {
+                                        setSearchMode("simple");
+                                        setAiSearchPage(1);
+                                    }}
+                                >
+                                    ⚡ Simple Search (Local)
+                                </button>
+                                <button
+                                    className={`pane-tab-btn ${searchMode === "ai" ? "active" : ""}`}
+                                    style={{ flex: 1, padding: "5px 8px", fontSize: "0.74rem", textAlign: "center" }}
+                                    onClick={() => {
+                                        setSearchMode("ai");
+                                        setAiSearchPage(1);
+                                    }}
+                                >
+                                    🧠 AI Search (Contextual)
+                                </button>
+                            </div>
+
+                            {/* AI Mode Privacy & Provider Controls */}
+                            {searchMode === "ai" && (
+                                <div style={{ marginBottom: "8px", padding: "6px 8px", background: "rgba(16, 24, 32, 0.6)", border: "1px solid var(--border)", borderRadius: "4px", fontSize: "0.72rem" }}>
+                                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                                        <span style={{ color: "var(--accent)" }}>AI Provider:</span>
+                                        <select
+                                            value={aiProvider}
+                                            onChange={(e) => {
+                                                const val = e.target.value;
+                                                if (val === "groq" && !groqApiKey) {
+                                                    setShowPrivacyModal(true);
+                                                }
+                                                setAiProvider(val);
+                                            }}
+                                            style={{ background: "#0c141c", color: "var(--text)", border: "1px solid var(--border)", borderRadius: "3px", fontSize: "0.7rem", padding: "2px 4px" }}
+                                        >
+                                            <option value="ollama">Ollama (100% Offline / Local)</option>
+                                            <option value="groq">Groq Cloud (Llama 3.3 70B)</option>
+                                        </select>
+                                    </div>
+
+                                    {aiProvider === "ollama" ? (
+                                        <div style={{ color: "#34d399", fontSize: "0.68rem" }}>
+                                            🛡️ <strong>100% Private:</strong> Running locally on your computer. Zero data transmitted over the internet.
+                                        </div>
+                                    ) : (
+                                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "0.68rem" }}>
+                                            <span style={{ color: "#fbbf24" }}>⚠️ Cloud Processing (Top 10 candidate exchanges only)</span>
+                                            <button
+                                                className="button-link"
+                                                onClick={() => setShowPrivacyModal(true)}
+                                                style={{ color: "var(--accent)", textDecoration: "underline", fontSize: "0.68rem" }}
+                                            >
+                                                Privacy Settings
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
                             <input 
                                 type="text" 
                                 className="input search-input" 
-                                placeholder="Search case communications and evidence..." 
+                                placeholder={searchMode === "ai" ? "Ask a question (e.g. times she refused parenting time)..." : "Search exact keywords, participants, or dates..."} 
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                                 style={{ width: "100%", padding: "8px" }}
                             />
                             <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginTop: "4px", textAlign: "left" }}>
-                                Query communications and metadata in plain English or keywords.
+                                {searchMode === "ai" 
+                                    ? "Searches multi-turn dialogue exchanges and classifies outcomes." 
+                                    : "Fast deterministic FTS5 keyword, participant, and timestamp search."}
                             </div>
                             {temporalRange && (
                                 <div style={{ marginTop: "8px", padding: "6px 10px", background: "rgba(63,216,255,0.08)", border: "1px solid rgba(63,216,255,0.3)", borderRadius: "4px", display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "0.75rem" }}>
@@ -2524,8 +2606,64 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                             /* Search results list only */
                             <>
                                 {searchLoading ? (
-                                    <div className="pane-loading-indicator">SEARCHING ARCHIVE...</div>
-                                ) : searchResults.length > 0 ? (
+                                    <div className="pane-loading-indicator" style={{ display: "flex", flexDirection: "column", gap: "6px", alignItems: "center", padding: "20px 10px" }}>
+                                        <div style={{ fontSize: "0.82rem", fontWeight: 700, color: "var(--accent)" }}>
+                                            {searchMode === "ai" 
+                                                ? `🧠 EVALUATING CANDIDATE EXCHANGES WITH ${aiProvider === "groq" ? "GROQ CLOUD (LLAMA 3.3 70B)" : "LOCAL OLLAMA"}...`
+                                                : "⚡ DETERMINISTIC FTS5 SEARCHING ARCHIVE..."}
+                                        </div>
+                                        <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>
+                                            {searchMode === "ai"
+                                                ? "Locally retrieving multi-turn chunks and classifying conversational outcomes..."
+                                                : "Fast local SQLite keyword & participant index scan"}
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <>
+                                        {/* Archive Coverage & Bounded Batch Navigation Card */}
+                                        {searchMode === "ai" && searchArchiveCoverage && searchArchiveCoverage.totalEligibleExchanges > 0 && (
+                                            <div className="archive-coverage-card">
+                                                <div className="coverage-status-row">
+                                                    <span className={`coverage-pill ${searchArchiveCoverage.isCompleteArchiveEvaluated ? "complete" : "partial"}`}>
+                                                        {searchArchiveCoverage.isCompleteArchiveEvaluated ? "✓ Full Archive Evaluated" : "⚠️ Partial Bounded Evaluation"}
+                                                    </span>
+                                                    <span className="coverage-counts">
+                                                        {searchArchiveCoverage.totalEligibleExchanges} total candidate exchanges found
+                                                    </span>
+                                                </div>
+                                                <div className="coverage-details-text">
+                                                    Batch {searchArchiveCoverage.batchIndex} of {searchArchiveCoverage.totalPages} • 
+                                                    {" "}{searchArchiveCoverage.evaluatedCount || searchResults.length} evaluated by AI • 
+                                                    {" "}{searchArchiveCoverage.remainingCount !== undefined ? searchArchiveCoverage.remainingCount : Math.max(0, searchArchiveCoverage.totalEligibleExchanges - (searchArchiveCoverage.batchIndex * searchArchiveCoverage.batchSize))} unevaluated candidates remain in archive
+                                                </div>
+                                                <div className="coverage-pagination-bar">
+                                                    <button
+                                                        className="pagination-btn"
+                                                        disabled={aiSearchPage <= 1 || searchLoading}
+                                                        onClick={() => setAiSearchPage(p => Math.max(1, p - 1))}
+                                                    >
+                                                        ◀ Previous Batch
+                                                    </button>
+                                                    <span className="pagination-page-label">
+                                                        Batch {aiSearchPage} of {searchArchiveCoverage.totalPages}
+                                                    </span>
+                                                    <button
+                                                        className="pagination-btn"
+                                                        disabled={!searchArchiveCoverage.hasMore || searchLoading}
+                                                        onClick={() => setAiSearchPage(p => p + 1)}
+                                                    >
+                                                        Next 10 Candidates ▶
+                                                    </button>
+                                                </div>
+                                                {searchAiDiagnostics?.fallback === "deterministic" && (
+                                                    <div className="ai-fallback-warning">
+                                                        ⚠️ Local AI inference timed out or was offline. Showing deterministic candidate outcomes.
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {searchResults.length > 0 ? (
                                     searchResults.map(result => {
                                         const isPinned = pinnedConversationIds.includes(result.conversationId);
                                         const isEventCluster = result.type === "event_cluster" || (result.messages && result.messages.length > 0);
@@ -2551,14 +2689,28 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                                                         <span className="cluster-tag-ribbon">
                                                             <span>✦ EVENT CLUSTER</span>
                                                         </span>
-                                                        <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                                                        <div style={{ display: "flex", gap: "6px", alignItems: "center", flexWrap: "wrap" }}>
+                                                            {result.finalCategory && OUTCOME_LABELS[result.finalCategory] && (
+                                                                <span 
+                                                                    className="outcome-category-badge"
+                                                                    style={{
+                                                                        color: OUTCOME_LABELS[result.finalCategory].color,
+                                                                        background: OUTCOME_LABELS[result.finalCategory].bg,
+                                                                        border: `1px solid ${OUTCOME_LABELS[result.finalCategory].border}`
+                                                                    }}
+                                                                    title={result.aiClassification ? "AI Model Classification" : "Deterministic Heuristic Classification"}
+                                                                >
+                                                                    {OUTCOME_LABELS[result.finalCategory].icon} {OUTCOME_LABELS[result.finalCategory].label}
+                                                                    {result.aiClassification ? " (AI)" : " (Rule)"}
+                                                                </span>
+                                                            )}
                                                             {result.clusterConfidence && (
                                                                 <span className={`confidence-badge ${result.clusterConfidence.toLowerCase()}`} title="Cluster Confidence">
                                                                     {result.clusterConfidence} conf
                                                                 </span>
                                                             )}
-                                                            <span className={`relevance-badge ${result.relevance.toLowerCase()}`}>
-                                                                {result.relevance}
+                                                            <span className={`relevance-badge ${(result.relevance || "medium").toLowerCase()}`}>
+                                                                {result.relevance || "MEDIUM"}
                                                             </span>
                                                         </div>
                                                     </div>
@@ -2589,9 +2741,38 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                                                     </div>
 
                                                     {/* Reason / Analysis summary */}
-                                                    <p className="search-card-reason" style={{ marginBottom: "10px" }}>
+                                                    <p className="search-card-reason" style={{ marginBottom: "8px" }}>
                                                         {result.summaryReason || result.reason}
                                                     </p>
+
+                                                    {/* Verifiable Provenance & AI Interpretation Box */}
+                                                    {result.aiClassification && (
+                                                        <div className="ai-interpretation-box">
+                                                            <div className="ai-interp-header">
+                                                                <span>🤖 AI Contextual Interpretation</span>
+                                                                <span className="ai-confidence-pill">
+                                                                    {(result.aiClassification.confidence * 100).toFixed(0)}% Confidence
+                                                                </span>
+                                                            </div>
+                                                            <div className="ai-interp-body">
+                                                                {result.aiClassification.explanation}
+                                                            </div>
+                                                            {result.aiClassification.keyQuote && (
+                                                                <div className="verifiable-quote-box">
+                                                                    <span className="verifiable-quote-icon">📜</span>
+                                                                    <div className="verifiable-quote-content">
+                                                                        <span className="verifiable-quote-label">Direct Verifiable Quote:</span>
+                                                                        <div className="verifiable-quote-text">
+                                                                            "{result.aiClassification.keyQuote}"
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                            <div className="ai-interp-disclaimer">
+                                                                ⚖️ Interpretive analysis only. Verify against highlighted source timestamps below.
+                                                            </div>
+                                                        </div>
+                                                    )}
 
                                                     {/* Chronological Source Messages Reconstruction Box */}
                                                     <div className="cluster-reconstruction-box">
@@ -2642,36 +2823,45 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
 
                                                                 return (
                                                                     <>
-                                                                        {previewMessages.map((m) => (
-                                                                            <div 
-                                                                                key={m.id} 
-                                                                                className="cluster-message-item"
-                                                                                onClick={() => handleClusterMessageClick(m)}
-                                                                                title="Click to jump timeline & view message in thread"
-                                                                            >
-                                                                                <div className="cluster-msg-meta-row">
-                                                                                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                                                                                        <span className="cluster-msg-sender">
-                                                                                            {m.direction === "sent" ? "Me" : m.sender}
-                                                                                        </span>
-                                                                                        {m.conversationTitle && (
-                                                                                            <span className="cluster-thread-badge" title={`Thread: ${m.conversationTitle}`}>
-                                                                                                {m.conversationTitle}
+                                                                        {previewMessages.map((m) => {
+                                                                            const isQuoteSource = result.aiClassification?.keyQuote && 
+                                                                                m.body && m.body.toLowerCase().includes(result.aiClassification.keyQuote.toLowerCase().trim().slice(0, 25));
+                                                                            return (
+                                                                                <div 
+                                                                                    key={m.id} 
+                                                                                    className={`cluster-message-item ${isQuoteSource ? "quote-match-highlight" : ""}`}
+                                                                                    onClick={() => handleClusterMessageClick(m)}
+                                                                                    title="Click to jump timeline & view message in thread"
+                                                                                >
+                                                                                    <div className="cluster-msg-meta-row">
+                                                                                        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                                                                                            <span className="cluster-msg-sender">
+                                                                                                {m.direction === "sent" ? "Me" : m.sender}
                                                                                             </span>
-                                                                                        )}
+                                                                                            {m.conversationTitle && (
+                                                                                                <span className="cluster-thread-badge" title={`Thread: ${m.conversationTitle}`}>
+                                                                                                    {m.conversationTitle}
+                                                                                                </span>
+                                                                                            )}
+                                                                                            {isQuoteSource && (
+                                                                                                <span style={{ fontSize: "0.62rem", color: "#fbbf24", fontWeight: 700 }}>
+                                                                                                    ★ QUOTED EVIDENCE
+                                                                                                </span>
+                                                                                            )}
+                                                                                        </div>
+                                                                                        <span className="cluster-msg-time">
+                                                                                             {formatFullTimestamp(m.timestamp)}
+                                                                                         </span>
                                                                                     </div>
-                                                                                    <span className="cluster-msg-time">
-                                                                                         {formatFullTimestamp(m.timestamp)}
-                                                                                     </span>
+                                                                                    <div className="cluster-msg-body">{m.body}</div>
+                                                                                    {m.matchReason && (
+                                                                                        <div className="cluster-match-reason">
+                                                                                            ⚓ {m.matchReason}
+                                                                                        </div>
+                                                                                    )}
                                                                                 </div>
-                                                                                <div className="cluster-msg-body">{m.body}</div>
-                                                                                {m.matchReason && (
-                                                                                    <div className="cluster-match-reason">
-                                                                                        ⚓ {m.matchReason}
-                                                                                    </div>
-                                                                                )}
-                                                                            </div>
-                                                                        ))}
+                                                                            );
+                                                                        })}
                                                                         {!isExpanded && constituentMessages.length > previewMessages.length && (
                                                                             <div 
                                                                                 style={{ fontSize: "0.72rem", color: "var(--accent)", textAlign: "center", cursor: "pointer", padding: "4px 0" }}
@@ -2798,6 +2988,8 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                                     <div className="pane-loading-indicator" style={{ color: "var(--text-muted)" }}>
                                         ENTER TERMS TO SEARCH
                                     </div>
+                                )}
+                                    </>
                                 )}
                             </>
                         ) : null}
@@ -3952,6 +4144,87 @@ function ThreadlineWorkspace({ threadline, setThreadlines, setCurrentThreadline,
                     }}
                 />
             )}
+
+            {/* Cloud AI Privacy & Provider Disclosure Modal */}
+            {showPrivacyModal && (
+                <div className="privacy-modal-overlay" onClick={() => setShowPrivacyModal(false)}>
+                    <div className="privacy-modal-dialog" onClick={(e) => e.stopPropagation()}>
+                        <div className="privacy-modal-header">
+                            <h3>🛡️ AI Search Privacy & Provider Controls</h3>
+                            <button className="modal-close-btn" onClick={() => setShowPrivacyModal(false)}>✕</button>
+                        </div>
+                        <div className="privacy-modal-body">
+                            <div className="privacy-section local-section">
+                                <div className="privacy-section-header">
+                                    <span className="provider-badge local">LOCAL (DEFAULT)</span>
+                                    <h4>Ollama Local Engine</h4>
+                                </div>
+                                <p style={{ fontSize: "0.78rem", color: "var(--text-light)", margin: "4px 0" }}>
+                                    Runs 100% locally on your computer via <code>http://localhost:11434</code> (Llama 3).
+                                    <br />
+                                    <strong>Zero communication content or search queries ever leave your machine.</strong>
+                                </p>
+                                <div className="privacy-status-chip secure">
+                                    ✓ 100% Offline & Private
+                                </div>
+                            </div>
+
+                            <div className="privacy-section cloud-section">
+                                <div className="privacy-section-header">
+                                    <span className="provider-badge cloud">CLOUD (OPT-IN ONLY)</span>
+                                    <h4>Groq Cloud API (Llama 3.3 70B)</h4>
+                                </div>
+                                <p className="privacy-disclosure">
+                                    <strong>Mandatory Privacy Disclosure:</strong> Threadline will <u>NEVER</u> upload your raw database, entire message history, personal contact lists, or unretrieved conversations.
+                                    <br /><br />
+                                    If Groq Cloud is authorized, <strong>ONLY the top 8–10 candidate conversation exchanges</strong> retrieved locally by your search are transmitted over HTTPS to Groq's high-speed inference API for outcome classification.
+                                </p>
+
+                                <div className="form-group" style={{ marginTop: "10px" }}>
+                                    <label style={{ fontSize: "0.78rem", color: "var(--text-light)", fontWeight: 600 }}>Groq API Key:</label>
+                                    <input
+                                        type="password"
+                                        className="input"
+                                        style={{ width: "100%", marginTop: "4px", padding: "6px 8px", fontSize: "0.8rem" }}
+                                        placeholder="gsk_..."
+                                        value={groqApiKey}
+                                        onChange={(e) => setGroqApiKey(e.target.value)}
+                                    />
+                                    <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginTop: "4px" }}>
+                                        Stored strictly in your local browser localStorage. Never saved on Threadline servers.
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="privacy-modal-footer">
+                            <button
+                                className="button secondary"
+                                onClick={() => {
+                                    setAiProvider("ollama");
+                                    setShowPrivacyModal(false);
+                                }}
+                            >
+                                Use Local Ollama (100% Offline)
+                            </button>
+                            <button
+                                className="button primary"
+                                onClick={() => {
+                                    if (!groqApiKey || !groqApiKey.trim()) {
+                                        alert("Please enter a valid Groq API Key to enable Groq Cloud, or select Local Ollama.");
+                                        return;
+                                    }
+                                    localStorage.setItem("threadline_groq_key", groqApiKey.trim());
+                                    localStorage.setItem("threadline_groq_consent", "true");
+                                    setAiProvider("groq");
+                                    setShowPrivacyModal(false);
+                                }}
+                            >
+                                Authorize & Enable Groq Cloud
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
@@ -3965,9 +4238,20 @@ function formatTime(timestamp) {
     return date.toLocaleTimeString("en-US", { timeZone: "UTC", hour12: false, hour: '2-digit', minute: '2-digit' });
 }
 
+function parseSafeDate(timestamp) {
+    if (!timestamp) return null;
+    let date;
+    if (typeof timestamp === "number" || (!isNaN(Number(timestamp)) && !String(timestamp).includes("-") && !String(timestamp).includes("T"))) {
+        date = new Date(Number(timestamp));
+    } else {
+        date = new Date(timestamp);
+    }
+    return isNaN(date.getTime()) ? null : date;
+}
+
 function formatDisplayDate(timestamp) {
-    if (!timestamp) return "?";
-    const date = new Date(Number(timestamp));
+    const date = parseSafeDate(timestamp);
+    if (!date) return "?";
     return date.toLocaleDateString("en-US", { 
         timeZone: "UTC",
         year: 'numeric',
@@ -3977,7 +4261,8 @@ function formatDisplayDate(timestamp) {
 }
 
 function formatFullTimestamp(timestamp) {
-    const date = new Date(Number(timestamp));
+    const date = parseSafeDate(timestamp);
+    if (!date) return "?";
     return date.toLocaleString("en-US", { 
         timeZone: "UTC",
         year: 'numeric',
@@ -3988,6 +4273,16 @@ function formatFullTimestamp(timestamp) {
         hour12: true 
     });
 }
+
+const OUTCOME_LABELS = {
+    explicit_refusal: { label: "Explicit Refusal", icon: "🛑", color: "#ef4444", bg: "rgba(239, 68, 68, 0.15)", border: "rgba(239, 68, 68, 0.4)" },
+    conditional_response: { label: "Conditional Response", icon: "⚠️", color: "#f59e0b", bg: "rgba(245, 158, 11, 0.15)", border: "rgba(245, 158, 11, 0.4)" },
+    indirect_objection: { label: "Indirect Objection", icon: "🟣", color: "#c084fc", bg: "rgba(168, 85, 247, 0.15)", border: "rgba(168, 85, 247, 0.4)" },
+    unanswered_request: { label: "Unanswered Request", icon: "⏳", color: "#60a5fa", bg: "rgba(59, 130, 246, 0.15)", border: "rgba(59, 130, 246, 0.4)" },
+    changed_response: { label: "Changed Response", icon: "🔄", color: "#2dd4bf", bg: "rgba(20, 184, 166, 0.15)", border: "rgba(20, 184, 166, 0.4)" },
+    ambiguous_outcome: { label: "Ambiguous Outcome", icon: "❓", color: "#cbd5e1", bg: "rgba(148, 163, 184, 0.15)", border: "rgba(148, 163, 184, 0.4)" },
+    unrelated: { label: "Unrelated Exchange", icon: "⚪", color: "#94a3b8", bg: "rgba(100, 116, 139, 0.1)", border: "rgba(100, 116, 139, 0.3)" }
+};
 
 function formatLongDate(dateString) {
     const parts = dateString.split("-");

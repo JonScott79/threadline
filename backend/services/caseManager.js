@@ -29,8 +29,11 @@ function computeCaseChecksum(messages) {
  * Exports a Threadline case from the main workspace database into a standalone portable .tl file.
  */
 function exportCaseToFile(threadlineId, uid, destinationPath = null) {
+    const { getAuthorizedUids } = require("./threadlines");
+    const authorizedUids = getAuthorizedUids(uid);
     const tlRow = mainDb.queryOne("SELECT * FROM threadlines WHERE id = ?", [threadlineId]);
-    if (!tlRow || (tlRow.owner_id !== uid && threadlineId !== `archive_${uid}`)) {
+    const isArchive = threadlineId.startsWith("archive_") && authorizedUids.some(u => threadlineId === `archive_${u}`);
+    if (!tlRow || (!isArchive && !authorizedUids.includes(tlRow.owner_id))) {
         const err = new Error("Threadline not found or access denied.");
         err.statusCode = 403;
         throw err;

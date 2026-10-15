@@ -84,7 +84,17 @@ function initializeDatabase() {
                     threadline_id UNINDEXED,
                     body
                 );
+            `)
+
+            // Create FTS5 virtual table for conversation chunks
+            db.exec(`
+                CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
+                    chunk_id UNINDEXED,
+                    threadline_id UNINDEXED,
+                    chunk_text
+                );
             `);
+;
 
             // Create FTS triggers to keep index in sync
             db.exec(`
@@ -97,10 +107,22 @@ function initializeDatabase() {
                     DELETE FROM messages_fts WHERE message_id = old.id;
                 END;
 
+                                CREATE TRIGGER IF NOT EXISTS trg_chunks_ad AFTER DELETE ON conversation_chunks BEGIN
+                    DELETE FROM chunks_fts WHERE chunk_id = old.id;
+                END;
+
                 CREATE TRIGGER IF NOT EXISTS trg_messages_au AFTER UPDATE ON messages BEGIN
                     UPDATE messages_fts SET body = new.body WHERE message_id = old.id;
                 END;
             `);
+
+                        // Clean up any historical orphaned FTS chunks from deleted threadlines
+            try {
+                const pruned = db.prepare("DELETE FROM chunks_fts WHERE chunk_id NOT IN (SELECT id FROM conversation_chunks)").run();
+                if (pruned.changes > 0) {
+                    console.log(`✓ Cleaned up ${pruned.changes} orphaned chunks_fts index records.`);
+                }
+            } catch (e) {}
 
             // Backfill FTS5 index if empty
             const ftsCount = db.prepare("SELECT COUNT(*) AS count FROM messages_fts;").get().count;

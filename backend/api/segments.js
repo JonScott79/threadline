@@ -5,6 +5,7 @@
 const express = require("express");
 const crypto = require("crypto");
 const db = require("../database/database");
+const { getAuthorizedUids } = require("../services/threadlines");
 
 const router = express.Router();
 
@@ -24,11 +25,13 @@ router.post("/saved-segments", async (request, response) => {
         }
 
         // Verify the conversation belongs to the user
+        const authorizedUids = getAuthorizedUids(request.uid);
+        const uidPlaceholders = authorizedUids.map(() => "?").join(",");
         const checkConv = db.queryOne(
             `SELECT c.id FROM conversations c 
              JOIN threadlines t ON c.threadline_id = t.id 
-             WHERE c.id = ? AND t.owner_id = ?`,
-            [conversationId, request.uid]
+             WHERE c.id = ? AND t.owner_id IN (${uidPlaceholders})`,
+            [conversationId, ...authorizedUids]
         );
         if (!checkConv) {
             return response.status(403).json({ status: "error", message: "Conversation not found or access denied." });
@@ -102,7 +105,9 @@ router.get("/threadlines/:id/segments", async (request, response) => {
     try {
         const { id } = request.params;
         // Verify ownership
-        const checkOwner = db.queryOne("SELECT id FROM threadlines WHERE id = ? AND owner_id = ?", [id, request.uid]);
+        const authorizedUids = getAuthorizedUids(request.uid);
+        const uidPlaceholders = authorizedUids.map(() => "?").join(",");
+        const checkOwner = db.queryOne(`SELECT id FROM threadlines WHERE id = ? AND owner_id IN (${uidPlaceholders})`, [id, ...authorizedUids]);
         if (!checkOwner) {
             return response.status(403).json({ status: "error", message: "Access denied." });
         }

@@ -207,6 +207,91 @@ class SemanticSchemaValidator {
 
         return sanitized;
     }
+
+    /**
+     * Validate and sanitize bounded exchange outcome classification output (Phase 3).
+     * 
+     * Schema Version: 1.0.0
+     * Allowed Outcome Categories:
+     * - explicit_refusal
+     * - conditional_response
+     * - indirect_objection
+     * - unanswered_request
+     * - changed_response
+     * - ambiguous_outcome
+     * - unrelated
+     * 
+     * Enforcements:
+     * - Every returned exchangeId must strictly match an item in validExchangeIds.
+     * - Category must be in the approved enum, defaulting to ambiguous_outcome.
+     * - Confidence clamped to [0.0, 1.0].
+     * - Explanations and quotes sanitized and bounded.
+     * - Preserves metadata and flags model hallucinations.
+     */
+    static validateExchangeOutcomeOutput(rawOutput, validExchangeIds) {
+        const idSet = new Set(validExchangeIds);
+        const sanitized = {
+            schemaVersion: "1.0.0",
+            evaluations: [],
+            unmatchedCount: 0,
+            evaluatedCount: 0
+        };
+
+        if (!rawOutput || typeof rawOutput !== "object") {
+            return sanitized;
+        }
+
+        const validCategories = new Set([
+            "explicit_refusal",
+            "conditional_response",
+            "indirect_objection",
+            "unanswered_request",
+            "changed_response",
+            "ambiguous_outcome",
+            "unrelated"
+        ]);
+
+        const list = Array.isArray(rawOutput.evaluations) ? rawOutput.evaluations : [];
+        const seenIds = new Set();
+
+        for (const item of list) {
+            if (!item || typeof item !== "object") continue;
+
+            const exchangeId = String(item.exchangeId || "").trim();
+            // Strict ID verification: reject hallucinated or nonexistent exchange IDs
+            if (!idSet.has(exchangeId) || seenIds.has(exchangeId)) {
+                sanitized.unmatchedCount++;
+                continue;
+            }
+
+            const rawCat = String(item.outcomeCategory || "").trim().toLowerCase();
+            const outcomeCategory = validCategories.has(rawCat) ? rawCat : "ambiguous_outcome";
+
+            let confidence = Number(item.confidence);
+            if (isNaN(confidence)) confidence = 0.5;
+            confidence = Math.max(0.0, Math.min(1.0, confidence));
+
+            const isMatch = Boolean(item.isMatch !== undefined ? item.isMatch : outcomeCategory !== "unrelated");
+            const explanation = String(item.explanation || "").substring(0, 300).trim();
+            const keyQuote = String(item.keyQuote || "").substring(0, 200).trim();
+
+            sanitized.evaluations.push({
+                exchangeId,
+                isMatch,
+                outcomeCategory,
+                confidence,
+                explanation: explanation || "Exchange evaluated for conversational outcome",
+                keyQuote: keyQuote || null,
+                inference: true
+            });
+
+            seenIds.add(exchangeId);
+        }
+
+        sanitized.evaluatedCount = sanitized.evaluations.length;
+        return sanitized;
+    }
+
 }
 
 module.exports = SemanticSchemaValidator;

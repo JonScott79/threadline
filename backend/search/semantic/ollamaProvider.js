@@ -227,6 +227,46 @@ Output JSON strictly matching this schema:
             return { coreferences: [], error: error.message };
         }
     }
+
+    /**
+     * Classify conversational outcomes for a bounded batch of candidate exchanges (Phase 3).
+     */
+    async classifyExchangeOutcomes(query, exchanges, options = {}) {
+        if (!exchanges || exchanges.length === 0) {
+            return { evaluations: [] };
+        }
+
+        const bounded = exchanges.slice(0, Math.min(this.maxCandidates, 12));
+        const validIds = bounded.map(e => e.exchangeId);
+
+        const compactExchanges = bounded.map(e => ({
+            exchangeId: e.exchangeId,
+            participants: e.participants,
+            dialogue: e.messages.map(m => `[${m.sender}]: ${m.body}`).join("\n")
+        }));
+
+        const prompt = `Classify the conversation exchanges for the query: "${query}"
+Exchanges:
+${JSON.stringify(compactExchanges)}
+
+Categories: "explicit_refusal", "conditional_response", "indirect_objection", "unanswered_request", "changed_response", "ambiguous_outcome", "unrelated".
+
+Output JSON strictly as:
+{"evaluations":[{"exchangeId":"ID","isMatch":true,"outcomeCategory":"explicit_refusal","confidence":0.9,"explanation":"short reason","keyQuote":"quote"}]}`;
+
+        try {
+            const raw = await this._generateJson(prompt, { ...options, numPredict: 384 });
+            const validated = SemanticSchemaValidator.validateExchangeOutcomeOutput(raw, validIds);
+            return {
+                ...validated,
+                provider: "ollama",
+                model: this.model
+            };
+        } catch (error) {
+            return { evaluations: [], error: error.message };
+        }
+    }
+
 }
 
 module.exports = OllamaSemanticProvider;

@@ -28,12 +28,16 @@ const EXPORT_SPEC_VERSION = "2.0.0";
  */
 function canonicalStringify(obj) {
     if (obj === null || typeof obj !== "object") {
-        return JSON.stringify(obj);
+        const str = JSON.stringify(obj);
+        return str === undefined ? "null" : str;
     }
     if (Array.isArray(obj)) {
-        return "[" + obj.map(canonicalStringify).join(",") + "]";
+        return "[" + obj.map(item => {
+            const res = canonicalStringify(item);
+            return res === undefined ? "null" : res;
+        }).join(",") + "]";
     }
-    const keys = Object.keys(obj).sort();
+    const keys = Object.keys(obj).filter(k => obj[k] !== undefined).sort();
     return "{" + keys.map(k => JSON.stringify(k) + ":" + canonicalStringify(obj[k])).join(",") + "}";
 }
 
@@ -55,10 +59,12 @@ class EvidenceExporter {
             throw new Error("Missing required threadlineId.");
         }
 
-        // Verify threadline access
-        const isArchive = threadlineId === `archive_${uid}`;
+        // Verify threadline access using multi-alias authorization
+        const { getAuthorizedUids } = require("./threadlines");
+        const authorizedUids = getAuthorizedUids(uid);
+        const isArchive = threadlineId.startsWith("archive_") && authorizedUids.some(u => threadlineId === `archive_${u}`);
         const threadlineRow = db.queryOne("SELECT * FROM threadlines WHERE id = ?", [threadlineId]);
-        if (!isArchive && (!threadlineRow || threadlineRow.owner_id !== uid)) {
+        if (!isArchive && (!threadlineRow || !authorizedUids.includes(threadlineRow.owner_id))) {
             const err = new Error("Access denied: threadline does not belong to user.");
             err.statusCode = 403;
             throw err;

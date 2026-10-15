@@ -27,6 +27,7 @@
 
 const express = require("express");
 const db = require("../database/database");
+const { getAuthorizedUids } = require("../services/threadlines");
 
 // =====================================
 // Variables
@@ -166,12 +167,14 @@ function resolveThreadlineIds(request) {
         return { threadlineIds: [], error: "No threadline IDs specified." };
     }
 
-    const nonArchiveIds = threadlineIds.filter(id => id !== `archive_${request.uid}`);
+    const authorizedUids = getAuthorizedUids(request.uid);
+    const nonArchiveIds = threadlineIds.filter(id => !authorizedUids.some(u => id === `archive_${u}`));
     if (nonArchiveIds.length > 0) {
         const placeholders = nonArchiveIds.map(() => "?").join(",");
+        const uidPlaceholders = authorizedUids.map(() => "?").join(",");
         const existing = db.query(
-            `SELECT id FROM threadlines WHERE id IN (${placeholders}) AND owner_id = ?`,
-            [...nonArchiveIds, request.uid]
+            `SELECT id FROM threadlines WHERE id IN (${placeholders}) AND owner_id IN (${uidPlaceholders})`,
+            [...nonArchiveIds, ...authorizedUids]
         );
         if (existing.length !== nonArchiveIds.length) {
             return { threadlineIds: [], error: "Access denied: One or more threadlines are missing or not owned by you." };
