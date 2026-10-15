@@ -75,7 +75,12 @@ class EvidenceExporter {
 
         // Determine message IDs to resolve
         let targetMessageIds = [];
-        if (options.messageIds && Array.isArray(options.messageIds) && options.messageIds.length > 0) {
+        if (options.messageIds && Array.isArray(options.messageIds)) {
+            if (options.messageIds.length === 0) {
+                const err = new Error("No evidence records selected for export.");
+                err.statusCode = 400;
+                throw err;
+            }
             targetMessageIds = options.messageIds;
         } else if (cluster && Array.isArray(cluster.messages) && cluster.messages.length > 0) {
             targetMessageIds = cluster.messages.map(m => m.id);
@@ -470,7 +475,7 @@ class EvidenceExporter {
             doc.fillColor("#FFFFFF")
                .font("Helvetica-Bold")
                .fontSize(15)
-               .text("OFFICIAL COURTROOM TRIAL EXHIBIT", 60, 48, { characterSpacing: 1.2 });
+               .text("THREADLINE OFFICIAL COURTROOM TRIAL EXHIBIT", 60, 48, { characterSpacing: 1.2 });
 
             doc.font("Helvetica-Bold")
                .fontSize(9)
@@ -564,7 +569,7 @@ class EvidenceExporter {
                     doc.rect(45, curY, 522, 16).fill("#F1F5F9");
                     doc.strokeColor(colors.border).lineWidth(0.5).stroke();
                     doc.font("Helvetica-Bold").fontSize(7.5).fillColor(colors.accent)
-                       .text(`THREAD: ${se.conversationTitle}  |  Extraction Log: ${item.provenance?.sourceFile || "Direct Entry"}`, 55, curY + 4);
+                       .text(`CONVERSATION THREAD: ${se.conversationTitle}  |  Extraction Log: ${item.provenance?.sourceFile || "Direct Entry"}`, 55, curY + 4);
                     curY += 22;
                 }
 
@@ -685,7 +690,7 @@ class EvidenceExporter {
                     doc.rotate(-40, { origin: [306, 396] });
                     doc.fontSize(36);
                     doc.font("Helvetica-Bold");
-                    doc.text("COURT EXHIBIT — READ ONLY", -100, 375, {
+                    doc.text("THREADLINE COURT EXHIBIT — READ ONLY EVIDENCE COPY", -100, 375, {
                         align: "center",
                         width: 800,
                         characterSpacing: 2

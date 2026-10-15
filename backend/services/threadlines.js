@@ -22,7 +22,8 @@ const db = require("../database/database");
 // Public Methods
 // =====================================
 
-async function ingestArchive(uid, archive, filename, file_size, targetThreadlineId = null, sha256 = null) {
+async function ingestArchive(uid, archiveInput, filename, file_size, targetThreadlineId = null, sha256 = null) {
+    const archive = (archiveInput && typeof archiveInput.then === "function") ? await archiveInput : archiveInput;
     console.log("");
     console.log("==========================================");
     console.log("SQLITE: INGEST ARCHIVE");

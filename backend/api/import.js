@@ -41,9 +41,26 @@ const storage = multer.diskStorage({
 const upload = multer({
     storage,
     limits: {
-        fileSize: 500 * 1024 * 1024 // 500 MB limit
+        fileSize: 10 * 1024 * 1024 * 1024 // 10 GB limit
     }
 });
+
+const chunkUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: {
+        fileSize: 100 * 1024 * 1024 // 100 MB per chunk limit
+    }
+});
+
+function computeFileSha256(filePath) {
+    return new Promise((resolve, reject) => {
+        const hash = crypto.createHash("sha256");
+        const stream = fs.createReadStream(filePath);
+        stream.on("data", chunk => hash.update(chunk));
+        stream.on("end", () => resolve(hash.digest("hex")));
+        stream.on("error", reject);
+    });
+}
 
 /*======================================================
                         ROUTES
@@ -156,8 +173,7 @@ router.post("/", upload.single("archive"), async (request, response) => {
 
         const targetThreadlineId = request.body.threadlineId || null;
 
-        const fileBuffer = fs.readFileSync(uploadedFilePath);
-        const fileSha256 = crypto.createHash("sha256").update(fileBuffer).digest("hex");
+        const fileSha256 = await computeFileSha256(uploadedFilePath);
 
         const result = await ingestArchive(
             request.uid,
@@ -202,6 +218,131 @@ router.post("/", upload.single("archive"), async (request, response) => {
             } catch (cleanupErr) {
                 console.warn("Failed to delete temp upload file:", cleanupErr.message);
             }
+        }
+    }
+});
+
+/*======================================================
+                CHUNKED FILE IMPORT
+======================================================*/
+
+router.post("/chunk", chunkUpload.single("chunk"), async (request, response) => {
+    let partFilePath = null;
+    let finalFilePath = null;
+    try {
+        if (!request.file) {
+            return response.status(400).json({
+                status: "error",
+                message: "No chunk buffer uploaded."
+            });
+        }
+
+        if (!request.uid) {
+            return response.status(401).json({
+                status: "error",
+                message: "Missing user id."
+            });
+        }
+
+        const { uploadId, chunkIndex, totalChunks, fileName, fileSize, threadlineId } = request.body;
+        if (!uploadId) {
+            return response.status(400).json({
+                status: "error",
+                message: "Missing uploadId parameter."
+            });
+        }
+
+        const safeUploadId = String(uploadId).replace(/[^a-zA-Z0-9_-]/g, "");
+        const chunkIdx = parseInt(chunkIndex, 10);
+        const total = parseInt(totalChunks, 10);
+
+        if (isNaN(chunkIdx) || isNaN(total) || total <= 0 || chunkIdx < 0) {
+            return response.status(400).json({
+                status: "error",
+                message: "Invalid chunkIndex or totalChunks."
+            });
+        }
+
+        partFilePath = path.join(uploadDir, `temp_chunk_${safeUploadId}.part`);
+
+        // If chunkIndex is 0 and part file exists from a previous aborted attempt, remove it
+        if (chunkIdx === 0 && fs.existsSync(partFilePath)) {
+            try { fs.unlinkSync(partFilePath); } catch (_) {}
+        }
+
+        // Append the received slice to the part file
+        fs.appendFileSync(partFilePath, request.file.buffer);
+
+        // If this is not the final chunk, acknowledge receipt
+        if (chunkIdx < total - 1) {
+            return response.json({
+                status: "success",
+                chunkIndex: chunkIdx,
+                totalChunks: total,
+                received: true
+            });
+        }
+
+        // Final chunk received! Move/rename to final assembly file
+        console.log("==========================================");
+        console.log("ALL CHUNKS RECEIVED FOR:", fileName || safeUploadId);
+        console.log(`Chunks: ${total}, Upload ID: ${safeUploadId}`);
+        console.log("UID:", request.uid);
+
+        const ext = path.extname(fileName || ".xml") || ".xml";
+        const uniqueSuffix = Date.now() + "_" + Math.random().toString(36).substring(2, 8);
+        finalFilePath = path.join(uploadDir, `chunk_assembled_${uniqueSuffix}${ext}`);
+
+        fs.renameSync(partFilePath, finalFilePath);
+        partFilePath = null; // No longer points to an active part file
+
+        console.log("Running Import Engine on assembled file...");
+        const archive = await processImport(finalFilePath);
+
+        console.log("Archive created.");
+        console.log("Messages:", archive.messageCount);
+        console.log("Conversations:", archive.conversationCount);
+
+        const targetThreadlineId = threadlineId || null;
+        const originalName = fileName || `Import_${safeUploadId}${ext}`;
+        const totalSize = parseInt(fileSize, 10) || fs.statSync(finalFilePath).size;
+
+        console.log("Computing SHA-256 via stream...");
+        const fileSha256 = await computeFileSha256(finalFilePath);
+
+        console.log("Ingesting into Workspace...");
+        const result = await ingestArchive(
+            request.uid,
+            archive,
+            originalName,
+            totalSize,
+            targetThreadlineId,
+            fileSha256
+        );
+
+        console.log("Chunked Archive Ingested successfully.");
+        console.log("==========================================");
+
+        archive.stats = result.stats;
+
+        response.json({
+            status: "success",
+            threadlineId: result.threadlineId,
+            archive
+        });
+
+    } catch (error) {
+        console.error("CHUNKED IMPORT FAILED:", error);
+        response.status(500).json({
+            status: "error",
+            message: error.message
+        });
+    } finally {
+        if (finalFilePath && fs.existsSync(finalFilePath)) {
+            try {
+                fs.unlinkSync(finalFilePath);
+                console.log("Cleaned up assembled temp file:", finalFilePath);
+            } catch (_) {}
         }
     }
 });

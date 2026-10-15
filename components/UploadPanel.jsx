@@ -34,6 +34,7 @@ function UploadPanel({ setImportResult, threadlineId }) {
     const [pasteTitle, setPasteTitle] = useState("");
     const [detectedType, setDetectedType] = useState(null);
     const fileInputRef = useRef(null);
+    const [uploadProgress, setUploadProgress] = useState(null);
 
     // Temporal Verification Modal State
     const [modalOpen, setModalOpen] = useState(false);
@@ -61,10 +62,10 @@ function UploadPanel({ setImportResult, threadlineId }) {
             throw new Error(`Invalid file format (.${ext}). Supported formats: XML, HTML, JSON, LOG, TXT, EML, MBOX, ZIP, PDF, PNG, JPG, WEBP.`);
         }
         
-        // Limit upload size to 250MB
-        const maxLimit = 250 * 1024 * 1024;
+        // Limit upload size to 10GB
+        const maxLimit = 10 * 1024 * 1024 * 1024;
         if (file.size > maxLimit) {
-            throw new Error("File exceeds maximum limit. Upload size is capped at 250MB.");
+            throw new Error("File exceeds maximum limit. Upload size is capped at 10GB.");
         }
     };
 
@@ -103,16 +104,21 @@ function UploadPanel({ setImportResult, threadlineId }) {
     const executeFileUpload = async (fileToUpload) => {
         setStatus("uploading");
         setErrorMessage("");
+        setUploadProgress({ percent: 0, chunkIndex: 1, totalChunks: 1 });
         try {
             validateFile(fileToUpload);
-            const response = await uploadArchive(fileToUpload, user, threadlineId);
+            const response = await uploadArchive(fileToUpload, user, threadlineId, (percent, meta) => {
+                setUploadProgress({ percent, ...meta });
+            });
             setStatus("idle");
+            setUploadProgress(null);
             if (setImportResult) {
                 setImportResult(response);
             }
         } catch (error) {
             console.error("Upload process error:", error);
             setStatus("error");
+            setUploadProgress(null);
             const msg = error.response?.data?.message || error.message || "Failed to upload or parse communication archive.";
             setErrorMessage(msg);
         }
@@ -344,8 +350,28 @@ function UploadPanel({ setImportResult, threadlineId }) {
                         marginBottom: "8px",
                         textShadow: "0 0 15px rgba(0, 208, 255, 0.5)"
                     }}>
-                        PARSING COMMUNICATION DATA...
+                        {uploadProgress && uploadProgress.percent < 100 
+                            ? (uploadProgress.totalChunks > 1 
+                                ? `UPLOADING CHUNKS (${uploadProgress.percent}%)...` 
+                                : `UPLOADING ARCHIVE (${uploadProgress.percent}%)...`) 
+                            : "STREAMING & PARSING COMMUNICATION DATA..."}
                     </h3>
+                    {uploadProgress && (
+                        <div style={{ width: "100%", maxWidth: "340px", marginTop: "4px", marginBottom: "14px" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.75rem", color: "#94A3B8", marginBottom: "6px" }}>
+                                <span>{uploadProgress.totalChunks > 1 ? `Chunk ${uploadProgress.chunkIndex} of ${uploadProgress.totalChunks}` : "Direct Transfer"}</span>
+                                <span style={{ color: "#00D0FF", fontWeight: "700" }}>{uploadProgress.percent}%</span>
+                            </div>
+                            <div style={{ width: "100%", height: "6px", background: "rgba(255, 255, 255, 0.1)", borderRadius: "3px", overflow: "hidden" }}>
+                                <div style={{
+                                    width: `${uploadProgress.percent}%`,
+                                    height: "100%",
+                                    background: "linear-gradient(90deg, #00D0FF 0%, #FF9500 100%)",
+                                    transition: "width 0.2s ease"
+                                }} />
+                            </div>
+                        </div>
+                    )}
                     <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", maxWidth: "460px", textAlign: "center", lineHeight: "1.6" }}>
                         Extracting timestamps, normalizing conversation participants, and populating forensic timeline records.
                     </p>
@@ -630,7 +656,7 @@ function UploadPanel({ setImportResult, threadlineId }) {
                             margin: 0,
                             letterSpacing: "0.3px"
                         }}>
-                            Max file size: 250MB &bull; Automatic chronological verification on ingest
+                            Max file size: 10GB &bull; Direct streaming & chunked upload on ingest
                         </p>
                     </div>
                 </>
