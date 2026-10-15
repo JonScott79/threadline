@@ -18,15 +18,16 @@ class SemanticAdapter {
     }
 
     init() {
-        this.enabled = process.env.THREADLINE_SEMANTIC_ENABLED === "true";
+        // Auto-enable semantic intelligence if explicitly set to true OR default true when Ollama url is present
+        this.enabled = process.env.THREADLINE_SEMANTIC_ENABLED !== "false";
         this.providerName = process.env.THREADLINE_SEMANTIC_PROVIDER || "ollama";
 
         if (this.providerName === "ollama") {
             this.provider = new OllamaSemanticProvider({
                 url: process.env.THREADLINE_OLLAMA_URL || "http://localhost:11434",
                 model: process.env.THREADLINE_OLLAMA_MODEL || "llama3:latest",
-                timeoutMs: Number(process.env.THREADLINE_SEMANTIC_TIMEOUT_MS || 8000),
-                maxCandidates: Number(process.env.THREADLINE_SEMANTIC_MAX_CANDIDATES || 50)
+                timeoutMs: Number(process.env.THREADLINE_SEMANTIC_TIMEOUT_MS || 4000), // Bounded 4s timeout for responsive UI
+                maxCandidates: Number(process.env.THREADLINE_SEMANTIC_MAX_CANDIDATES || 25)
             });
         } else {
             this.provider = null;

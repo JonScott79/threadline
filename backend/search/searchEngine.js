@@ -15,9 +15,17 @@ class SearchEngine {
     constructor() {
         // Concept and topic mapping synonyms for semantic expansion (purged of generic terms like 'no', 'time', 'date')
         this.conceptSynonyms = {
-            visitation: ["visit", "schedule", "custody", "child", "children", "overnight", "sleepover"],
+            visitation: ["visit", "visitation", "schedule", "custody", "child", "children", "kids", "overnight", "sleepover", "parenting time", "access", "see the kids", "seeing the kids", "have the kids"],
             transportation: ["transportation", "ride", "drive", "car", "pick up", "picking up", "drop off", "dropping off", "uber", "lyft", "traffic", "flight", "airport", "rideshare", "ride-share", "driving", "truck", "wheels"],
-            refused: ["refuse", "cancel", "deny", "not tonight", "withheld", "denied"],
+            refused: ["refuse", "refused", "refusing", "refuses", "refusal", "cancel", "deny", "denied", "denying", "denies", "denial", "not tonight", "withheld", "withholding", "withhold", "won't let", "wont let", "not letting", "not allowed", "prevented", "blocking", "blocked", "taking time away"],
+            denied_time: [
+                "denied time", "deny time", "denying time", "denied access", "denying access", 
+                "denied visitation", "denying visitation", "withheld time", "refused time",
+                "refusing my parenting time", "refused me the kids", "refuse the kids",
+                "cannot refuse me my children", "can't see", "cant see", "won't let me see", 
+                "wont let me see", "not seeing", "access to", "time with", "see them", 
+                "taking time away", "makeup parenting time", "make up time"
+            ],
             shopping: ["shop", "store", "buy", "mall", "grocery", "groceries", "bought", "purchased", "market"],
             concert: ["concert", "band", "music", "ticket", "tickets", "stage", "venue", "live", "gig", "performance", "passes", "set"],
             argument: ["argue", "argument", "fight", "dispute", "screaming", "angry", "yelling", "shouted", "mad", "upset", "shouting"],
@@ -33,7 +41,11 @@ class SearchEngine {
             cancel: ["cancel", "canceled", "cancelled", "canceling", "cancelling", "cancels"],
             meet: ["meet", "met", "meeting", "meets"],
             go: ["go", "went", "going", "goes", "gone"],
-            plan: ["plan", "planned", "planning", "plans"]
+            plan: ["plan", "planned", "planning", "plans"],
+            deny: ["deny", "denied", "denying", "denies", "denial"],
+            refuse: ["refuse", "refused", "refusing", "refuses", "refusal"],
+            withhold: ["withhold", "withheld", "withholding", "withholds"],
+            see: ["see", "saw", "seeing", "seen", "sees"]
         };
 
         // Month indexing for mapping text terms in UTC operations
@@ -177,7 +189,7 @@ class SearchEngine {
 
         // 8. Extract remaining keywords (ignoring conversational fillers and question prompts)
         const fillers = new Set([
-            "that", "time", "we", "in", "when", "me", "the", "conversation", "conversations",
+            "that", "we", "in", "when", "me", "the", "conversation", "conversations",
             "about", "where", "i", "told", "him", "her", "she", "he", "they", "them", "us",
             "couldn't", "make", "it", "what", "did", "to", "had",
             "our", "a", "an", "for", "with", "around", "of", "and", "or", "on", "was", "were", "said",
@@ -448,47 +460,68 @@ class SearchEngine {
         // If ftsTerms is empty but hasTemporalConstraint or intent.people/location is present,
         // we bypass FTS constraint and retrieve candidates directly using structural filters!
 
-        // Build constraint for messages based on global archive or custom workspace segments
+        // Build constraint for messages ensuring target threadline and user archive are both included
         const clauses = [];
         const scopeParams = [];
         ids.forEach(id => {
-            if (id.startsWith("archive_")) {
+            const archiveId = filters.uid ? `archive_${filters.uid}` : null;
+            if (archiveId && archiveId !== id) {
+                clauses.push(" (m.threadline_id = ? OR m.threadline_id = ?) ");
+                scopeParams.push(id, archiveId);
+            } else {
                 clauses.push(" m.threadline_id = ? ");
                 scopeParams.push(id);
-            } else {
-                // If it is a custom workspace, we search the user's global archive so they can find new segments to add
-                const archiveId = filters.uid ? `archive_${filters.uid}` : null;
-                if (archiveId) {
-                    clauses.push(" m.threadline_id = ? ");
-                    scopeParams.push(archiveId);
-                } else {
-                    // Fallback to searching linked messages if no user ID context is available
-                    clauses.push(" m.id IN (SELECT ssm.message_id FROM saved_segment_messages ssm JOIN threadline_segments ts ON ssm.saved_segment_id = ts.saved_segment_id WHERE ts.threadline_id = ?) ");
-                    scopeParams.push(id);
-                }
             }
         });
         const scopeClause = `WHERE ( ${clauses.join(" OR ")} )`;
 
-        const sql = `
-            SELECT m.id, 
-                   m.conversation_id AS conversationId, 
-                   c.title AS conversationTitle, 
-                   m.sender, 
-                   m.recipient, 
-                   m.timestamp, 
-                   m.body, 
-                   m.direction, 
-                   m.platform,
-                   m.metadata
-            FROM messages m
-            JOIN conversations c ON m.conversation_id = c.id
-            ${scopeClause} ${timeFilterSql} ${candidateSql}
-            ORDER BY m.timestamp DESC
-            LIMIT 300;
-        `;
+        let sql = "";
+        let finalParams = [];
 
-        const candidates = db.query(sql, [...scopeParams, ...queryParams, ...candidateParams]);
+        if (ftsTerms.length > 0) {
+            const ftsExpression = ftsTerms.join(" OR ");
+            sql = `
+                SELECT m.id, 
+                       m.conversation_id AS conversationId, 
+                       c.title AS conversationTitle, 
+                       m.sender, 
+                       m.recipient, 
+                       m.timestamp, 
+                       m.body, 
+                       m.direction, 
+                       m.platform,
+                       m.metadata,
+                       messages_fts.rank AS ftsRank
+                FROM messages m
+                JOIN conversations c ON m.conversation_id = c.id
+                JOIN messages_fts ON m.id = messages_fts.message_id
+                ${scopeClause} ${timeFilterSql} AND messages_fts.body MATCH ?
+                ORDER BY messages_fts.rank ASC, m.timestamp DESC
+                LIMIT 400;
+            `;
+            finalParams = [...scopeParams, ...queryParams, ftsExpression];
+        } else {
+            sql = `
+                SELECT m.id, 
+                       m.conversation_id AS conversationId, 
+                       c.title AS conversationTitle, 
+                       m.sender, 
+                       m.recipient, 
+                       m.timestamp, 
+                       m.body, 
+                       m.direction, 
+                       m.platform,
+                       m.metadata
+                FROM messages m
+                JOIN conversations c ON m.conversation_id = c.id
+                ${scopeClause} ${timeFilterSql}
+                ORDER BY m.timestamp DESC
+                LIMIT 400;
+            `;
+            finalParams = [...scopeParams, ...queryParams];
+        }
+
+        const candidates = db.query(sql, finalParams);
 
         // --- LAYER 4: RELEVANCE SCORING & PROVENANCE RECORDING ---
         const scored = candidates.map(m => {
@@ -539,6 +572,19 @@ class SearchEngine {
                     score += 40; // All keywords matched bonus
                 }
                 matchReasons.push(`Multi-keyword match (${matchedKeywordsCount}/${intent.keywords.length} terms)`);
+            }
+
+            // Cross-Concept Correlation Bonus: Refusal + Visitation / Time
+            const hasRefusal = (
+                /\b(refus\w*|den\w*|withh\w*|wont let|won't let|not letting|not allowed|prevented)\b/i.test(bodyLower)
+            );
+            const hasTimeOrCustody = (
+                /\b(time|parenting|custody|visitation|visit|kids|children|daughter|son|overnight|access)\b/i.test(bodyLower)
+            );
+
+            if (hasRefusal && hasTimeOrCustody && (intent.keywords.includes("denied") || intent.keywords.includes("deny") || intent.concepts.includes("refused") || intent.concepts.includes("denied_time"))) {
+                score += 120;
+                matchReasons.push("Cross-concept correlation: refusal + parenting/visitation time");
             }
 
             // 3. Synonym whole-word matches

@@ -364,9 +364,16 @@ class EventClusterer {
         let hasSharedConcept = false;
 
         const conceptSynonyms = {
-            visitation: ["visit", "schedule", "custody", "child", "children", "overnight", "sleepover"],
+            visitation: ["visit", "visitation", "schedule", "custody", "child", "children", "kids", "overnight", "sleepover", "parenting time", "access", "see the kids", "seeing the kids", "have the kids"],
             transportation: ["transportation", "ride", "drive", "car", "pick up", "picking up", "drop off", "dropping off", "uber", "lyft", "traffic", "flight", "airport", "rideshare", "ride-share", "driving", "truck", "wheels"],
-            refused: ["refuse", "cancel", "deny", "not tonight", "withheld", "denied"],
+            refused: ["refuse", "refused", "refusing", "refuses", "refusal", "cancel", "deny", "denied", "denying", "denies", "denial", "not tonight", "withheld", "withholding", "withhold", "won't let", "wont let", "not letting", "not allowed", "prevented", "blocking", "blocked", "taking time away"],
+            denied_time: [
+                "denied time", "deny time", "denying time", "denied access", "denying access", 
+                "denied visitation", "denying visitation", "withheld time", "refused time",
+                "refusing my parenting time", "refused me the kids", "refuse the kids",
+                "cannot refuse me my children", "can't see", "cant see", "won't let me see", 
+                "wont let me see", "not seeing", "taking time away", "makeup parenting time", "make up time"
+            ],
             shopping: ["shop", "store", "buy", "mall", "grocery", "groceries", "bought", "purchased", "market"],
             concert: ["concert", "band", "music", "ticket", "tickets", "stage", "venue", "live", "gig", "performance", "passes", "set"],
             argument: ["argue", "argument", "fight", "dispute", "screaming", "angry", "yelling", "shouted", "mad", "upset", "shouting"],
@@ -509,7 +516,21 @@ class EventClusterer {
     deriveClusterTitleAndReason(messages, intent, repMsg) {
         let topic = "";
         if (intent.concepts && intent.concepts.length > 0) {
-            topic = intent.concepts.map(c => c.charAt(0).toUpperCase() + c.slice(1)).join(" & ");
+            const conceptLabels = {
+                denied_time: "Parenting Time Dispute",
+                visitation: "Custody & Visitation",
+                refused: "Access Refusal",
+                transportation: "Transportation",
+                concert: "Concert",
+                argument: "Dispute",
+                shopping: "Shopping",
+                camping: "Camping"
+            };
+            if (intent.concepts.includes("denied_time")) {
+                topic = "Parenting Time Dispute";
+            } else {
+                topic = intent.concepts.map(c => conceptLabels[c] || (c.charAt(0).toUpperCase() + c.slice(1).replace(/_/g, " "))).join(" & ");
+            }
         } else if (intent.keywords && intent.keywords.length > 0) {
             topic = intent.keywords.map(kw => kw.charAt(0).toUpperCase() + kw.slice(1)).join(" ");
         } else {
