@@ -34,7 +34,57 @@
 */
 
 const crypto = require("crypto");
+const fs = require("fs");
+const path = require("path");
 const { getAuthorizedUids } = require("../services/threadlines");
+
+// Lazy-initialize Firebase Admin (lanzar-95ae3) when service account credentials or package are present
+function ensureFirebaseAdminInitialized() {
+    if (global.firebaseAdmin) return global.firebaseAdmin;
+    try {
+        let admin = null;
+        try {
+            admin = require("firebase-admin");
+        } catch (_) {
+            const fallbackModule = path.resolve(__dirname, "../../../../auth/auth-backend/node_modules/firebase-admin");
+            if (fs.existsSync(fallbackModule)) {
+                admin = require(fallbackModule);
+            }
+        }
+        if (!admin) return null;
+
+        if (!admin.apps || admin.apps.length === 0) {
+            const rawJson = process.env.FIREBASE_SERVICE_ACCOUNT_KEY || process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+            if (rawJson) {
+                const parsed = typeof rawJson === "object" ? rawJson : JSON.parse(rawJson);
+                admin.initializeApp({
+                    credential: admin.credential.cert(parsed),
+                    projectId: parsed.project_id || process.env.FIREBASE_PROJECT_ID || "lanzar-95ae3"
+                });
+            } else {
+                const credFile = path.resolve(__dirname, "../../../../firebase-credentials/lanzar-95ae3-firebase-adminsdk-fbsvc-86e8ea5817.json");
+                if (fs.existsSync(credFile)) {
+                    const sa = require(credFile);
+                    admin.initializeApp({
+                        credential: admin.credential.cert(sa),
+                        projectId: sa.project_id || "lanzar-95ae3"
+                    });
+                } else if (process.env.FIREBASE_PROJECT_ID) {
+                    admin.initializeApp({ projectId: process.env.FIREBASE_PROJECT_ID });
+                } else {
+                    return null;
+                }
+            }
+        }
+        global.firebaseAdmin = admin;
+        return global.firebaseAdmin;
+    } catch (_) {
+        return null;
+    }
+}
+
+// Attempt initialization cleanly on startup without throwing in local offline mode
+ensureFirebaseAdminInitialized();
 
 // Server authentication secret (from environment or persistent local key)
 const AUTH_SECRET = process.env.THREADLINE_AUTH_SECRET || "threadline_secure_local_hmac_secret_2026";
@@ -108,18 +158,19 @@ function authMiddleware(req, res, next) {
     if (authHeader && authHeader.startsWith("Bearer ")) {
         const token = authHeader.split("Bearer ")[1].trim();
 
-        // 1A. Firebase Admin verification (if configured in environment)
-        if (process.env.FIREBASE_PROJECT_ID && global.firebaseAdmin) {
-            return global.firebaseAdmin.auth().verifyIdToken(token)
+        // 1A. Firebase Admin verification (for Firebase ID tokens when configured)
+        const fbAdmin = !token.startsWith("tl_") ? ensureFirebaseAdminInitialized() : null;
+        if (fbAdmin) {
+            return fbAdmin.auth().verifyIdToken(token, true)
                 .then(decodedToken => {
                     req.uid = decodedToken.uid;
                     req.user = decodedToken;
                     return next();
                 })
-                .catch(err => {
+                .catch(() => {
                     return res.status(401).json({
                         status: "error",
-                        message: "Invalid or expired Firebase authentication token."
+                        message: "Invalid, expired, or revoked Firebase authentication token."
                     });
                 });
         }

@@ -19,7 +19,7 @@ import {
 
 function Login(){
 
-    const { loginAsLocalGuest } = useAuth();
+    const { loginAsLocalGuest, loginWithLanzarId } = useAuth();
 
     /*==============================================
                         EVENTS
@@ -91,6 +91,18 @@ function Login(){
 					<button
 
 						className="button primary"
+
+						onClick={loginWithLanzarId}
+
+					>
+
+						Sign in with LANZAR ID
+
+					</button>
+
+					<button
+
+						className="button secondary"
 
 						onClick={loginAsLocalGuest}
 
