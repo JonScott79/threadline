@@ -175,7 +175,40 @@ function authMiddleware(req, res, next) {
                 });
         }
 
-        // 1B. Cryptographic HMAC Token verification
+        // 1B. Centralized LANZAR ID Auth Hub verification when local Firebase Admin is unavailable
+        if (!fbAdmin && !token.startsWith("tl_") && token.split(".").length === 3) {
+            const authApiUrl = (process.env.LANZAR_AUTH_API_URL || "https://auth-api.lanzar.me").replace(/\/+$/, "");
+            return fetch(`${authApiUrl}/api/id/session/validate`, {
+                headers: { Authorization: `Bearer ${token}` }
+            })
+                .then(async (valRes) => {
+                    if (!valRes.ok) {
+                        return res.status(401).json({
+                            status: "error",
+                            message: "Invalid, expired, or revoked LANZAR ID authentication token."
+                        });
+                    }
+                    const data = await valRes.json().catch(() => null);
+                    if (!data || !data.valid || !data.uid) {
+                        return res.status(401).json({
+                            status: "error",
+                            message: "Invalid, expired, or revoked LANZAR ID authentication token."
+                        });
+                    }
+                    req.uid = data.uid;
+                    req.user = data;
+                    req.authMethod = "lanzar_id";
+                    return next();
+                })
+                .catch(() => {
+                    return res.status(401).json({
+                        status: "error",
+                        message: "Unable to verify LANZAR ID authentication token."
+                    });
+                });
+        }
+
+        // 1C. Cryptographic HMAC Token verification
         const verifiedUid = verifySignedToken(token);
         if (verifiedUid) {
             req.uid = verifiedUid;
