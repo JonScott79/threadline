@@ -31,20 +31,21 @@ let db = null;
 // Initialization
 // =====================================
 
-function initializeDatabase() {
+function initializeDatabase(force = false) {
     try {
         // Ensure storage directory is initialized and safe
         storageConfig.ensureStorageReady();
 
-        if (storageConfig.isPendingRestore()) {
+        if (storageConfig.isPendingRestore() && !force) {
             console.warn("Database initialization deferred: Server is in RESTORE_READY maintenance mode.");
             return;
         }
 
-        console.log(`Connecting to SQLite database at: ${dbPath}`);
+        const activeDbPath = storageConfig.databasePath;
+        console.log(`Connecting to SQLite database at: ${activeDbPath}`);
         
         // Open the SQLite database file
-        db = new Database(dbPath, {
+        db = new Database(activeDbPath, {
             // Can add verbose logging if helpful for debugging
             // verbose: console.log
         });
@@ -167,21 +168,37 @@ initializeDatabase();
 
 /**
  * Cleanly closes the active SQLite database instance with a WAL checkpoint.
+ * Fails closed: throws if WAL checkpointing or database closure fails,
+ * and confirms the connection is closed before clearing reference.
  */
 function closeDatabase() {
     if (db) {
+        console.log("Checkpointing SQLite WAL before closing...");
         try {
-            console.log("Checkpointing SQLite WAL before closing...");
-            db.pragma("wal_checkpoint(TRUNCATE)");
+            const checkpointResult = db.pragma("wal_checkpoint(TRUNCATE)");
+            if (Array.isArray(checkpointResult) && checkpointResult.length > 0) {
+                if (checkpointResult[0].busy === 1) {
+                    throw new Error("SQLite WAL checkpoint busy: active database transactions prevented truncate.");
+                }
+            }
         } catch (e) {
-            console.error("Error checkpointing WAL:", e.message);
+            console.error("Critical failure during WAL checkpoint:", e.message);
+            throw new Error(`Failed to checkpoint SQLite WAL: ${e.message}`);
         }
+
         try {
             db.close();
             console.log("SQLite database connection closed cleanly.");
         } catch (e) {
-            console.error("Error closing database:", e.message);
+            console.error("Critical failure closing SQLite connection:", e.message);
+            throw new Error(`Failed to close SQLite database connection: ${e.message}`);
         }
+
+        // Verify the database connection is confirmed closed
+        if (db.open) {
+            throw new Error("SQLite database connection handle reports open === true after close() execution.");
+        }
+
         db = null;
     }
 }
@@ -189,22 +206,31 @@ function closeDatabase() {
 // Clean shutdown handlers for container redeployments
 process.on("SIGTERM", () => {
     console.log("Received SIGTERM. Cleaning up SQLite connection...");
-    closeDatabase();
+    try {
+        closeDatabase();
+    } catch (e) {
+        console.error("Error during SIGTERM database cleanup:", e.message);
+    }
 });
 
 process.on("SIGINT", () => {
     console.log("Received SIGINT. Cleaning up SQLite connection...");
-    closeDatabase();
+    try {
+        closeDatabase();
+    } catch (e) {
+        console.error("Error during SIGINT database cleanup:", e.message);
+    }
 });
 
 /**
  * Returns the active SQLite database instance.
+ * @param {boolean} allowPendingRestore - If true, permits database access during administrative restore/verification
  */
-function getDb() {
+function getDb(allowPendingRestore = false) {
     if (!db) {
-        initializeDatabase();
+        initializeDatabase(allowPendingRestore);
     }
-    if (storageConfig.isPendingRestore() || !db) {
+    if ((storageConfig.isPendingRestore() && !allowPendingRestore) || !db) {
         const err = new Error("Database is currently uninitialized or awaiting restore onto persistent volume.");
         err.statusCode = 503;
         throw err;

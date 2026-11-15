@@ -86,28 +86,46 @@ function ensureFirebaseAdminInitialized() {
 // Attempt initialization cleanly on startup without throwing in local offline mode
 ensureFirebaseAdminInitialized();
 
-// Server authentication secret (from environment or persistent local key)
-const AUTH_SECRET = process.env.THREADLINE_AUTH_SECRET || "threadline_secure_local_hmac_secret_2026";
+/**
+ * Resolves the server HMAC authentication secret with fail-closed production enforcement.
+ * In production (NODE_ENV === 'production' or RAILWAY_ENVIRONMENT), THREADLINE_AUTH_SECRET
+ * MUST be set and non-empty. Hardcoded fallback is strictly prohibited in production.
+ */
+function getAuthSecret() {
+    const isProd = process.env.NODE_ENV === "production" || !!process.env.RAILWAY_ENVIRONMENT;
+    const secret = process.env.THREADLINE_AUTH_SECRET;
+    if (isProd) {
+        if (!secret || typeof secret !== "string" || secret.trim() === "") {
+            throw new Error("CRITICAL SECURITY ERROR: THREADLINE_AUTH_SECRET must be configured and nonempty in production.");
+        }
+        return secret.trim();
+    }
+    return (secret && secret.trim()) || "threadline_secure_local_hmac_secret_2026";
+}
 
 /**
- * Creates a cryptographically signed authentication token for a UID.
+ * Creates a cryptographically signed authentication token.
  * Format: tl_<base64url_payload>.<hmac_signature>
+ * @param {string} uid - User identifier
+ * @param {number} expiresInMs - Lifetime in milliseconds (default: 5 minutes)
+ * @param {string} scope - Token scope ('user' or 'database_restore')
  */
-function createSignedToken(uid, expiresInMs = 24 * 60 * 60 * 1000) {
+function createSignedToken(uid, expiresInMs = 5 * 60 * 1000, scope = "user") {
     if (!uid || typeof uid !== "string") {
         throw new Error("Cannot create token without valid string UID.");
     }
     const cleanUid = uid.trim().replace(/[^a-zA-Z0-9_-]/g, "");
     const expiresAt = Date.now() + expiresInMs;
-    const payload = `${cleanUid}:${expiresAt}`;
+    const payload = scope === "database_restore" ? `restore:${cleanUid}:${expiresAt}` : `${cleanUid}:${expiresAt}`;
     const b64Payload = Buffer.from(payload, "utf8").toString("base64url");
-    const hmac = crypto.createHmac("sha256", AUTH_SECRET).update(payload).digest("hex");
+    const secret = getAuthSecret();
+    const hmac = crypto.createHmac("sha256", secret).update(payload).digest("hex");
     return `tl_${b64Payload}.${hmac}`;
 }
 
 /**
  * Verifies a signed authentication token.
- * Returns the verified UID or null if invalid, expired, or tampered.
+ * Returns an object { uid, scope } or null if invalid, expired, tampered, or missing production secret.
  */
 function verifySignedToken(token) {
     if (!token || typeof token !== "string" || !token.startsWith("tl_")) {
@@ -118,7 +136,9 @@ function verifySignedToken(token) {
         if (parts.length !== 2) return null;
         const [b64Payload, signature] = parts;
         const payload = Buffer.from(b64Payload, "base64url").toString("utf8");
-        const expectedHmac = crypto.createHmac("sha256", AUTH_SECRET).update(payload).digest("hex");
+
+        const secret = getAuthSecret();
+        const expectedHmac = crypto.createHmac("sha256", secret).update(payload).digest("hex");
 
         const sigBuf = Buffer.from(signature, "hex");
         const expBuf = Buffer.from(expectedHmac, "hex");
@@ -126,13 +146,27 @@ function verifySignedToken(token) {
             return null; // Signature mismatch / tampered
         }
 
-        const [uid, expiresAtStr] = payload.split(":");
-        const expiresAt = Number(expiresAtStr);
-        if (isNaN(expiresAt) || Date.now() > expiresAt) {
-            return null; // Expired
+        const payloadParts = payload.split(":");
+        let uid = null;
+        let expiresAt = null;
+        let scope = "user";
+
+        if (payloadParts.length === 3 && payloadParts[0] === "restore") {
+            scope = "database_restore";
+            uid = payloadParts[1];
+            expiresAt = Number(payloadParts[2]);
+        } else if (payloadParts.length === 2) {
+            uid = payloadParts[0];
+            expiresAt = Number(payloadParts[1]);
+        } else {
+            return null; // Malformed payload
         }
 
-        return uid;
+        if (!uid || isNaN(expiresAt) || Date.now() > expiresAt) {
+            return null; // Expired or invalid
+        }
+
+        return { uid, scope };
     } catch (_) {
         return null;
     }
@@ -209,10 +243,32 @@ function authMiddleware(req, res, next) {
         }
 
         // 1C. Cryptographic HMAC Token verification
-        const verifiedUid = verifySignedToken(token);
-        if (verifiedUid) {
-            req.uid = verifiedUid;
+        const tokenAuth = verifySignedToken(token);
+        if (tokenAuth) {
+            req.uid = tokenAuth.uid;
+            req.tokenScope = tokenAuth.scope;
             req.authMethod = "signed_token";
+
+            // Scope enforcement:
+            // A credential with scope 'database_restore' is strictly restricted to maintenance endpoints:
+            // - /api/admin/storage-status
+            // - /api/admin/restore-database
+            // - /api/admin/rollback-database
+            if (tokenAuth.scope === "database_restore") {
+                const fullPath = (req.baseUrl || "") + (req.path || "");
+                const allowedEndpoints = [
+                    "/api/admin/storage-status",
+                    "/api/admin/restore-database",
+                    "/api/admin/rollback-database"
+                ];
+                if (!allowedEndpoints.some(ep => fullPath === ep || fullPath === ep + "/")) {
+                    return res.status(403).json({
+                        status: "error",
+                        message: "Restore credential scope restricted to authorized database maintenance endpoints."
+                    });
+                }
+            }
+
             return next();
         }
 

@@ -416,12 +416,27 @@ async function createThreadline(uid, archive) {
 }
 
 /**
- * Returns list of authorized UIDs for a user, linking local guest sessions
- * with the primary developer/user Firebase account.
+ * Authoritative UID ownership mapping for Jon Scott's canonical LANZAR ID.
+ * Links historical local desktop guest sessions and legacy Firebase UIDs
+ * exclusively when authenticated as Jon's canonical LANZAR ID (lanzar-95ae3).
+ */
+const JON_CANONICAL_UID = "Tcdyrq9vIVhfPeeDPnTrZIP553x1";
+const JON_LEGACY_UIDS = [
+    "hogUXhgQVEMRu3jgEIeEAQsBhz33",
+    "local",
+    "user_jonny_live_2_5gb"
+];
+
+/**
+ * Returns list of authorized database owner UIDs for a verified caller.
+ * Unidirectional delegation: Jon's verified canonical identity can access his
+ * legacy records, but unauthenticated, local, or third-party callers CANNOT
+ * access Jon's canonical data or other users' investigations.
  */
 function getAuthorizedUids(uid) {
-    if (uid === "local" || uid === "hogUXhgQVEMRu3jgEIeEAQsBhz33" || uid === "user_jonny_live_2_5gb") {
-        return ["local", "hogUXhgQVEMRu3jgEIeEAQsBhz33", "user_jonny_live_2_5gb"];
+    if (!uid) return [];
+    if (uid === JON_CANONICAL_UID) {
+        return [JON_CANONICAL_UID, ...JON_LEGACY_UIDS];
     }
     return [uid];
 }
