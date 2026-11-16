@@ -25,11 +25,18 @@ const PORT = process.env.PORT || 3001;
                         MIDDLEWARE
 ======================================================*/
 
-const allowedOrigins = [
+const extraOrigins = (process.env.THREADLINE_ALLOWED_ORIGINS || "")
+    .split(",")
+    .map((o) => o.trim())
+    .filter(Boolean);
+
+const allowedOrigins = Array.from(new Set([
     "https://threadline.lanzar.me",
     "http://localhost:5173",
-    "http://localhost:5174"
-];
+    "http://localhost:5174",
+    "http://localhost:5175",
+    ...extraOrigins
+]));
 
 app.use(cors({
     origin: function(origin, callback) {

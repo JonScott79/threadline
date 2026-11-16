@@ -86,6 +86,108 @@ function ensureFirebaseAdminInitialized() {
 // Attempt initialization cleanly on startup without throwing in local offline mode
 ensureFirebaseAdminInitialized();
 
+// Cached JWKS keys for centralized LANZAR ID OIDC RS256 verification
+let jwksCache = { keys: [], expiresAt: 0, url: null };
+const JWKS_CACHE_TTL_MS = 60 * 1000;
+
+function clearJwksCache() {
+    jwksCache = { keys: [], expiresAt: 0, url: null };
+}
+
+function getAuthApiUrl() {
+    return (process.env.LANZAR_AUTH_API_URL || "https://auth-api.lanzar.me").replace(/\/+$/, "");
+}
+
+function getExpectedOidcIssuer() {
+    if (process.env.LANZAR_OIDC_ISSUER && process.env.LANZAR_OIDC_ISSUER.trim()) {
+        return process.env.LANZAR_OIDC_ISSUER.trim().replace(/\/+$/, "");
+    }
+    const api = getAuthApiUrl();
+    if (api.includes("auth-api-nova.lanzar.me")) {
+        return "https://auth.lanzar.me/nova";
+    }
+    return "https://auth.lanzar.me";
+}
+
+async function fetchJwksKeys(jwksUrl, fetchFn = fetch) {
+    const now = Date.now();
+    if (jwksCache.url === jwksUrl && now < jwksCache.expiresAt && jwksCache.keys.length > 0) {
+        return jwksCache.keys;
+    }
+    const res = await fetchFn(jwksUrl);
+    if (!res.ok) {
+        throw new Error(`JWKS fetch failed (${res.status})`);
+    }
+    const body = await res.json();
+    const keys = Array.isArray(body && body.keys) ? body.keys : [];
+    jwksCache = { keys, expiresAt: now + JWKS_CACHE_TTL_MS, url: jwksUrl };
+    return keys;
+}
+
+/**
+ * Verifies an RS256 OIDC JWT issued by LANZAR ID (e.g. NOVA) against its published JWKS.
+ */
+async function verifyOidcAccessToken(token, options = {}) {
+    if (typeof token !== "string") return null;
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+
+    let header;
+    let payload;
+    try {
+        header = JSON.parse(Buffer.from(parts[0], "base64url").toString("utf8"));
+        payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
+    } catch (_) {
+        return null;
+    }
+
+    if (!header || header.alg !== "RS256" || typeof header.kid !== "string" || !header.kid) {
+        return null;
+    }
+
+    const authApiUrl = (options.authApiUrl || getAuthApiUrl()).replace(/\/+$/, "");
+    const jwksUrl = options.jwksUrl || `${authApiUrl}/.well-known/jwks.json`;
+    const expectedIssuer = (options.expectedIssuer || getExpectedOidcIssuer()).replace(/\/+$/, "");
+    const expectedClientId = options.expectedClientId || "threadline";
+
+    const keys = await fetchJwksKeys(jwksUrl, options.fetchFn || fetch);
+    const jwk = keys.find((k) => k && k.kid === header.kid);
+    if (!jwk) {
+        return { valid: false, reason: "UNKNOWN_KID" };
+    }
+
+    const publicKey = crypto.createPublicKey({ key: jwk, format: "jwk" });
+    const signingInput = `${parts[0]}.${parts[1]}`;
+    const sigBuf = Buffer.from(parts[2], "base64url");
+    const sigValid = crypto.verify("RSA-SHA256", Buffer.from(signingInput, "utf8"), publicKey, sigBuf);
+    if (!sigValid) {
+        return { valid: false, reason: "INVALID_SIGNATURE" };
+    }
+
+    const nowSec = Number.isFinite(options.nowSec) ? options.nowSec : Math.floor(Date.now() / 1000);
+    if (!Number.isFinite(payload.exp) || nowSec >= payload.exp) {
+        return { valid: false, reason: "TOKEN_EXPIRED" };
+    }
+    if (payload.nbf !== undefined && (!Number.isFinite(payload.nbf) || nowSec < payload.nbf)) {
+        return { valid: false, reason: "TOKEN_NOT_YET_VALID" };
+    }
+    if (String(payload.iss || "").replace(/\/+$/, "") !== expectedIssuer) {
+        return { valid: false, reason: "INVALID_ISSUER" };
+    }
+
+    const rawAud = payload.aud;
+    const audList = typeof rawAud === "string" ? [rawAud] : (Array.isArray(rawAud) ? rawAud : []);
+    const azp = payload.azp;
+    if (!audList.includes(expectedClientId) && azp !== expectedClientId) {
+        return { valid: false, reason: "INVALID_AUDIENCE" };
+    }
+    if (typeof payload.sub !== "string" || !payload.sub) {
+        return { valid: false, reason: "MISSING_SUB" };
+    }
+
+    return { valid: true, uid: payload.sub, payload, header };
+}
+
 /**
  * Resolves the server HMAC authentication secret with fail-closed production enforcement.
  * In production (NODE_ENV === 'production' or RAILWAY_ENVIRONMENT), THREADLINE_AUTH_SECRET
@@ -209,13 +311,27 @@ function authMiddleware(req, res, next) {
                 });
         }
 
-        // 1B. Centralized LANZAR ID Auth Hub verification when local Firebase Admin is unavailable
+        // 1B. Centralized LANZAR ID verification (OIDC RS256 JWKS or central session validation)
         if (!fbAdmin && !token.startsWith("tl_") && token.split(".").length === 3) {
-            const authApiUrl = (process.env.LANZAR_AUTH_API_URL || "https://auth-api.lanzar.me").replace(/\/+$/, "");
-            return fetch(`${authApiUrl}/api/id/session/validate`, {
-                headers: { Authorization: `Bearer ${token}` }
-            })
-                .then(async (valRes) => {
+            const authApiUrl = getAuthApiUrl();
+            return verifyOidcAccessToken(token, { authApiUrl })
+                .then(async (oidcRes) => {
+                    if (oidcRes && oidcRes.valid && oidcRes.uid) {
+                        req.uid = oidcRes.uid;
+                        req.user = oidcRes.payload;
+                        req.authMethod = "lanzar_id_oidc";
+                        return next();
+                    }
+                    if (oidcRes && oidcRes.valid === false && oidcRes.reason !== "UNKNOWN_KID") {
+                        return res.status(401).json({
+                            status: "error",
+                            message: "Invalid, expired, or mismatched LANZAR ID OIDC token."
+                        });
+                    }
+
+                    const valRes = await fetch(`${authApiUrl}/api/id/session/validate`, {
+                        headers: { Authorization: `Bearer ${token}` }
+                    });
                     if (!valRes.ok) {
                         return res.status(401).json({
                             status: "error",
@@ -318,5 +434,7 @@ function authMiddleware(req, res, next) {
 authMiddleware.createSignedToken = createSignedToken;
 authMiddleware.verifySignedToken = verifySignedToken;
 authMiddleware.isLoopbackConnection = isLoopbackConnection;
+authMiddleware.verifyOidcAccessToken = verifyOidcAccessToken;
+authMiddleware.clearJwksCache = clearJwksCache;
 
 module.exports = authMiddleware;

@@ -32,19 +32,45 @@ import {
 
 } from "./firebase";
 
-const AUTH_HUB_URL = typeof window !== "undefined" && window.location.hostname.endsWith("-dev.lanzar.me")
-    ? "https://auth-dev.lanzar.me"
-    : "https://auth.lanzar.me";
+const AUTH_HUB_URL = (import.meta.env.VITE_LANZAR_AUTH_HUB_URL || (
+    typeof window !== "undefined" && window.location.hostname.endsWith("-dev.lanzar.me")
+        ? "https://auth-dev.lanzar.me"
+        : "https://auth.lanzar.me"
+)).replace(/\/+$/, "");
 
-const AUTH_API_URL = typeof window !== "undefined" && window.location.hostname.endsWith("-dev.lanzar.me")
-    ? "https://auth-api-dev.lanzar.me"
-    : "https://auth-api.lanzar.me";
+const AUTH_API_URL = (import.meta.env.VITE_LANZAR_AUTH_API_URL || (
+    typeof window !== "undefined" && window.location.hostname.endsWith("-dev.lanzar.me")
+        ? "https://auth-api-dev.lanzar.me"
+        : "https://auth-api.lanzar.me"
+)).replace(/\/+$/, "");
+
+const EXPECTED_OIDC_ISSUER = (import.meta.env.VITE_LANZAR_OIDC_ISSUER || AUTH_HUB_URL).replace(/\/+$/, "");
 
 const CLIENT_ID = "threadline";
 const PKCE_STATE_KEY = "threadline_pkce_state";
 const PKCE_VERIFIER_KEY = "threadline_pkce_verifier";
+const PKCE_NONCE_KEY = "threadline_pkce_nonce";
 const LANZAR_SESSION_ID_KEY = "lanzar_session_id";
 const SILENT_SSO_KEY = "threadline_silent_sso_attempted";
+
+function decodeJwtPayload(token) {
+    const parts = String(token || "").split(".");
+    if (parts.length !== 3) return null;
+    try {
+        const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+        const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
+        return JSON.parse(atob(padded));
+    } catch (_) {
+        return null;
+    }
+}
+
+function generateRandomId() {
+    if (typeof crypto.randomUUID === "function") {
+        return crypto.randomUUID();
+    }
+    return generateCodeVerifier();
+}
 
 function base64UrlEncode(bytes) {
     let binary = "";
@@ -120,10 +146,12 @@ export function AuthProvider({ children }){
         localStorage.removeItem("threadline_local_mode");
         const verifier = generateCodeVerifier();
         const challenge = await generateCodeChallenge(verifier);
-        const state = typeof crypto.randomUUID === "function" ? crypto.randomUUID() : generateCodeVerifier();
+        const state = generateRandomId();
+        const nonce = generateRandomId();
 
         sessionStorage.setItem(PKCE_VERIFIER_KEY, verifier);
         sessionStorage.setItem(PKCE_STATE_KEY, state);
+        sessionStorage.setItem(PKCE_NONCE_KEY, nonce);
 
         const redirectUri = window.location.origin;
         const params = new URLSearchParams({
@@ -131,7 +159,9 @@ export function AuthProvider({ children }){
             redirect_uri: redirectUri,
             code_challenge: challenge,
             code_challenge_method: "S256",
-            state
+            scope: "openid profile email",
+            state,
+            nonce
         });
         window.location.href = `${AUTH_HUB_URL}?${params.toString()}`;
     }
@@ -160,8 +190,10 @@ export function AuthProvider({ children }){
             if (!authCode) return false;
             const storedState = sessionStorage.getItem(PKCE_STATE_KEY);
             const codeVerifier = sessionStorage.getItem(PKCE_VERIFIER_KEY);
+            const storedNonce = sessionStorage.getItem(PKCE_NONCE_KEY);
             sessionStorage.removeItem(PKCE_STATE_KEY);
             sessionStorage.removeItem(PKCE_VERIFIER_KEY);
+            sessionStorage.removeItem(PKCE_NONCE_KEY);
 
             const cleanSearch = (() => {
                 const p = new URLSearchParams(window.location.search);
@@ -172,16 +204,20 @@ export function AuthProvider({ children }){
             })();
             window.history.replaceState({}, document.title, cleanSearch);
 
-            if ((storedState && authState && storedState !== authState) || !codeVerifier) {
+            if (!storedState || !authState || storedState !== authState || !codeVerifier) {
                 console.warn("[AUTH] LANZAR ID PKCE state/verifier missing or mismatched.");
                 return false;
             }
 
             try {
-                const res = await fetch(`${AUTH_API_URL}/exchange`, {
+                const res = await fetch(`${AUTH_API_URL}/oauth/token`, {
                     method: "POST",
-                    headers: { "Content-Type": "application/json" },
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Idempotency-Key": `tl_exch_${generateRandomId().replace(/[^a-zA-Z0-9_-]/g, "")}`
+                    },
                     body: JSON.stringify({
+                        grant_type: "authorization_code",
                         code: authCode,
                         client_id: CLIENT_ID,
                         redirect_uri: window.location.origin,
@@ -189,6 +225,25 @@ export function AuthProvider({ children }){
                     })
                 });
                 const data = await res.json().catch(() => ({}));
+                if (res.ok && data.id_token) {
+                    const idClaims = decodeJwtPayload(data.id_token);
+                    const nowSec = Math.floor(Date.now() / 1000);
+                    const audMatches = idClaims && (
+                        idClaims.aud === CLIENT_ID ||
+                        (Array.isArray(idClaims.aud) && idClaims.aud.includes(CLIENT_ID))
+                    );
+                    if (
+                        !idClaims ||
+                        String(idClaims.iss || "").replace(/\/+$/, "") !== EXPECTED_OIDC_ISSUER ||
+                        !audMatches ||
+                        !Number.isFinite(idClaims.exp) ||
+                        idClaims.exp <= nowSec ||
+                        (storedNonce && idClaims.nonce !== storedNonce)
+                    ) {
+                        console.warn("[AUTH] LANZAR ID OIDC id_token claim validation failed.");
+                        return false;
+                    }
+                }
                 if (res.ok && data.custom_token) {
                     if (data.session_id) {
                         sessionStorage.setItem(LANZAR_SESSION_ID_KEY, data.session_id);
@@ -198,7 +253,7 @@ export function AuthProvider({ children }){
                     return true;
                 }
             } catch (err) {
-                console.error("[AUTH] LANZAR ID /exchange failed:", err);
+                console.error("[AUTH] LANZAR ID /oauth/token failed:", err);
             }
             return false;
         }
