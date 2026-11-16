@@ -126,6 +126,33 @@ async function run() {
             const r = await fetch(`http://127.0.0.1:${srv.address().port}/api/protected`);
             assert.strictEqual(r.status, 401);
             console.log("  ✓ Unauthenticated access to protected route rejected (401)");
+
+            // 7. End-to-end authMiddleware with OIDC RS256 token against a local JWKS server
+            authMiddleware.clearJwksCache();
+            const jwksApp = express();
+            jwksApp.get("/.well-known/jwks.json", (req, res) => res.json({ keys: [jwk] }));
+            const jwksSrv = await new Promise((resolve) => {
+                const s = jwksApp.listen(0, "127.0.0.1", () => resolve(s));
+            });
+            const prevApiUrl = process.env.LANZAR_AUTH_API_URL;
+            const prevIssuer = process.env.LANZAR_OIDC_ISSUER;
+            process.env.LANZAR_AUTH_API_URL = `http://127.0.0.1:${jwksSrv.address().port}`;
+            process.env.LANZAR_OIDC_ISSUER = "https://auth.lanzar.me/nova";
+            try {
+                const validRes = await fetch(`http://127.0.0.1:${srv.address().port}/api/protected`, {
+                    headers: { Authorization: `Bearer ${validTok}` }
+                });
+                assert.strictEqual(validRes.status, 200);
+                const validBody = await validRes.json();
+                assert.strictEqual(validBody.uid, "user_nova_123");
+                console.log("  ✓ End-to-end authMiddleware accepts valid NOVA OIDC RS256 token");
+            } finally {
+                if (prevApiUrl === undefined) delete process.env.LANZAR_AUTH_API_URL;
+                else process.env.LANZAR_AUTH_API_URL = prevApiUrl;
+                if (prevIssuer === undefined) delete process.env.LANZAR_OIDC_ISSUER;
+                else process.env.LANZAR_OIDC_ISSUER = prevIssuer;
+                jwksSrv.close();
+            }
         } finally {
             srv.close();
         }
@@ -135,7 +162,7 @@ async function run() {
         else process.env.THREADLINE_AUTH_SECRET = prevSecret;
     }
 
-    console.log("ALL 6 THREADLINE NOVA AUTH TESTS PASSED.");
+    console.log("ALL 7 THREADLINE NOVA AUTH TESTS PASSED.");
 }
 
 run().catch((err) => {

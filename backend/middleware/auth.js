@@ -294,68 +294,75 @@ function authMiddleware(req, res, next) {
     if (authHeader && authHeader.startsWith("Bearer ")) {
         const token = authHeader.split("Bearer ")[1].trim();
 
-        // 1A. Firebase Admin verification (for Firebase ID tokens when configured)
+        // 1A. Firebase Admin verification (for Firebase ID tokens when configured).
+        // If Firebase verification fails (e.g. token is a LANZAR ID OIDC RS256 access token),
+        // fall through to 1B instead of rejecting immediately.
         const fbAdmin = !token.startsWith("tl_") ? ensureFirebaseAdminInitialized() : null;
-        if (fbAdmin) {
-            return fbAdmin.auth().verifyIdToken(token, true)
-                .then(decodedToken => {
+        const tryFirebaseThenOidc = async () => {
+            if (fbAdmin) {
+                try {
+                    const decodedToken = await fbAdmin.auth().verifyIdToken(token, true);
                     req.uid = decodedToken.uid;
                     req.user = decodedToken;
+                    req.authMethod = "firebase";
                     return next();
-                })
-                .catch(() => {
+                } catch (_) {
+                    // Fall through to LANZAR ID OIDC / central session validation
+                }
+            }
+
+            // 1B. Centralized LANZAR ID verification (OIDC RS256 JWKS or central session validation)
+            if (!token.startsWith("tl_") && token.split(".").length === 3) {
+                const authApiUrl = getAuthApiUrl();
+                const oidcRes = await verifyOidcAccessToken(token, { authApiUrl });
+                if (oidcRes && oidcRes.valid && oidcRes.uid) {
+                    req.uid = oidcRes.uid;
+                    req.user = oidcRes.payload;
+                    req.authMethod = "lanzar_id_oidc";
+                    return next();
+                }
+                if (oidcRes && oidcRes.valid === false && oidcRes.reason !== "UNKNOWN_KID") {
                     return res.status(401).json({
                         status: "error",
-                        message: "Invalid, expired, or revoked Firebase authentication token."
+                        message: "Invalid, expired, or mismatched LANZAR ID OIDC token."
                     });
+                }
+
+                const valRes = await fetch(`${authApiUrl}/api/id/session/validate`, {
+                    headers: { Authorization: `Bearer ${token}` }
                 });
-        }
-
-        // 1B. Centralized LANZAR ID verification (OIDC RS256 JWKS or central session validation)
-        if (!fbAdmin && !token.startsWith("tl_") && token.split(".").length === 3) {
-            const authApiUrl = getAuthApiUrl();
-            return verifyOidcAccessToken(token, { authApiUrl })
-                .then(async (oidcRes) => {
-                    if (oidcRes && oidcRes.valid && oidcRes.uid) {
-                        req.uid = oidcRes.uid;
-                        req.user = oidcRes.payload;
-                        req.authMethod = "lanzar_id_oidc";
-                        return next();
-                    }
-                    if (oidcRes && oidcRes.valid === false && oidcRes.reason !== "UNKNOWN_KID") {
-                        return res.status(401).json({
-                            status: "error",
-                            message: "Invalid, expired, or mismatched LANZAR ID OIDC token."
-                        });
-                    }
-
-                    const valRes = await fetch(`${authApiUrl}/api/id/session/validate`, {
-                        headers: { Authorization: `Bearer ${token}` }
-                    });
-                    if (!valRes.ok) {
-                        return res.status(401).json({
-                            status: "error",
-                            message: "Invalid, expired, or revoked LANZAR ID authentication token."
-                        });
-                    }
-                    const data = await valRes.json().catch(() => null);
-                    if (!data || !data.valid || !data.uid) {
-                        return res.status(401).json({
-                            status: "error",
-                            message: "Invalid, expired, or revoked LANZAR ID authentication token."
-                        });
-                    }
-                    req.uid = data.uid;
-                    req.user = data;
-                    req.authMethod = "lanzar_id";
-                    return next();
-                })
-                .catch(() => {
+                if (!valRes.ok) {
                     return res.status(401).json({
                         status: "error",
-                        message: "Unable to verify LANZAR ID authentication token."
+                        message: "Invalid, expired, or revoked LANZAR ID authentication token."
                     });
+                }
+                const data = await valRes.json().catch(() => null);
+                if (!data || !data.valid || !data.uid) {
+                    return res.status(401).json({
+                        status: "error",
+                        message: "Invalid, expired, or revoked LANZAR ID authentication token."
+                    });
+                }
+                req.uid = data.uid;
+                req.user = data;
+                req.authMethod = "lanzar_id";
+                return next();
+            }
+
+            return res.status(401).json({
+                status: "error",
+                message: "Invalid, expired, or revoked authentication token."
+            });
+        };
+
+        if (!token.startsWith("tl_") && token.split(".").length === 3) {
+            return tryFirebaseThenOidc().catch(() => {
+                return res.status(401).json({
+                    status: "error",
+                    message: "Unable to verify authentication token."
                 });
+            });
         }
 
         // 1C. Cryptographic HMAC Token verification
