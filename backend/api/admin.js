@@ -110,7 +110,8 @@ function syncDirectory(dirPath) {
  */
 router.get("/storage-status", (req, res) => {
     try {
-        if (req.tokenScope !== "database_restore" && !req.uid) {
+        const isAdminUser = Boolean(req.user && (req.user.is_admin === true || req.user.role === "admin"));
+        if (req.tokenScope !== "database_restore" && !isAdminUser) {
             return res.status(403).json({
                 status: "error",
                 message: "Unauthorized access to storage status."

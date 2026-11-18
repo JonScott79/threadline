@@ -13,7 +13,8 @@ const crypto = require("crypto");
 const { processImport, processImportText } = require("../engines/importEngine");
 
 // Services
-const { ingestArchive } = require("../services/threadlines");
+const db = require("../database/database");
+const { ingestArchive, isAuthorizedOwner } = require("../services/threadlines");
 
 /*======================================================
                         VARIABLES
@@ -176,6 +177,12 @@ router.post("/", upload.single("archive"), async (request, response) => {
         console.log("Ingesting into Workspace...");
 
         const targetThreadlineId = request.body.threadlineId || null;
+        if (targetThreadlineId) {
+            const existing = db.queryOne("SELECT owner_id FROM threadlines WHERE id = ?", [targetThreadlineId]);
+            if (existing && !isAuthorizedOwner(existing.owner_id, request.uid)) {
+                return response.status(403).json({ status: "error", message: "Access denied for target threadline." });
+            }
+        }
 
         const fileSha256 = await computeFileSha256(uploadedFilePath);
 

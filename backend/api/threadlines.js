@@ -167,7 +167,7 @@ router.put("/:id", async (request, response) => {
 
         // Verify ownership
         const existing = db.queryOne("SELECT owner_id FROM threadlines WHERE id = ?", [id]);
-        if (!existing || existing.owner_id !== request.uid) {
+        if (!existing || !threadlineService.isAuthorizedOwner(existing.owner_id, request.uid)) {
             return response.status(403).json({ status: "error", message: "Access denied." });
         }
         

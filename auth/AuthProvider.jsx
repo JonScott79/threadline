@@ -26,6 +26,8 @@ import {
 
 } from "firebase/auth";
 
+import axios from "axios";
+
 import {
 
     auth
@@ -244,6 +246,9 @@ export function AuthProvider({ children }){
                         return false;
                     }
                 }
+                if (res.ok && data.access_token) {
+                    sessionStorage.setItem("lanzar_oidc_access_token", data.access_token);
+                }
                 if (res.ok && data.custom_token) {
                     if (data.session_id) {
                         sessionStorage.setItem(LANZAR_SESSION_ID_KEY, data.session_id);
@@ -258,9 +263,32 @@ export function AuthProvider({ children }){
             return false;
         }
 
-        completePkceExchangeIfPresent();
+        const reqInterceptorId = axios.interceptors.request.use(async (config) => {
+            try {
+                let bearer = null;
+                if (auth.currentUser) {
+                    bearer = await auth.currentUser.getIdToken();
+                } else {
+                    bearer = lastIdTokenRef.current || sessionStorage.getItem("lanzar_oidc_access_token");
+                }
+                if (bearer) {
+                    config.headers = config.headers || {};
+                    if (!config.headers.Authorization && !config.headers.authorization) {
+                        config.headers.Authorization = `Bearer ${bearer}`;
+                    }
+                }
+            } catch (_) {
+                // Non-fatal: backend will enforce 401 if unauthenticated
+            }
+            return config;
+        });
 
-        const unsubscribe = onAuthStateChanged(
+        let unsubscribe = () => {};
+        (async () => {
+            await completePkceExchangeIfPresent();
+            if (!isMounted) return;
+
+            unsubscribe = onAuthStateChanged(
 
             auth,
 
@@ -342,9 +370,11 @@ export function AuthProvider({ children }){
             }
 
         );
+        })();
 
         return () => {
             isMounted = false;
+            axios.interceptors.request.eject(reqInterceptorId);
             unsubscribe();
         };
 
@@ -370,6 +400,7 @@ export function AuthProvider({ children }){
             return;
         }
         wasSignedInRef.current = false;
+        sessionStorage.removeItem("lanzar_oidc_access_token");
         const currentToken = auth.currentUser ? await auth.currentUser.getIdToken().catch(() => null) : null;
         await revokeCentralSession(currentToken);
         await firebaseSignOut(auth);
